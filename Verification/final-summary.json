@@ -1,0 +1,258 @@
+{
+  "GeneratedUtc": "2026-10-28T04:14:33.1161726Z",
+  "Project": "D:\\DelphiProg\\MyApp\\SYNC_RhythmShooter",
+  "DPR": "D:\\DelphiProg\\MyApp\\SYNC_RhythmShooter\\SYNC_RhythmShooter.dpr",
+  "ProjectGuid": "{8674E2D5-384E-4DB4-9299-85BC2BFF7A96}",
+  "Group": "SYNC",
+  "DisplayName": "リズムシューティング",
+  "Builds": [
+    {
+      "Configuration": "Debug",
+      "Warnings": 0,
+      "Errors": 0,
+      "Log": "D:\\DelphiProg\\MyApp\\SYNC_RhythmShooter\\Win64\\Debug.build.log"
+    },
+    {
+      "Configuration": "Release",
+      "Warnings": 0,
+      "Errors": 0,
+      "Log": "D:\\DelphiProg\\MyApp\\SYNC_RhythmShooter\\Win64\\Release.build.log"
+    }
+  ],
+  "Outputs": [
+    {
+      "Path": "D:\\DelphiProg\\MyApp\\SYNC_RhythmShooter\\Win64\\Debug\\SYNC_RhythmShooter.auf2",
+      "Bytes": 15701085,
+      "ModifiedUtc": "2026-10-28T04:00:10.1622124Z",
+      "SHA256": "93BFE252285CC6FAAB41C714711BB667AF5EDC2B5F24ADFBBD0FE34C53C47BB6"
+    },
+    {
+      "Path": "D:\\DelphiProg\\MyApp\\SYNC_RhythmShooter\\Win64\\Release\\SYNC_RhythmShooter.auf2",
+      "Bytes": 4245504,
+      "ModifiedUtc": "2026-10-28T04:00:33.8208857Z",
+      "SHA256": "39D421E17808715F6DACB24E544D80EEACED8956BA5D24A13F6BDCD5CAE2F425"
+    },
+    {
+      "Path": "D:\\DelphiProg\\MyApp\\SYNC_RhythmShooter\\Win64\\Release\\RhythmPreview.exe",
+      "Bytes": 4215808,
+      "ModifiedUtc": "2026-10-28T04:00:32.6972248Z",
+      "SHA256": "F08E28A6D01A51D3DF7DFFAAF4F0C0A85D481A3F967C4ED055E9AE1AB5E90980"
+    }
+  ],
+  "SourceBaselineFiles": 9,
+  "SourceBaselineChanged": 0,
+  "SdkAndCommon": [
+    {
+      "File": "AviUtl2FilterTypes.pas",
+      "Unchanged": true,
+      "SHA256": "375D3C5A34DA2ED4735B62E9AC0AB85AB88BD9102628A01223E30AB83E8C0D0D"
+    },
+    {
+      "File": "PluginFilterTable.pas",
+      "Unchanged": true,
+      "SHA256": "7FB6F8B3A39B34E528A3F174EB55C4687496DE0427803BE121DCF640F6B0D2C9"
+    }
+  ],
+  "MimiRunnerUnchanged": true,
+  "OriginalSpecLines": 337,
+  "OriginalSpecSHA256": "39D88D9E7344D0826CAA191853A65810CE410458DA2FFDFD4A68F8C069178E21",
+  "NativeDebug": {
+    "name": "リズムシューティング",
+    "group": "SYNC",
+    "description": "リズムシューティングフィルタープラグイン",
+    "items": [
+      {
+        "type": "file",
+        "name": "音楽ファイル"
+      },
+      {
+        "type": "select",
+        "name": "スクロール方向"
+      },
+      {
+        "type": "track",
+        "name": "解析感度"
+      },
+      {
+        "type": "button",
+        "name": "設定"
+      }
+    ],
+    "firstFrameLoadAndDrawMs": 51.9481,
+    "firstFrameStable": true,
+    "width": 1280,
+    "height": 720,
+    "rgbaSHA256_0": "c8c35b4beebe74cace790326ce9e8c903a9947a0473c33af425b295929d53093",
+    "rgbaSHA256_1": "2dc388c16c8622525fc953a0a4c69abccde8848165d8cb8ef2584b03d60b2c84",
+    "callback1920x1080MeanMs": 16.3307766666667,
+    "initializeAndCleanup": "passed twice",
+    "result": "passed"
+  },
+  "NativeRelease": {
+    "name": "リズムシューティング",
+    "group": "SYNC",
+    "description": "リズムシューティングフィルタープラグイン",
+    "items": [
+      {
+        "type": "file",
+        "name": "音楽ファイル"
+      },
+      {
+        "type": "select",
+        "name": "スクロール方向"
+      },
+      {
+        "type": "track",
+        "name": "解析感度"
+      },
+      {
+        "type": "button",
+        "name": "設定"
+      }
+    ],
+    "firstFrameLoadAndDrawMs": 54.858,
+    "firstFrameStable": true,
+    "width": 1280,
+    "height": 720,
+    "rgbaSHA256_0": "c8c35b4beebe74cace790326ce9e8c903a9947a0473c33af425b295929d53093",
+    "rgbaSHA256_1": "2dc388c16c8622525fc953a0a4c69abccde8848165d8cb8ef2584b03d60b2c84",
+    "callback1920x1080MeanMs": 18.5770933333333,
+    "initializeAndCleanup": "passed twice",
+    "result": "passed"
+  },
+  "NativeDeployed": {
+    "name": "リズムシューティング",
+    "group": "SYNC",
+    "description": "リズムシューティングフィルタープラグイン",
+    "items": [
+      {
+        "type": "file",
+        "name": "音楽ファイル"
+      },
+      {
+        "type": "select",
+        "name": "スクロール方向"
+      },
+      {
+        "type": "track",
+        "name": "解析感度"
+      },
+      {
+        "type": "button",
+        "name": "設定"
+      }
+    ],
+    "firstFrameLoadAndDrawMs": 48.6305,
+    "firstFrameStable": true,
+    "width": 1280,
+    "height": 720,
+    "rgbaSHA256_0": "c8c35b4beebe74cace790326ce9e8c903a9947a0473c33af425b295929d53093",
+    "rgbaSHA256_1": "2dc388c16c8622525fc953a0a4c69abccde8848165d8cb8ef2584b03d60b2c84",
+    "callback1920x1080MeanMs": 15.629755,
+    "initializeAndCleanup": "passed twice",
+    "result": "passed"
+  },
+  "MusicRegression": {
+    "firstLoadMs": 38.7585,
+    "source": "C:\\Users\\vramw\\Music\\magnific_aQo5nq8fSh.mp3",
+    "sha256": "2e722315dc71767cc2cfa7ff5f32ea25f8a1036787476cf221d0a6cf58551fe3",
+    "durationSeconds": 30.0240136054422,
+    "pcmBytes": 5296236.0,
+    "hitCount": 39.0,
+    "firstLoadCacheReused": true,
+    "cachedLoadMs": 34.6658,
+    "firstHits": [
+      {
+        "hit": 2.2,
+        "fire": 1.68089615266195
+      },
+      {
+        "hit": 2.9,
+        "fire": 2.46373845871868
+      },
+      {
+        "hit": 3.56,
+        "fire": 3.03839017202337
+      },
+      {
+        "hit": 4.02,
+        "fire": 3.57343332842116
+      },
+      {
+        "hit": 4.25,
+        "fire": 3.7587622854887
+      },
+      {
+        "hit": 5.78,
+        "fire": 5.3660994676587
+      },
+      {
+        "hit": 6.53,
+        "fire": 5.98352923215721
+      },
+      {
+        "hit": 7.91,
+        "fire": 7.48925090238047
+      },
+      {
+        "hit": 8.66,
+        "fire": 8.28760568525218
+      },
+      {
+        "hit": 8.92,
+        "fire": 8.4641531630608
+      },
+      {
+        "hit": 9.26,
+        "fire": 8.82926668205257
+      },
+      {
+        "hit": 9.51,
+        "fire": 9.06992045286078
+      }
+    ],
+    "maxHitPositionErrorNormalized": 5.55111512312578E-17,
+    "maxNominalBulletSpeedError": 1.08157927058983E-12,
+    "assetCount": 15.0,
+    "deterministicFrameSHA256_0": "ed534a936d433a99ab228d5532414da57bc4b780b3b5d5e5b6f8f0031bc2b431",
+    "deterministicFrameSHA256_1": "843fb68e6adb3efe6ce30d2ed36e2548a739b50ad953f6999909d0e1fc20c61b",
+    "render1920x1080MeanMs": 11.3405566666667,
+    "synthetic1260BossBullets1920x1080MeanMs": 51.38513,
+    "d2dRender1920x1080MeanMs": 13.7453741666667,
+    "d2dSynthetic1260BossBullets1920x1080MeanMs": 16.23775,
+    "d2dActuallyUsed": true,
+    "playingSeekPosition": 17.1853287981859,
+    "playPosition1": 0.220634920634921,
+    "playPosition2": 0.472675736961451,
+    "pauseBefore": 0.490748299319728,
+    "pauseAfter": 0.490748299319728,
+    "pausedSeek": 4.5,
+    "resumedPosition": 4.72487528344671,
+    "audioResourceCleanup": "completed",
+    "result": "passed"
+  },
+  "AudioEdges": {
+    "wavPulseHitCount": 4,
+    "sensitivity1Hits": 4,
+    "sensitivity100Hits": 4,
+    "samePathContentChange": "new content hash used",
+    "silenceHits": 0,
+    "invalidMp3": "reported error",
+    "missingFile": "reported error",
+    "result": "passed"
+  },
+  "Deployment": {
+    "Path": "C:\\ProgramData\\aviutl2\\Plugin\\SYNC_RhythmShooter",
+    "Files": 28,
+    "HashMismatches": 0,
+    "Assets": 15,
+    "AudioFiles": 0,
+    "Manifest": "C:\\ProgramData\\aviutl2\\Plugin\\SYNC_RhythmShooter\\deployment-manifest.json"
+  },
+  "GuiApproval": "Two Computer Use launch requests timed out; not approved; no bypass launch",
+  "GuiPreviewVerified": false,
+  "ListeningVerified": false,
+  "AviUtlHostVerified": false,
+  "PreviewProcessCount": 0,
+  "AviUtlProcessCount": 0
+}

@@ -1,0 +1,12 @@
+{
+  "TimeUtc": "2026-10-28T04:42:13.1975589Z",
+  "Revision": "Revision2",
+  "DeployedFiles": 28,
+  "HashMismatches": 0,
+  "Auf2SHA256": "F56B68461DE6A930225F10BDC095ED3CA8D79E662B126044EED084C0FFEA0013",
+  "PreviewSHA256": "05CBB93B685C3480F2097CCE07529C134BEF88C29AEFF02074190361536D77CC",
+  "Backup": "D:\\DelphiProg\\MyApp\\SYNC_RhythmShooter\\DeploymentBackups\\20261028-044102",
+  "GuiFlickerVerified": false,
+  "PreviewProcesses": 0,
+  "AviUtlProcesses": 0
+}

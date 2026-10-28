@@ -1,0 +1,352 @@
+{
+  "CompletedUTC": "2026-10-28T05:18:24.1243508Z",
+  "Project": "D:\\DelphiProg\\MyApp\\SYNC_RhythmShooter\\SYNC_RhythmShooter.dpr",
+  "Group": "SYNC",
+  "DisplayName": "リズムシューティング",
+  "Binaries": [
+    {
+      "Config": "Debug",
+      "Path": "D:\\DelphiProg\\MyApp\\SYNC_RhythmShooter\\Win64\\Revision31\\Debug\\SYNC_RhythmShooter.auf2",
+      "SHA256": "687090CF726D77CB16BB667F005FD8279411A521F0CD317345F1E4D25B4807A2"
+    },
+    {
+      "Config": "Debug",
+      "Path": "D:\\DelphiProg\\MyApp\\SYNC_RhythmShooter\\Win64\\Revision31\\Debug\\RhythmPreview.exe",
+      "SHA256": "21497E3702E92FF3692030318A2DDAB096E6242B4EF02423D1CA9CA2F8E87F76"
+    },
+    {
+      "Config": "Release",
+      "Path": "D:\\DelphiProg\\MyApp\\SYNC_RhythmShooter\\Win64\\Revision31\\Release\\SYNC_RhythmShooter.auf2",
+      "SHA256": "2CDCA3DC76A8EA4C06D36604A74DC427EEF3ABE636A5391BDFD8D94663D91980"
+    },
+    {
+      "Config": "Release",
+      "Path": "D:\\DelphiProg\\MyApp\\SYNC_RhythmShooter\\Win64\\Revision31\\Release\\RhythmPreview.exe",
+      "SHA256": "776F5212FE4A5AAF7E5783196748798BBF6803E096FD4391ADF0C9EFC741A751"
+    }
+  ],
+  "DeployedFolder": "C:\\ProgramData\\aviutl2\\Plugin\\SYNC_RhythmShooter",
+  "DeployedFileCount": 28,
+  "DeployedHashMismatches": 0,
+  "Backup": "D:\\DelphiProg\\MyApp\\SYNC_RhythmShooter\\DeploymentBackups\\20261028-051638",
+  "RelevantProcesses": 0,
+  "Sample": "C:\\Users\\vramw\\Music\\magnific_aQo5nq8fSh.mp3",
+  "SampleSHA256": "2E722315DC71767CC2CFA7FF5F32EA25F8A1036787476CF221D0A6CF58551FE3",
+  "DonorChanges": 0,
+  "NormalFrameAnalysisCacheWrites": 0,
+  "Tests": {
+    "Scene": {
+      "jsonRoundTrip": "passed",
+      "preparedCache": "passed",
+      "entryEnd": 1.4,
+      "exitStart": 29.34,
+      "exitEnd": 29.99,
+      "duration": 30.0240136054422,
+      "soundEnd": 28.62,
+      "clearTime": 29.14,
+      "requiredExtraOutputSeconds": 0.0,
+      "stageTiming": "passed",
+      "normalShotMaxLateralError": 0.0,
+      "normalShotMaxImpactError": 5.55111512312578E-17,
+      "acceptedRadialBullets_0": 746,
+      "maxVisibleBullets_0": 212,
+      "minimumShipDistanceInViewportUnits_0": 0.0635090842839765,
+      "acceptedRadialBullets_1": 758,
+      "maxVisibleBullets_1": 206,
+      "minimumShipDistanceInViewportUnits_1": 0.0625466371032769,
+      "d2d1920x1080MeanMs": 11.088615,
+      "d2dUsed": true,
+      "waveform": "unchanged; flicker fix accepted by user",
+      "result": "passed"
+    },
+    "Debug": {
+      "name": "リズムシューティング",
+      "group": "SYNC",
+      "description": "リズムシューティングフィルタープラグイン",
+      "items": [
+        {
+          "type": "track",
+          "name": "拡大"
+        },
+        {
+          "type": "track",
+          "name": "X"
+        },
+        {
+          "type": "track",
+          "name": "Y"
+        },
+        {
+          "type": "button",
+          "name": "設定"
+        },
+        {
+          "type": "group",
+          "name": "内部設定・旧版互換"
+        },
+        {
+          "type": "string",
+          "name": "設定JSON"
+        },
+        {
+          "type": "file",
+          "name": "音楽ファイル"
+        },
+        {
+          "type": "select",
+          "name": "スクロール方向"
+        },
+        {
+          "type": "track",
+          "name": "解析感度"
+        }
+      ],
+      "firstFrameLoadAndDrawMs": 50.6075,
+      "firstFrameStable": true,
+      "width": 1280,
+      "height": 720,
+      "rgbaSHA256_0": "255ec0ef3b739ca1b6a8ca14d902fe74a2f07de3ef684ee0659ea47fe03b91a8",
+      "rgbaSHA256_1": "7e353b2560547cba1907e213e47714d1e8ba2de3cdb369dcb69706b5db0184f7",
+      "objectJsonState": "passed",
+      "scaleXY": "passed",
+      "missingCacheTwoFramesMs": 69.5737,
+      "missingCacheStable": "passed",
+      "callback1920x1080MeanMs": 15.56556,
+      "modernUnconditionalHideRules": 4,
+      "legacyCompatibilityItems": "preserved collapsed on unsupported hosts",
+      "initializeAndCleanup": "passed three times",
+      "result": "passed"
+    },
+    "Release": {
+      "name": "リズムシューティング",
+      "group": "SYNC",
+      "description": "リズムシューティングフィルタープラグイン",
+      "items": [
+        {
+          "type": "track",
+          "name": "拡大"
+        },
+        {
+          "type": "track",
+          "name": "X"
+        },
+        {
+          "type": "track",
+          "name": "Y"
+        },
+        {
+          "type": "button",
+          "name": "設定"
+        },
+        {
+          "type": "group",
+          "name": "内部設定・旧版互換"
+        },
+        {
+          "type": "string",
+          "name": "設定JSON"
+        },
+        {
+          "type": "file",
+          "name": "音楽ファイル"
+        },
+        {
+          "type": "select",
+          "name": "スクロール方向"
+        },
+        {
+          "type": "track",
+          "name": "解析感度"
+        }
+      ],
+      "firstFrameLoadAndDrawMs": 50.8797,
+      "firstFrameStable": true,
+      "width": 1280,
+      "height": 720,
+      "rgbaSHA256_0": "255ec0ef3b739ca1b6a8ca14d902fe74a2f07de3ef684ee0659ea47fe03b91a8",
+      "rgbaSHA256_1": "7e353b2560547cba1907e213e47714d1e8ba2de3cdb369dcb69706b5db0184f7",
+      "objectJsonState": "passed",
+      "scaleXY": "passed",
+      "missingCacheTwoFramesMs": 69.7762,
+      "missingCacheStable": "passed",
+      "callback1920x1080MeanMs": 15.6248266666667,
+      "modernUnconditionalHideRules": 4,
+      "legacyCompatibilityItems": "preserved collapsed on unsupported hosts",
+      "initializeAndCleanup": "passed three times",
+      "result": "passed"
+    },
+    "Deployed": {
+      "name": "リズムシューティング",
+      "group": "SYNC",
+      "description": "リズムシューティングフィルタープラグイン",
+      "items": [
+        {
+          "type": "track",
+          "name": "拡大"
+        },
+        {
+          "type": "track",
+          "name": "X"
+        },
+        {
+          "type": "track",
+          "name": "Y"
+        },
+        {
+          "type": "button",
+          "name": "設定"
+        },
+        {
+          "type": "group",
+          "name": "内部設定・旧版互換"
+        },
+        {
+          "type": "string",
+          "name": "設定JSON"
+        },
+        {
+          "type": "file",
+          "name": "音楽ファイル"
+        },
+        {
+          "type": "select",
+          "name": "スクロール方向"
+        },
+        {
+          "type": "track",
+          "name": "解析感度"
+        }
+      ],
+      "firstFrameLoadAndDrawMs": 57.4704,
+      "firstFrameStable": true,
+      "width": 1280,
+      "height": 720,
+      "rgbaSHA256_0": "255ec0ef3b739ca1b6a8ca14d902fe74a2f07de3ef684ee0659ea47fe03b91a8",
+      "rgbaSHA256_1": "7e353b2560547cba1907e213e47714d1e8ba2de3cdb369dcb69706b5db0184f7",
+      "objectJsonState": "passed",
+      "scaleXY": "passed",
+      "missingCacheTwoFramesMs": 81.0019,
+      "missingCacheStable": "passed",
+      "callback1920x1080MeanMs": 17.5669916666667,
+      "modernUnconditionalHideRules": 4,
+      "legacyCompatibilityItems": "preserved collapsed on unsupported hosts",
+      "initializeAndCleanup": "passed three times",
+      "result": "passed"
+    }
+  },
+  "SourceFiles": [
+    {
+      "Path": "Source\\Audio\\RhythmAudio.pas",
+      "SHA256": "CE48EABA63EAB575B261673A8754852206EF9B7B63970E11E34C274DE854F8CE"
+    },
+    {
+      "Path": "Source\\Audio\\RhythmPlayback.pas",
+      "SHA256": "D16AE930829D5179CBA4FB3A636784C67EFCC645C1FA71D28413059CE07A133A"
+    },
+    {
+      "Path": "Source\\Common\\RhythmMotion.pas",
+      "SHA256": "ED76CBB26EDF04551023BE5BD6BD6BFA1F56D447CB79C4EC69D1044F52429511"
+    },
+    {
+      "Path": "Source\\Common\\RhythmPaths.pas",
+      "SHA256": "C8E05AECE2740DA4BE2497D2595C8CD9AF6F977366E11A02EE5F9532842D18C0"
+    },
+    {
+      "Path": "Source\\Common\\RhythmSettings.pas",
+      "SHA256": "7B7E48C38D8A024493DDFF67A1A58E638E3D6554701517436FA8536F3B808B21"
+    },
+    {
+      "Path": "Source\\Common\\Render\\SYNC_RhythmShooter_LastFrameCapture.pas",
+      "SHA256": "CB73DB879EEA2CABD75B57DBB18254ECB0D60940220A37D83CB0A624DF3AAB99"
+    },
+    {
+      "Path": "Source\\Engine\\RhythmAssets.pas",
+      "SHA256": "1F17FF22EA7D28465CBE1DDB137497F43830D2ACBF13979FCEC35E74381981E8"
+    },
+    {
+      "Path": "Source\\Engine\\RhythmBarrage.pas",
+      "SHA256": "1D3D3C601521D7A80D606E186E7475385676777D08AB8EC8DB4E0407247B7940"
+    },
+    {
+      "Path": "Source\\Engine\\RhythmD2D.pas",
+      "SHA256": "FFCC398191F4CFAA1E89361011497A150CEC9A7CCF5089D102275187A1885635"
+    },
+    {
+      "Path": "Source\\Engine\\RhythmScene.pas",
+      "SHA256": "252637EE127DA69E2AF6F67D61608E476FEE1C64855F8439E77BB61CC220BBE7"
+    },
+    {
+      "Path": "Source\\Engine\\RhythmStage.pas",
+      "SHA256": "6B75ADF41C45E130C1D519EA1A7674DB1A053D61DBD8F164828EA9BA54BCBA97"
+    },
+    {
+      "Path": "Source\\Lib\\AviUtl2FilterTypes.pas",
+      "SHA256": "375D3C5A34DA2ED4735B62E9AC0AB85AB88BD9102628A01223E30AB83E8C0D0D"
+    },
+    {
+      "Path": "Source\\Lib\\PluginFilterTable.pas",
+      "SHA256": "7FB6F8B3A39B34E528A3F174EB55C4687496DE0427803BE121DCF640F6B0D2C9"
+    },
+    {
+      "Path": "Source\\Lib\\Process\\MimiChildProcess.pas",
+      "SHA256": "D0BFF749A908D2B2343C908C1B42C1933892822043157FC54D9C6AF0633D2875"
+    },
+    {
+      "Path": "Source\\Plugin\\Filter\\SYNC_RhythmShooter_FilterPlugin.pas",
+      "SHA256": "485E14A9C5864E3A4DD0B1973C7CBC6DC3729715F5E0EBFE50F97AD68A05D38A"
+    },
+    {
+      "Path": "Source\\Plugin\\Filter\\SYNC_RhythmShooter_SettingsForm.dfm",
+      "SHA256": "8B31BDB9767EC5417FBA2415FC464E2475AE8751297F94473746FBE3D41D1DD1"
+    },
+    {
+      "Path": "Source\\Plugin\\Filter\\SYNC_RhythmShooter_SettingsForm.pas",
+      "SHA256": "A74E2E17BFC0A852C3EF3F9EF590A7E4A702135D4A810DE676758EC291792EAD"
+    },
+    {
+      "Path": "Source\\UI\\RhythmWaveView.pas",
+      "SHA256": "598D4564EC94EBF86C52F3CD52C6B70BF0BFC5DF2A6376E93AD9214271605844"
+    }
+  ],
+  "HostUI": {
+    "ModernVersionGate": 2011500,
+    "ModernVisible": [
+      "拡大",
+      "X",
+      "Y",
+      "設定"
+    ],
+    "InternalValuesPreserved": true,
+    "LegacyFallback": "collapsed group; complete hiding unavailable on local 2.1.3/2.1.6a",
+    "CurrentHostVersion": "awaiting user answer",
+    "RealHostHiddenItemDisplayVerified": false
+  },
+  "GUI": {
+    "RunThisRevision": false,
+    "ListeningVerifiedThisRevision": false,
+    "PriorLaunchApprovals": "timed out, never bypassed",
+    "WaveFlicker": "user accepted previous fix; control unchanged"
+  },
+  "SettingsStorage": "Existing object 設定JSON schema 1 and legacy item names/types; standalone %LOCALAPPDATA%\\SYNC_RhythmShooter\\Preview.json unchanged format",
+  "Pending": [
+    "Confirm current host version and hide-rule display in supported AviUtl2",
+    "Manual GUI interaction and project save/reopen on Revision3",
+    "Custom design and existing AI integration investigation deferred until parent resumes"
+  ],
+  "Version": "Revision 3.1",
+  "StarMotionEvidence": {
+    "DeltaSeconds": 0.25,
+    "NearPixelDelta": 97.69696969696969,
+    "Resolution": "1920x1080",
+    "MiddlePixelDelta": 41.42857142857143,
+    "ReducedImages": "640x360, vertical and horizontal visually inspected"
+  },
+  "StageStates": [
+    "Entering",
+    "Playing",
+    "Defeat",
+    "Clear",
+    "Exiting",
+    "Ended"
+  ]
+}

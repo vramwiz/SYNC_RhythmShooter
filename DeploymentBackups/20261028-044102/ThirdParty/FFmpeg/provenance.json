@@ -1,0 +1,79 @@
+{
+  "copiedOn": "2026-10-14",
+  "build": "8.1.1-full_build-www.gyan.dev",
+  "archive": {
+    "url": "https://github.com/GyanD/codexffmpeg/releases/download/8.1.1/ffmpeg-8.1.1-full_build-shared.zip",
+    "sha256": "4296b396bdfd5fbc3dfc75ab4c8703354a56963232d65c4182993543df2d2f45",
+    "directory": "ffmpeg-8.1.1-full_build-shared"
+  },
+  "localSourceDirectories": [
+    "D:\\DelphiProg\\SYNC_Lyrics\\ThirdParty\\FFmpeg"
+  ],
+  "files": [
+    {
+      "path": "ThirdParty\\FFmpeg\\bin\\avcodec-62.dll",
+      "copiedFrom": "D:\\DelphiProg\\test\\SYNC_Lyrics\\ThirdParty\\FFmpeg\\bin\\avcodec-62.dll",
+      "sourceSha256": "86818846A9A74420F5F65FD8EBE0897BC9141E84E9C91F0F8B7607EE193A26D7"
+    },
+    {
+      "path": "ThirdParty\\FFmpeg\\bin\\avfilter-11.dll",
+      "copiedFrom": "D:\\DelphiProg\\test\\SYNC_Lyrics\\ThirdParty\\FFmpeg\\bin\\avfilter-11.dll",
+      "sourceSha256": "F7E8DDC1E728DD72660DD79985ECBF1E664F7DC978BDC0382DB505B347C3D3CA"
+    },
+    {
+      "path": "ThirdParty\\FFmpeg\\bin\\avformat-62.dll",
+      "copiedFrom": "D:\\DelphiProg\\test\\SYNC_Lyrics\\ThirdParty\\FFmpeg\\bin\\avformat-62.dll",
+      "sourceSha256": "4D0A70445D5139B713596A677A9DCAC64DC8F7C27053E9DBD0998E2CBDBEF611"
+    },
+    {
+      "path": "ThirdParty\\FFmpeg\\bin\\avutil-60.dll",
+      "copiedFrom": "D:\\DelphiProg\\test\\SYNC_Lyrics\\ThirdParty\\FFmpeg\\bin\\avutil-60.dll",
+      "sourceSha256": "A98D20DF601B48D85D701C8A92B83C67E088CEAC34EBE434673DEFD15448CA9D"
+    },
+    {
+      "path": "ThirdParty\\FFmpeg\\bin\\swresample-6.dll",
+      "copiedFrom": "D:\\DelphiProg\\test\\SYNC_Lyrics\\ThirdParty\\FFmpeg\\bin\\swresample-6.dll",
+      "sourceSha256": "6C5DD36848986C9ABE4F3ED215329DCCAFA4481D9E485655B900076B3E40BDC0"
+    },
+    {
+      "path": "ThirdParty\\FFmpeg\\bin\\swscale-9.dll",
+      "copiedFrom": "D:\\DelphiProg\\test\\SYNC_Lyrics\\ThirdParty\\FFmpeg\\bin\\swscale-9.dll",
+      "sourceSha256": "BD1DB88D009D89F212723B99C20FAF53F0055E7ECB14B9580B3CB28F47453968"
+    },
+    {
+      "path": "ThirdParty\\FFmpeg\\bin\\ffmpeg.exe",
+      "copiedFrom": "D:\\DelphiProg\\test\\FFmpeg\\09\\ffmpeg-8.1.1-full_build-shared\\ffmpeg-8.1.1-full_build-shared\\bin\\ffmpeg.exe",
+      "sourceSha256": "E5FA4969190885AD107B22BD1EC84EA29D1696E4F9BE6B4D6A143F34E820ED67"
+    },
+    {
+      "path": "ThirdParty\\FFmpeg\\bin\\ffprobe.exe",
+      "copiedFrom": "D:\\DelphiProg\\test\\FFmpeg\\09\\ffmpeg-8.1.1-full_build-shared\\ffmpeg-8.1.1-full_build-shared\\bin\\ffprobe.exe",
+      "sourceSha256": "29478587953AF2C173CD86177DA9F94521AF9FE7A10866A779164E982386A7EC"
+    },
+    {
+      "path": "ThirdParty\\FFmpeg\\bin\\avdevice-62.dll",
+      "copiedFrom": "D:\\DelphiProg\\test\\FFmpeg\\09\\ffmpeg-8.1.1-full_build-shared\\ffmpeg-8.1.1-full_build-shared\\bin\\avdevice-62.dll",
+      "sourceSha256": "1AF517A1A3E9166909562491B5E1775280C1A54BC56E7CCEA1011E4E56AB1B59"
+    },
+    {
+      "path": "ThirdParty\\FFmpeg\\LICENSE",
+      "copiedFrom": "D:\\DelphiProg\\test\\SYNC_Lyrics\\ThirdParty\\FFmpeg\\LICENSE",
+      "sourceSha256": "0B383D5A63DA644F628D99C33976EA6487ED89AAA59F0B3257992DEAC1171E6B"
+    },
+    {
+      "path": "ThirdParty\\FFmpeg\\README.txt",
+      "copiedFrom": "D:\\DelphiProg\\test\\SYNC_Lyrics\\ThirdParty\\FFmpeg\\README.txt",
+      "sourceSha256": "6921CE559313271EAD2077A4C8C3D7E37929E1FE2CADF6EEA37A67BAA2B53865"
+    },
+    {
+      "path": "Source\\Lib\\FFmpeg\\FFmpegApi.pas",
+      "copiedFrom": "D:\\DelphiProg\\test\\SYNC_Lyrics\\Source\\Lib\\FFmpeg\\FFmpegApi.pas",
+      "sourceSha256": "D63E599E813FF05D311706C2E0FBD87A1E64D695FC53361BFDE3E6C029079DDA"
+    },
+    {
+      "path": "Source\\Lib\\FFmpeg\\FFmpegAudioTempo.pas",
+      "copiedFrom": "D:\\DelphiProg\\test\\SYNC_Lyrics\\Source\\Lib\\FFmpeg\\FFmpegAudioTempo.pas",
+      "sourceSha256": "04E58867BEF5F68B96F24D1DBBCED3298749820735B37CECD4A80F1AA6B557D7"
+    }
+  ]
+}
