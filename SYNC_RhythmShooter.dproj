@@ -93,6 +93,11 @@
             <Key>Cfg_2</Key>
             <CfgParent>Base</CfgParent>
         </BuildConfiguration>
+        <DCCReference Include="Source\Common\RhythmDesignTypes.pas" />
+        <DCCReference Include="Source\Common\RhythmDesignImages.pas" />
+        <DCCReference Include="Source\Integrations\RhythmDesignRequest.pas" />
+        <DCCReference Include="Source\Integrations\RhythmCodexClient.pas" />
+        <DCCReference Include="Source\UI\RhythmDesignFrame.pas" />
         <DCCReference Include="Source\Engine\RhythmBarrage.pas" />
         <DCCReference Include="Source\Engine\RhythmStage.pas" />
         <DCCReference Include="Source\UI\RhythmWaveView.pas" />

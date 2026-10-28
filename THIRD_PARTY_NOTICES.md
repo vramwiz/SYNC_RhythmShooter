@@ -19,3 +19,7 @@ MimiCopyStudioの既存`ThirdParty\FFmpeg`から、FFmpeg 8.1.1-full_build-www.g
 Assetsの標準BMPは本プロジェクトの`Source/Engine/RhythmAssets.pas`に記述した独自の図形から生成する。既存ゲームの素材やAI生成画像は利用していない。`Tools/BuildAssets.dpr`で再生成できる。
 
 検証曲はユーザー指定のローカルファイルであり、Assetsや配布物には同梱しない。現在のPCMキャッシュはLocalAppDataのSYNC_RhythmShooter配下、検証画像・JSONはWin64出力内に保存する。初期検証時にWin64出力内へ作成したPCMもローカル検証用として保持し、配布・公開しない。
+
+## Revision 4 の既存AI連携再利用
+
+RIGMMaker/Source/Integrations/RigmCodexClient.pasをRhythmCodexClientへ適応した。元SHA256は815CCD17227ADB51707961640031BD123A3A55B6683AA6F5140E4C25425BAAA0。専用app-serverの匿名パイプと画像通知処理を再利用し、名称・画像用文言・取消・早着通知処理を整合した。AIArtToPSDの画像受渡し・原本保護・要求指紋・採用の分離も参照。両参照元のファイルは変更していない。Verification/codex-reuse-origin.jsonを参照。画像の復号・拡縮はWindows標準WIC、PNG書込はDelphi VCLを利用し、新規の外部有料APIやキー保存機能を追加していない。

@@ -1,4 +1,4 @@
-program AudioEdges;
+﻿program AudioEdges;
 {$APPTYPE CONSOLE}
 uses System.SysUtils, System.Classes, System.IOUtils, System.Math, System.JSON,
   Winapi.MMSystem, RhythmAudio in '..\Source\Audio\RhythmAudio.pas',

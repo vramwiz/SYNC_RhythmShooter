@@ -12,7 +12,7 @@ var Lib:HMODULE;Init:TInitialize;Done:TFinalize;GetTable:TGetTable;Table:PFILTER
   Ptr:Pointer;Kind,Name,Source,Destination,ErrorText,FirstHash:string;
   FileItem:PFILTER_ITEM_FILE;SelectItem:PFILTER_ITEM_SELECT;JsonItem:PFILTER_ITEM_STRING;JsonObject:TJSONObject;JsonText,HorizontalHash:string;
   Scene:TSCENE_INFO;Obj:TOBJECT_INFO;Video:TFILTER_PROC_VIDEO;Captured:TBytes;
-  Watch:TStopwatch;Initialized:Boolean;ModernCount:Integer;MissingJsonText,MissingHash:string;
+  Watch:TStopwatch;Initialized:Boolean;ModernCount:Integer;MissingJsonText,MissingHash,CustomJsonText,CustomHash,MissingDesignText:string;DesignObject:TJSONObject;
 procedure Require(Value:Boolean;const Text:string);
 begin if not Value then raise Exception.Create(Text);end;
 function VerificationFolder:string;
@@ -50,6 +50,7 @@ begin
       Lib:=LoadLibraryEx(PChar(ParamStr(1)),0,LOAD_WITH_ALTERED_SEARCH_PATH);if Lib=0 then RaiseLastOSError;
       @Init:=GetProcAddress(Lib,'InitializePlugin');@Done:=GetProcAddress(Lib,'UninitializePlugin');@GetTable:=GetProcAddress(Lib,'GetFilterPluginTable');
       Require(Assigned(Init) and Assigned(Done) and Assigned(GetTable),'Required export missing');
+      Require(FindResource(Lib,'TRHYTHMDESIGNFRAME',RT_RCDATA)<>0,'Custom design page resource missing');
       Require(Init(0)=1,'InitializePlugin failed');Initialized:=True;Table:=GetTable();
       Require(Table<>nil,'Missing filter table');Root.AddPair('name',string(Table.Name));Root.AddPair('group',string(Table.Label_));Root.AddPair('description',string(Table.Information));
       Require(string(Table.Name)=string(#$30EA#$30BA#$30E0#$30B7#$30E5#$30FC#$30C6#$30A3#$30F3#$30B0),'Unexpected filter name');
@@ -107,6 +108,23 @@ begin
       Obj.Width:=1920;Obj.Height:=1080;SelectItem.Value:=0;Watch:=TStopwatch.StartNew;
       for I:=0 to 59 do begin Obj.Time:=I*0.5;Require(Table.Func_Proc_Video(@Video)=1,'Performance frame failed');end;
       Root.AddPair('callback1920x1080MeanMs',TJSONNumber.Create(Watch.Elapsed.TotalMilliseconds/60));
+      if ParamCount>=4 then begin
+        CustomJsonText:=TFile.ReadAllText(ParamStr(4),TEncoding.UTF8);JsonItem.Value:=PWideChar(CustomJsonText);Obj.Width:=1280;Obj.Height:=720;Obj.Time:=8.69;
+        Require(Table.Func_Proc_Video(@Video)=1,'Custom native frame failed');CustomHash:=PixelHash;Require(CustomHash<>HorizontalHash,'Custom JSON has no native effect');
+        SaveCaptured(TPath.Combine(Destination,'native-custom.bmp'));Obj.Time:=28.5;Require(Table.Func_Proc_Video(@Video)=1,'Custom seek B failed');Obj.Time:=8.69;
+        Require(Table.Func_Proc_Video(@Video)=1,'Custom seek A failed');Require(PixelHash=CustomHash,'Custom native seek differs');
+        JsonObject:=TJSONObject.ParseJSONValue(CustomJsonText) as TJSONObject;
+        try
+          DesignObject:=JsonObject.GetValue<TJSONArray>('designs').Items[0] as TJSONObject;
+          DesignObject.RemovePair('path').Free;DesignObject.RemovePair('sha256').Free;
+          DesignObject.AddPair('path','DesignAssets\'+StringOfChar('0',64)+'.png');DesignObject.AddPair('sha256',StringOfChar('0',64));MissingDesignText:=JsonObject.ToJSON;
+        finally JsonObject.Free;end;
+        JsonItem.Value:=PWideChar(MissingDesignText);Require(Table.Func_Proc_Video(@Video)=1,'Missing custom asset did not fall back');MissingHash:=PixelHash;
+        Require(Table.Func_Proc_Video(@Video)=1,'Repeated missing asset frame failed');Require(PixelHash=MissingHash,'Missing asset fallback unstable');
+        SaveCaptured(TPath.Combine(Destination,'native-missing-design.bmp'));JsonItem.Value:=PWideChar(CustomJsonText);
+        Require(Table.Func_Proc_Video(@Video)=1,'Valid design did not resume');Require(PixelHash=CustomHash,'Valid custom design changed after fallback');Root.AddPair('missingDesignFallback','passed');
+        JsonItem.Value:=PWideChar(JsonText);Require(Table.Func_Proc_Video(@Video)=1,'Native reset failed');Require(PixelHash=HorizontalHash,'Native reset changed accepted default');Root.AddPair('customNativeAndReset','passed');
+      end;
       Done();Initialized:=False;Require(Init(0)=1,'Second initialize failed');Initialized:=True;Done();Initialized:=False;
       Require(Init(2011500)=1,'Modern initialize failed');Initialized:=True;Table:=GetTable();ModernCount:=0;
       while ItemPointer(ModernCount)<>nil do begin

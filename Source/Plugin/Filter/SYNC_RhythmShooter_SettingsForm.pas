@@ -1,7 +1,7 @@
 ﻿unit SYNC_RhythmShooter_SettingsForm;
 interface
 uses System.Classes, System.SysUtils, Vcl.Controls, Vcl.ExtCtrls, Vcl.Forms,
-  Vcl.Graphics, Vcl.StdCtrls, Vcl.ComCtrls, Vcl.Dialogs, RhythmAudio, RhythmPlayback, RhythmScene, RhythmWaveView, RhythmSettings;
+  Vcl.Graphics, Vcl.StdCtrls, Vcl.ComCtrls, Vcl.Dialogs, RhythmAudio, RhythmPlayback, RhythmScene, RhythmWaveView, RhythmSettings,RhythmDesignFrame;
 type
   TFormRhythmShooterSettings = class(TForm)
     procedure FormCreate(Sender:TObject);
@@ -24,6 +24,9 @@ type
     FReloadAt:UInt64;
     FState:TRhythmSettings;
     FViewWidth,FViewHeight:Integer;
+    FDesignEditor:TRhythmDesignFrame;
+    procedure DesignChanged(Sender:TObject);
+    procedure DesignBusyChanged(Sender:TObject);
     procedure SetBusy(Value:Boolean);
     procedure BrowseClick(Sender:TObject);
     procedure LoadClick(Sender:TObject);
@@ -51,15 +54,20 @@ uses Winapi.Windows, System.Math, System.Types, System.IniFiles, System.IOUtils,
 {$R *.dfm}
 
 procedure TFormRhythmShooterSettings.FormCreate(Sender:TObject);
-var Top,Transport,Bottom:TPanel;L:TLabel;B:TButton;Ini:TMemIniFile;
+var Top,Transport,Bottom:TPanel;L:TLabel;B:TButton;Ini:TMemIniFile;Pages:TPageControl;Animation,Design:TTabSheet;
   procedure Button(Parent:TWinControl;const Text:string;X,Y,W:Integer;Click:TNotifyEvent);
   begin B:=TButton.Create(Self);B.Parent:=Parent;B.SetBounds(X,Y,W,29);B.Caption:=Text;B.OnClick:=Click;end;
 begin
-  Caption:='リズムシューティング 設定 / Revision 3.1';
+  Caption:='リズムシューティング 設定 / Revision 4';
   DoubleBuffered:=True;ClientWidth:=1100;ClientHeight:=760;
   Constraints.MinWidth:=850;Constraints.MinHeight:=620;FUpdating:=True;
   FPlayer:=TRhythmPlayback.Create;FRenderer:=TRhythmRenderer.Create;FFrame:=Vcl.Graphics.TBitmap.Create;FFrame.PixelFormat:=pf32bit;
-  Top:=TPanel.Create(Self);Top.Parent:=Self;Top.Align:=alTop;Top.Height:=94;Top.BevelOuter:=bvNone;
+  Pages:=TPageControl.Create(Self);Pages.Parent:=Self;Pages.Align:=alClient;Pages.DoubleBuffered:=True;
+  Animation:=TTabSheet.Create(Self);Animation.PageControl:=Pages;Animation.Caption:='アニメーション';Animation.DoubleBuffered:=True;
+  Design:=TTabSheet.Create(Self);Design.PageControl:=Pages;Design.Caption:='カスタムデザイン';Design.DoubleBuffered:=True;
+  FDesignEditor:=TRhythmDesignFrame.Create(Self);FDesignEditor.Parent:=Design;FDesignEditor.Align:=alClient;
+  FDesignEditor.OnChange:=DesignChanged;FDesignEditor.OnBusyChange:=DesignBusyChanged;
+  Top:=TPanel.Create(Self);Top.Parent:=Animation;Top.Align:=alTop;Top.Height:=94;Top.BevelOuter:=bvNone;
   L:=TLabel.Create(Self);L.Parent:=Top;L.SetBounds(14,12,70,20);L.Caption:='音楽ファイル';
   FFile:=TEdit.Create(Self);FFile.Parent:=Top;FFile.Name:='MusicFile';FFile.SetBounds(94,8,750,25);FFile.Anchors:=[akLeft,akTop,akRight];
   Button(Top,'参照...',854,6,100,BrowseClick);B.Anchors:=[akTop,akRight];
@@ -70,15 +78,15 @@ begin
   L:=TLabel.Create(Self);L.Parent:=Top;L.SetBounds(258,52,75,20);L.Caption:='解析感度';
   FSensitivity:=TTrackBar.Create(Self);FSensitivity.Parent:=Top;FSensitivity.Name:='Sensitivity';FSensitivity.SetBounds(334,42,260,42);FSensitivity.Min:=1;FSensitivity.Max:=100;FSensitivity.Position:=50;FSensitivity.Frequency:=10;FSensitivity.OnChange:=SettingChange;
   L:=TLabel.Create(Self);L.Parent:=Top;L.SetBounds(620,52,450,30);L.Caption:='音量の立ち上がり → 命中・爆発 / 標準素材';
-  Bottom:=TPanel.Create(Self);Bottom.Parent:=Self;Bottom.Align:=alBottom;Bottom.Height:=34;Bottom.BevelOuter:=bvNone;
-  FStatus:=TLabel.Create(Self);FStatus.Parent:=Bottom;FStatus.Align:=alClient;FStatus.Layout:=tlCenter;FStatus.AlignWithMargins:=True;FStatus.Caption:='WAV / MP3 を選択してください。';
-  Transport:=TPanel.Create(Self);Transport.Parent:=Self;Transport.Align:=alBottom;Transport.Height:=128;Transport.BevelOuter:=bvNone;
+  Bottom:=TPanel.Create(Self);Bottom.Parent:=Self;Bottom.Align:=alBottom;Bottom.Height:=76;Bottom.BevelOuter:=bvNone;
+  Button(Bottom,'適用して閉じる',916,6,160,SaveClick);B.Anchors:=[akTop,akRight];
+  FStatus:=TLabel.Create(Self);FStatus.Parent:=Bottom;FStatus.Align:=alBottom;FStatus.Height:=28;FStatus.Layout:=tlCenter;FStatus.AlignWithMargins:=True;FStatus.Caption:='WAV / MP3 を選択してください。';
+  Transport:=TPanel.Create(Self);Transport.Parent:=Animation;Transport.Align:=alBottom;Transport.Height:=128;Transport.BevelOuter:=bvNone;
   FWave:=TRhythmWaveView.Create(Self);FWave.Parent:=Transport;FWave.Align:=alTop;FWave.Height:=42;FWave.OnMouseDown:=WaveMouseDown;
   FSeek:=TTrackBar.Create(Self);FSeek.Parent:=Transport;FSeek.Name:='Timeline';FSeek.SetBounds(8,43,1080,34);FSeek.Anchors:=[akLeft,akTop,akRight];FSeek.Min:=0;FSeek.Max:=100000;FSeek.TickStyle:=tsNone;FSeek.OnChange:=SeekChange;
-  Button(Transport,'再生',16,88,90,PlayClick);Button(Transport,'一時停止',116,88,90,PauseClick);Button(Transport,'停止',216,88,90,StopClick);
+  Button(Transport,'再生',16,88,90,PlayClick);B.Name:='PreviewPlay';Button(Transport,'一時停止',116,88,90,PauseClick);B.Name:='PreviewPause';Button(Transport,'停止',216,88,90,StopClick);B.Name:='PreviewStop';
   FClock:=TLabel.Create(Self);FClock.Parent:=Transport;FClock.SetBounds(326,94,520,25);FClock.Caption:='00:00.000';
-  Button(Transport,'適用して閉じる',916,88,160,SaveClick);B.Anchors:=[akTop,akRight];
-  FPreview:=TPaintBox.Create(Self);FPreview.Parent:=Self;FPreview.Align:=alClient;FPreview.OnPaint:=PreviewPaint;
+  FPreview:=TPaintBox.Create(Self);FPreview.Parent:=Animation;FPreview.Align:=alClient;FPreview.OnPaint:=PreviewPaint;
   FTimer:=TTimer.Create(Self);FTimer.Interval:=16;FTimer.OnTimer:=TimerTick;
   Ini:=TMemIniFile.Create(SettingsPath,TEncoding.UTF8);
   try
@@ -91,6 +99,7 @@ begin
     if TRhythmSettings.TryJSON(TFile.ReadAllText(ChangeFileExt(SettingsPath,'.json'),TEncoding.UTF8),FState) then
     begin FUpdating:=True;FFile.Text:=FState.Music;FDirection.ItemIndex:=FState.Direction;FSensitivity.Position:=FState.Sensitivity;FUpdating:=False;end;
   if (FFile.Text<>'') and FileExists(FFile.Text) then FReloadAt:=GetTickCount64+100;
+  FDesignEditor.Designs:=FState.Designs;Pages.ActivePage:=Animation;
 end;
 
 procedure TFormRhythmShooterSettings.Configure(const FileName:string;Direction,Sensitivity:Integer);
@@ -99,20 +108,35 @@ begin State:=TRhythmSettings.Defaults;State.Music:=FileName;State.Direction:=Dir
 procedure TFormRhythmShooterSettings.ConfigureState(const State:TRhythmSettings;ViewWidth,ViewHeight:Integer);
 begin
   FState:=State;FViewWidth:=Max(1,ViewWidth);FViewHeight:=Max(1,ViewHeight);
+  FDesignEditor.Designs:=State.Designs;
   FUpdating:=True;
   try FFile.Text:=State.Music;FDirection.ItemIndex:=EnsureRange(State.Direction,0,1);FSensitivity.Position:=EnsureRange(State.Sensitivity,1,100);
   finally FUpdating:=False;end;
   FReloadAt:=0;if (State.Music<>'') and FileExists(State.Music) then FReloadAt:=GetTickCount64+100;
 end;
 function TFormRhythmShooterSettings.Snapshot:TRhythmSettings;
-begin Result:=FState;Result.Music:=MusicFile;Result.Direction:=ScrollDirection;Result.Sensitivity:=DetectionSensitivity;end;
+begin Result:=FState;Result.Music:=MusicFile;Result.Direction:=ScrollDirection;Result.Sensitivity:=DetectionSensitivity;Result.Designs:=FDesignEditor.Designs;end;
 procedure TFormRhythmShooterSettings.SetBusy(Value:Boolean);
 var I:Integer;
 begin
   for I:=0 to ComponentCount-1 do
     if (Components[I] is TButton) or (Components[I] is TEdit) or (Components[I] is TComboBox) or (Components[I] is TTrackBar) then
       TControl(Components[I]).Enabled:=not Value;
+  if FDesignEditor<>nil then FDesignEditor.Enabled:=not Value;
   if Value then begin FStatus.Caption:='解析中...';FStatus.Update;end;
+end;
+procedure TFormRhythmShooterSettings.DesignChanged(Sender:TObject);
+begin FState.Designs:=FDesignEditor.Designs;FRenderer.ApplyDesigns(FState.Designs,True);FPreview.Invalidate;end;
+procedure TFormRhythmShooterSettings.DesignBusyChanged(Sender:TObject);
+var I:Integer;
+begin
+  for I:=0 to ComponentCount-1 do
+    if (Components[I] is TButton) or (Components[I] is TEdit) or (Components[I] is TComboBox) or (Components[I] is TTrackBar) then begin
+      TControl(Components[I]).Enabled:=not FDesignEditor.Busy;
+      if (Components[I].Name='PreviewPlay') or (Components[I].Name='PreviewPause') or (Components[I].Name='PreviewStop') or (Components[I].Name='Timeline') then TControl(Components[I]).Enabled:=True;
+    end;
+  if FDesignEditor.Busy then FStatus.Caption:='AI作成中... カスタムデザインの「取消」で中止できます。'
+  else FStatus.Caption:='画像は候補を採用した後、この画面の「適用して閉じる」で保存します。';
 end;
 function TFormRhythmShooterSettings.MusicFile:string;
 begin Result:=Trim(FFile.Text);end;
@@ -123,6 +147,7 @@ begin Result:=FSensitivity.Position;end;
 
 procedure TFormRhythmShooterSettings.BeginLoad(Force:Boolean);
 begin
+  if (FDesignEditor<>nil) and FDesignEditor.Busy then Exit;
   FReloadAt:=0;
   if FWorker<>nil then Exit;
   FPlayer.SetAudio(nil);FWave.SetAudio(nil);FreeAndNil(FAudio);FTime:=0;FPreview.Invalidate;
@@ -151,6 +176,7 @@ procedure TFormRhythmShooterSettings.SaveSettings;
 begin TFile.WriteAllText(ChangeFileExt(SettingsPath,'.json'),Snapshot.ToJSON,TEncoding.UTF8);end;
 procedure TFormRhythmShooterSettings.SaveClick(Sender:TObject);
 begin
+  if (FWorker<>nil) or FDesignEditor.Busy then Exit;
   try FPlayer.Stop;SaveSettings;if Application.MainForm=Self then Close else ModalResult:=mrOk;
   except on E:Exception do FStatus.Caption:=E.Message;end;
 end;
@@ -197,6 +223,7 @@ procedure TFormRhythmShooterSettings.PreviewPaint(Sender:TObject);
 var Scale:Double;W,H,X,Y:Integer;
 begin
   FFrame.SetSize(FViewWidth,FViewHeight);
+  FRenderer.ApplyDesigns(FDesignEditor.Designs);
   FRenderer.Render(FFrame,FAudio,FTime,ScrollDirection,'WAV / MP3 を選択してプレビュー',FState.Zoom/100,FState.X,FState.Y);
   Scale:=Min(FPreview.Width/FViewWidth,FPreview.Height/FViewHeight);W:=Round(FViewWidth*Scale);H:=Round(FViewHeight*Scale);X:=(FPreview.Width-W) div 2;Y:=(FPreview.Height-H) div 2;
   FPreview.Canvas.Brush.Color:=clBlack;FPreview.Canvas.FillRect(FPreview.ClientRect);FPreview.Canvas.StretchDraw(Rect(X,Y,X+W,Y+H),FFrame);

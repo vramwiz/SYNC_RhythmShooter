@@ -1,4 +1,4 @@
-program RhythmSmoke;
+﻿program RhythmSmoke;
 {$APPTYPE CONSOLE}
 uses System.SysUtils, System.Classes, System.Math, System.IOUtils, System.JSON,
   System.Hash, System.Diagnostics, Vcl.Graphics, Winapi.Windows,

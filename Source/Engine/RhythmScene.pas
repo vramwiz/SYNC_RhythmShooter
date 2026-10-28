@@ -2,7 +2,7 @@
 
 interface
 
-uses System.Types, Vcl.Graphics, RhythmAudio, RhythmD2D, RhythmMotion, RhythmBarrage;
+uses System.Types, Vcl.Graphics, RhythmAudio, RhythmD2D, RhythmMotion, RhythmBarrage,RhythmDesignTypes;
 
 type
   TRhythmPoint = RhythmMotion.TRhythmPoint;
@@ -16,13 +16,18 @@ type
     FBarrage:TArray<TRhythmEnemyBullet>;
     FPlanKey:string;
     FTransform:TBitmap;
+    FDesignKey,FDesignWarning:string;
+    FCustom:array[0..14] of Boolean;
     function MapPoint(const P: TRhythmPoint; Width,Height,Direction: Integer): TPoint;
     procedure Sprite(Canvas: TCanvas; Index: Integer; const P: TRhythmPoint;
       Size: Double; Width,Height,Direction: Integer);
-    procedure Background(Canvas: TCanvas; Time: Double; Width,Height,Direction: Integer);
+    procedure Background(Canvas: TCanvas; Time: Double; Width,Height,Direction: Integer;OnlyLayer:Integer=-1);
   public
     constructor Create;
     destructor Destroy; override;
+    procedure ApplyDesigns(const Designs:TRhythmDesigns;Force:Boolean=False);
+    procedure StandardBackgroundPreview(Target:TBitmap;Direction,Layer:Integer);
+    property DesignWarning:string read FDesignWarning;
     procedure Render(Target: TBitmap; Audio: TRhythmAudio; Time: Double;
       Direction: Integer; const MessageText: string = '';Zoom:Double=1;OffsetX:Double=0;OffsetY:Double=0);
     property AssetCount: Integer read FAssetCount;
@@ -36,7 +41,7 @@ function BulletAt(const Hit: TRhythmHit; Time: Double): TRhythmPoint;
 
 implementation
 
-uses System.SysUtils, System.Math, System.IOUtils, Winapi.Windows, RhythmPaths,RhythmStage;
+uses System.SysUtils, System.Math, System.IOUtils, Winapi.Windows, RhythmPaths,RhythmStage,RhythmDesignImages;
 
 function PlayerAt(Time: Double): TRhythmPoint;
 begin
@@ -100,6 +105,50 @@ begin
   inherited;
 end;
 
+procedure TRhythmRenderer.ApplyDesigns(const Designs:TRhythmDesigns;Force:Boolean);
+const RotateIndices:array[0..5] of Integer=(8,9,10,11,13,14);
+var Key,Path:string;I,J,X,Y:Integer;Loaded,Source,Rotated:Vcl.Graphics.TBitmap;P,Q:PByte;
+begin
+  Key:=DesignKey(Designs);if (Key=FDesignKey) and not Force then Exit;
+  FDesignWarning:='';
+  for I:=0 to 14 do begin
+    FCustom[I]:=False;FAssets[I].Free;FAssets[I]:=Vcl.Graphics.TBitmap.Create;
+    if Designs[I].Path<>'' then try
+      Path:=ResolveDesignImage(Designs[I]);Loaded:=ReadDesignBitmap(Path);
+      FAssets[I].Free;FAssets[I]:=Loaded;FCustom[I]:=True;
+    except on E:Exception do FDesignWarning:=FDesignWarning+DesignInfo(I).Title+': '+E.Message+' ';end;
+    if not FCustom[I] then begin
+      Path:=TPath.Combine(AssetFolder,DesignInfo(I).Id+'.bmp');
+      if FileExists(Path) then FAssets[I].LoadFromFile(Path);
+      FAssets[I].Transparent:=(I>=6) or (I mod 3<>0);FAssets[I].TransparentColor:=clFuchsia;
+    end;
+  end;
+  for I:=0 to High(RotateIndices) do begin
+    Source:=FAssets[RotateIndices[I]];Rotated:=FAssets[15+I];Rotated.Free;Rotated:=Vcl.Graphics.TBitmap.Create;FAssets[15+I]:=Rotated;
+    if Source.Empty then Continue;
+    if Source.AlphaFormat=afIgnored then begin
+      Rotated.PixelFormat:=pf24bit;Rotated.SetSize(Source.Height,Source.Width);
+      for Y:=0 to Source.Height-1 do for X:=0 to Source.Width-1 do Rotated.Canvas.Pixels[Source.Height-1-Y,X]:=Source.Canvas.Pixels[X,Y];
+      Rotated.TransparentColor:=clFuchsia;Rotated.Transparent:=True;
+    end else begin
+      Rotated.PixelFormat:=pf32bit;Rotated.SetSize(Source.Height,Source.Width);Rotated.AlphaFormat:=afPremultiplied;
+      for Y:=0 to Source.Height-1 do begin P:=Source.ScanLine[Y];for X:=0 to Source.Width-1 do begin
+        Q:=Rotated.ScanLine[X];Inc(Q,(Source.Height-1-Y)*4);Move(P^,Q^,4);Inc(P,4);
+      end;end;
+    end;
+  end;
+  for I:=0 to High(FScaled) do for J:=0 to 2 do begin FScaled[I,J].Free;FScaled[I,J]:=Vcl.Graphics.TBitmap.Create;end;
+  FreeAndNil(FD2D);try FD2D:=TRhythmD2D.Create(FAssets);except FUseD2D:=False;end;
+  FDesignKey:=Key;
+end;
+procedure TRhythmRenderer.StandardBackgroundPreview(Target:Vcl.Graphics.TBitmap;Direction,Layer:Integer);
+var Active:Boolean;SavedCustom:array[0..14] of Boolean;
+begin
+  Active:=FD2DActive;Move(FCustom,SavedCustom,SizeOf(FCustom));FD2DActive:=False;FillChar(FCustom,SizeOf(FCustom),0);
+  try Background(Target.Canvas,0,Target.Width,Target.Height,Direction,Layer);
+  finally Move(SavedCustom,FCustom,SizeOf(FCustom));FD2DActive:=Active;end;
+end;
+
 function TRhythmRenderer.MapPoint(const P: TRhythmPoint; Width,Height,Direction: Integer): TPoint;
 begin
   if Direction=0 then Result:=Point(Round(P.X*Width),Round(P.Y*Height))
@@ -111,6 +160,9 @@ procedure TRhythmRenderer.Sprite(Canvas:TCanvas;Index:Integer;const P:TRhythmPoi
 var Center:TPoint; W,H,Bucket,Swap:Integer;Scaled:Vcl.Graphics.TBitmap;
 begin
   Center:=MapPoint(P,Width,Height,Direction);
+  // Keep arbitrary custom ship silhouettes inside the existing avoidance
+  // corridor, including opaque square imports. Default artwork is unchanged.
+  if (Index in [6,7]) and FCustom[Index] then Size:=Size*0.8;
   W:=Max(2,Round(Size*Min(Width,Height))); H:=W;
   if Index in [9,10] then W:=W*8 div 5;
   if Direction=1 then
@@ -130,10 +182,16 @@ begin
       Scaled:=FScaled[Index,Bucket];
       if (Scaled.Width<>W) or (Scaled.Height<>H) then
       begin
-        Scaled.PixelFormat:=pf24bit;Scaled.SetSize(W,H);Scaled.Transparent:=False;
-        Scaled.Canvas.Brush.Color:=clFuchsia;Scaled.Canvas.FillRect(Rect(0,0,W,H));
-        Scaled.Canvas.StretchDraw(Rect(0,0,W,H),FAssets[Index]);
-        Scaled.TransparentColor:=clFuchsia;Scaled.Transparent:=True;
+        if FAssets[Index].AlphaFormat<>afIgnored then begin
+          Scaled.PixelFormat:=pf32bit;Scaled.SetSize(W,H);Scaled.AlphaFormat:=afPremultiplied;
+          for Swap:=0 to H-1 do FillChar(Scaled.ScanLine[Swap]^,W*4,0);
+          Scaled.Canvas.StretchDraw(Rect(0,0,W,H),FAssets[Index]);
+        end else begin
+          Scaled.PixelFormat:=pf24bit;Scaled.SetSize(W,H);Scaled.Transparent:=False;
+          Scaled.Canvas.Brush.Color:=clFuchsia;Scaled.Canvas.FillRect(Rect(0,0,W,H));
+          Scaled.Canvas.StretchDraw(Rect(0,0,W,H),FAssets[Index]);
+          Scaled.TransparentColor:=clFuchsia;Scaled.Transparent:=True;
+        end;
       end;
       Canvas.Draw(Center.X-W div 2,Center.Y-H div 2,Scaled);
     end;
@@ -141,12 +199,12 @@ begin
   else begin Canvas.Brush.Color:=clAqua;Canvas.Ellipse(Center.X-W div 2,Center.Y-H div 2,Center.X+W div 2,Center.Y+H div 2);end;
 end;
 
-procedure TRhythmRenderer.Background(Canvas:TCanvas;Time:Double;Width,Height,Direction:Integer);
+procedure TRhythmRenderer.Background(Canvas:TCanvas;Time:Double;Width,Height,Direction,OnlyLayer:Integer);
 const Speeds:array[0..2] of Double=(30,110,260);
   Density:array[0..2] of Double=(0.00013,0.000075,0.000020);
   Sizes:array[0..2] of Double=(0.65,1.8,3.4);
   Trails:array[0..2] of Double=(0,6,18);
-var Layer,I,Count:Integer;Seed:UInt64;Across,Along,Period,Span,Position,X,Y,Radius,Scale,Trail:Double;
+var Layer,I,Count,Index,Tile,Offset,TX,TY:Integer;Seed:UInt64;Across,Along,Period,Span,Position,X,Y,Radius,Scale,Trail:Double;
   function RandomUnit:Double;
   begin Seed:=(Seed*48271) mod 2147483647;Result:=Seed/2147483647;end;
 begin
@@ -158,6 +216,17 @@ begin
   Scale:=Min(Width,Height)/720;
   for Layer:=0 to 2 do
   begin
+    if (OnlyLayer>=0) and (Layer<>OnlyLayer) then Continue;
+    Index:=Direction*3+Layer;
+    if FCustom[Index] then begin
+      Tile:=Max(1,Round(1024*Scale));Offset:=Round(Time*Speeds[Layer]*Scale) mod Tile;
+      if Direction=0 then begin TY:=Offset-Tile;while TY<Height do begin TX:=0;while TX<Width do begin
+        if FD2DActive then FD2D.DrawAsset(Index,Rect(TX,TY,TX+Tile,TY+Tile)) else Canvas.StretchDraw(Rect(TX,TY,TX+Tile,TY+Tile),FAssets[Index]);Inc(TX,Tile);
+      end;Inc(TY,Tile);end;end
+      else begin TX:=-Offset;while TX<Width do begin TY:=0;while TY<Height do begin
+        if FD2DActive then FD2D.DrawAsset(Index,Rect(TX,TY,TX+Tile,TY+Tile)) else Canvas.StretchDraw(Rect(TX,TY,TX+Tile,TY+Tile),FAssets[Index]);Inc(TY,Tile);
+      end;Inc(TX,Tile);end;end;Continue;
+    end;
     Seed:=7919+Layer*104729;Count:=Round(Span*Period*Density[Layer]);
     Radius:=Sizes[Layer]*Max(0.8,Scale);Trail:=Trails[Layer]*Scale;
     if not FD2DActive then begin Canvas.Pen.Style:=psClear;Canvas.Brush.Color:=RGB(42+Layer*25,62+Layer*35,88+Layer*44);end;
@@ -257,7 +326,8 @@ begin
   end;
   C.Font.Name:='Segoe UI';C.Font.Size:=Max(9,Round(Min(Width,Height)/60));C.Font.Color:=RGB(184,212,235);
   C.Brush.Style:=bsClear;
-  if Audio=nil then Text:=MessageText
+  if FDesignWarning<>'' then Text:='素材が見つからないため標準表示: '+FDesignWarning
+  else if Audio=nil then Text:=MessageText
   else if Time>=Schedule.ClearTime then Text:='CLEAR'
   else Text:=Format('SYNC  /  %.2fs  /  %d accents',[Time,Length(Audio.Hits)]);
   if Text<>'' then C.TextOut(16,14,Text);

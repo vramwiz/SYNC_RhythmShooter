@@ -6,7 +6,7 @@ procedure FinalizeRhythmShooterPlugin;
 function GetRhythmShooterFilterTable:PFILTER_PLUGIN_TABLE;
 implementation
 uses System.SysUtils, System.Math, System.UITypes, System.Generics.Collections, Vcl.Forms, Vcl.Dialogs, Vcl.Graphics,
-  PluginFilterTable, RhythmAudio, RhythmScene, RhythmSettings, SYNC_RhythmShooter_SettingsForm;
+  PluginFilterTable, RhythmAudio, RhythmScene, RhythmSettings,RhythmDesignTypes, SYNC_RhythmShooter_SettingsForm;
 const
   EFFECT_NAME:PWideChar=#$30EA#$30BA#$30E0#$30B7#$30E5#$30FC#$30C6#$30A3#$30F3#$30B0;
   MUSIC_NAME:PWideChar=#$97F3#$697D#$30D5#$30A1#$30A4#$30EB;
@@ -34,6 +34,7 @@ var
   GInitialized:Boolean;
   GLock:TRTLCriticalSection;
   GRenderer:TRhythmRenderer;
+  GDesignRenderers:TObjectDictionary<string,TRhythmRenderer>;
   GBitmap:TBitmap;
   GRgba:TBytes;
   GAudio:TRhythmAudio;
@@ -48,6 +49,18 @@ begin
   if not TRhythmSettings.TryJSON(Text,Result) then
   begin Result:=TRhythmSettings.Defaults;if MusicItem.Value<>nil then Result.Music:=string(MusicItem.Value);Result.Direction:=DirectionItem.Value;Result.Sensitivity:=Round(SensitivityItem.Value);end;
   Result.Zoom:=ZoomItem.Value;Result.X:=XItem.Value;Result.Y:=YItem.Value;
+end;
+function RendererFor(const Settings:TRhythmSettings):TRhythmRenderer;
+var Key:string;Created:TRhythmRenderer;
+begin
+  Key:=DesignKey(Settings.Designs);if Key='' then Exit(GRenderer);
+  if GDesignRenderers.TryGetValue(Key,Result) then Exit;
+  Created:=TRhythmRenderer.Create;
+  try
+    Created.ApplyDesigns(Settings.Designs);
+    if GDesignRenderers.Count>=4 then GDesignRenderers.Clear;
+    GDesignRenderers.Add(Key,Created);Result:=Created;Created:=nil;
+  finally Created.Free;end;
 end;
 procedure PollAudio(const Source:string;Sensitivity:Integer);
 var Key:string;Loaded:TRhythmAudio;
@@ -71,7 +84,7 @@ begin
 end;
 
 function ProcessVideo(Video:PFILTER_PROC_VIDEO):Byte;cdecl;
-var W,H,X,Y,Sensitivity:Integer;Time:Double;Row,Dest:PByte;Source,MessageText:string;Settings:TRhythmSettings;
+var W,H,X,Y,Sensitivity:Integer;Time:Double;Row,Dest:PByte;Source,MessageText:string;Settings:TRhythmSettings;Renderer:TRhythmRenderer;
 begin
   Result:=0;
   try
@@ -87,7 +100,7 @@ begin
       GLastWidth:=W;GLastHeight:=H;
       if GError<>'' then MessageText:=GError else MessageText:='設定から WAV / MP3 を選択';
       if (GBitmap.Width<>W) or (GBitmap.Height<>H) then GBitmap.SetSize(W,H);
-      GRenderer.Render(GBitmap,GAudio,Time,Settings.Direction,MessageText,Settings.Zoom/100,Settings.X,Settings.Y);
+      Renderer:=RendererFor(Settings);Renderer.Render(GBitmap,GAudio,Time,Settings.Direction,MessageText,Settings.Zoom/100,Settings.X,Settings.Y);
       if Length(GRgba)<>W*H*4 then SetLength(GRgba,W*H*4);
       Dest:=@GRgba[0];
       for Y:=0 to H-1 do
@@ -121,7 +134,7 @@ begin
       if GInitialized then
       begin
         EnterCriticalSection(GLock);
-        try GRequest:='';GAudio:=nil;GCache.Clear;GCacheBytes:=0;
+        try GRequest:='';GAudio:=nil;GCache.Clear;GCacheBytes:=0;GDesignRenderers.Clear;
         finally LeaveCriticalSection(GLock);end;
       end;
     finally Form.Free;end;
@@ -136,13 +149,14 @@ begin
     GHostVersion:=Version;
     InitializeCriticalSection(GLock);GInitialized:=True;
     GCache:=TObjectDictionary<string,TRhythmAudio>.Create([doOwnsValues]);
+    GDesignRenderers:=TObjectDictionary<string,TRhythmRenderer>.Create([doOwnsValues]);
     GRenderer:=TRhythmRenderer.Create;GBitmap:=TBitmap.Create;GBitmap.PixelFormat:=pf32bit;Result:=1;
   except FinalizeRhythmShooterPlugin;end;
 end;
 procedure FinalizeRhythmShooterPlugin;
 begin
   if not GInitialized then Exit;
-  GAudio:=nil;FreeAndNil(GCache);GCacheBytes:=0;FreeAndNil(GBitmap);FreeAndNil(GRenderer);GRgba:=nil;
+  GAudio:=nil;FreeAndNil(GCache);GCacheBytes:=0;FreeAndNil(GDesignRenderers);FreeAndNil(GBitmap);FreeAndNil(GRenderer);GRgba:=nil;
   GRequest:='';GError:='';DeleteCriticalSection(GLock);GInitialized:=False;
 end;
 function GetRhythmShooterFilterTable:PFILTER_PLUGIN_TABLE;

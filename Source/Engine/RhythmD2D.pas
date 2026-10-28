@@ -43,7 +43,9 @@ begin
         Source:=Temp.ScanLine[Y];
         for X:=0 to Temp.Width-1 do
         begin
-          if (I<>0) and (I<>3) and (Source[0]=255) and (Source[1]=0) and (Source[2]=255) then
+          if Temp.AlphaFormat<>afIgnored then begin
+            Destination[0]:=Source[0];Destination[1]:=Source[1];Destination[2]:=Source[2];Destination[3]:=Source[3];
+          end else if (I<>0) and (I<>3) and (Source[0]=255) and (Source[1]=0) and (Source[2]=255) then
           begin Destination[0]:=0;Destination[1]:=0;Destination[2]:=0;Destination[3]:=0;end
           else begin Destination[0]:=Source[0];Destination[1]:=Source[1];Destination[2]:=Source[2];Destination[3]:=255;end;
           Inc(Source,4);Inc(Destination,4);

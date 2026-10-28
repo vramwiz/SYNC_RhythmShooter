@@ -10,9 +10,9 @@ pushd "%~dp0.."
 if errorlevel 1 exit /b %errorlevel%
 if not exist "Win64\ToolsDCU" mkdir "Win64\ToolsDCU"
 if not exist "Win64\%RHYTHM_CONFIG%" mkdir "Win64\%RHYTHM_CONFIG%"
-dcc64 -B -Q -E"Win64\%RHYTHM_CONFIG%" -NU"Win64\ToolsDCU" -U"%BDS%\lib\Win64\release;Source\Audio;Source\Engine;Source\Common;Source\UI;Source\Lib\Process;Source\Plugin\Filter" Tools\BuildAssets.dpr
+dcc64 -B -Q -E"Win64\%RHYTHM_CONFIG%" -NU"Win64\ToolsDCU" -U"%BDS%\lib\Win64\release;Source\Audio;Source\Engine;Source\Common;Source\UI;Source\Integrations;Source\Lib\Process;Source\Plugin\Filter" Tools\BuildAssets.dpr
 if errorlevel 1 exit /b %errorlevel%
 "Win64\%RHYTHM_CONFIG%\BuildAssets.exe" "%CD%\Assets"
 if errorlevel 1 exit /b %errorlevel%
-dcc64 -B -Q -E"Win64\%RHYTHM_CONFIG%" -NU"Win64\ToolsDCU" -U"%BDS%\lib\Win64\release;Source\Audio;Source\Engine;Source\Common;Source\UI;Source\Lib\Process;Source\Plugin\Filter" Tools\RhythmPreview.dpr
+dcc64 -B -Q -E"Win64\%RHYTHM_CONFIG%" -NU"Win64\ToolsDCU" -U"%BDS%\lib\Win64\release;Source\Audio;Source\Engine;Source\Common;Source\UI;Source\Integrations;Source\Lib\Process;Source\Plugin\Filter" Tools\RhythmPreview.dpr
 exit /b %errorlevel%

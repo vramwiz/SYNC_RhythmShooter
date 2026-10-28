@@ -6,6 +6,11 @@
 
 uses
   Winapi.Windows,
+  RhythmDesignTypes in 'Source\Common\RhythmDesignTypes.pas',
+  RhythmDesignImages in 'Source\Common\RhythmDesignImages.pas',
+  RhythmDesignRequest in 'Source\Integrations\RhythmDesignRequest.pas',
+  RhythmCodexClient in 'Source\Integrations\RhythmCodexClient.pas',
+  RhythmDesignFrame in 'Source\UI\RhythmDesignFrame.pas',
   RhythmPaths in 'Source\Common\RhythmPaths.pas',
   RhythmMotion in 'Source\Common\RhythmMotion.pas',
   RhythmSettings in 'Source\Common\RhythmSettings.pas',

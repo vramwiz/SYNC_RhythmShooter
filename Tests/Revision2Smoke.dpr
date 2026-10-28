@@ -1,4 +1,4 @@
-program Revision2Smoke;
+﻿program Revision2Smoke;
 {$APPTYPE CONSOLE}
 uses System.SysUtils,System.Math,System.Classes,System.IOUtils,System.JSON,System.Hash,System.Diagnostics,
   Vcl.Graphics,RhythmAudio,RhythmMotion,RhythmScene,RhythmBarrage,RhythmPaths,RhythmSettings;
