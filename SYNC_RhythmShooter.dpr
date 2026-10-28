@@ -6,6 +6,8 @@
 
 uses
   Winapi.Windows,
+  RhythmControls in 'Source\UI\RhythmControls.pas',
+  RhythmSections in 'Source\Audio\RhythmSections.pas',
   RhythmDesignTypes in 'Source\Common\RhythmDesignTypes.pas',
   RhythmDesignImages in 'Source\Common\RhythmDesignImages.pas',
   RhythmDesignRequest in 'Source\Integrations\RhythmDesignRequest.pas',

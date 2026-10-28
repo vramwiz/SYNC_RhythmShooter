@@ -8,6 +8,7 @@ type
   end;
 function AudibleEnd(Audio:TRhythmAudio):Double;
 function BossKillTime(Audio:TRhythmAudio;Boss:Integer):Double;
+function BossStartTime(Audio:TRhythmAudio;Boss:Integer):Double;
 function StageSchedule(Audio:TRhythmAudio):TRhythmStageSchedule;
 function StageStateAt(const Schedule:TRhythmStageSchedule;Time:Double):TRhythmStageState;
 procedure StageTimes(Audio:TRhythmAudio;out EntryEnd,ExitStart,ExitEnd:Double);
@@ -18,13 +19,11 @@ uses System.Math;
 function AudibleEnd(Audio:TRhythmAudio):Double;
 begin Result:=0;if Audio<>nil then Result:=Audio.SoundEnd;end;
 function BossKillTime(Audio:TRhythmAudio;Boss:Integer):Double;
-var I:Integer;
 begin
-  Result:=-1;if (Audio=nil) or (Audio.Duration<=8) or (Length(Audio.Hits)=0) then Exit;
-  if Boss=0 then I:=Audio.NearestHit(Audio.Duration*0.5) else I:=High(Audio.Hits);
-  Result:=Audio.Hits[I].Time;
-  if Boss=1 then Result:=Max(Result,AudibleEnd(Audio)-0.08);
+  Result:=-1;if Audio<>nil then Result:=Audio.BossCue(Boss).KillTime;
 end;
+function BossStartTime(Audio:TRhythmAudio;Boss:Integer):Double;
+begin Result:=0;if Audio<>nil then Result:=Audio.BossCue(Boss).StartTime;end;
 function StageSchedule(Audio:TRhythmAudio):TRhythmStageSchedule;
 var H:TRhythmHit;FirstShot,LastHit,Kill:Double;
 begin
@@ -32,7 +31,7 @@ begin
   if Audio=nil then Exit;
   Result.SoundEnd:=AudibleEnd(Audio);LastHit:=0;FirstShot:=1E100;
   for H in Audio.Hits do begin FirstShot:=Min(FirstShot,H.Time-H.Flight);LastHit:=Max(LastHit,H.Time);end;
-  Result.HoldTime:=Max(Result.SoundEnd,LastHit);Kill:=BossKillTime(Audio,1);
+  Result.HoldTime:=Max(Result.SoundEnd,LastHit);Kill:=BossKillTime(Audio,Audio.BossCount-1);
   Result.ClearTime:=Result.HoldTime;
   if Kill>=0 then Result.ClearTime:=Max(Result.ClearTime,Kill+0.6)
   else if Result.SoundEnd>0 then Result.ClearTime:=Result.ClearTime+0.12;

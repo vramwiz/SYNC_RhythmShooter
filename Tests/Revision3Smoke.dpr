@@ -23,7 +23,9 @@ begin
       Cached:=LoadCachedRhythmAudio(ParamStr(1)+'.missing',50);Require(Cached=nil,'Missing source was accepted');Root.AddPair('preparedCache','passed');
       StageTimes(Audio,EntryEnd,ExitStart,ExitEnd);Schedule:=StageSchedule(Audio);Root.AddPair('entryEnd',TJSONNumber.Create(EntryEnd));Root.AddPair('exitStart',TJSONNumber.Create(ExitStart));Root.AddPair('exitEnd',TJSONNumber.Create(ExitEnd));Root.AddPair('duration',TJSONNumber.Create(Audio.Duration));
       Root.AddPair('soundEnd',TJSONNumber.Create(Audio.SoundEnd));Root.AddPair('clearTime',TJSONNumber.Create(Schedule.ClearTime));Root.AddPair('requiredExtraOutputSeconds',TJSONNumber.Create(Max(0.0,Schedule.ExitEnd-Audio.Duration)));
-      Require(BossKillTime(Audio,1)>=Audio.Hits[High(Audio.Hits)].Time,'Final boss precedes final accent');Require(BossKillTime(Audio,1)>=Audio.SoundEnd-0.081,'Final boss is too early');
+      if Audio.BossCount>1 then Require(BossKillTime(Audio,Audio.BossCount-1)>BossKillTime(Audio,0),'Boss order is invalid');
+      Require(BossKillTime(Audio,Audio.BossCount-1)<=Audio.SoundEnd+0.001,'Final boss is after audible sound');
+      if not Audio.BossCue(Audio.BossCount-1).QuietBoundary then Require(BossKillTime(Audio,Audio.BossCount-1)>=Audio.SoundEnd-0.081,'Fallback final boss is too early');
       Require(StageStateAt(Schedule,ExitEnd+30)=ssEnded,'Terminal state reverted');
       for H in Audio.Hits do begin P:=StagePlayerAt(Audio,H.Time-H.Flight);Q:=RhythmMotion.PlayerAt(H.Time-H.Flight);Require(Hypot(P.X-Q.X,P.Y-Q.Y)<1E-10,'Ship displaced during launch');end;
       Require(StagePlayerAt(Audio,ExitEnd+10).Y< -0.1,'Ship returns after exit');
@@ -33,7 +35,7 @@ begin
         StageTimes(Synthetic,T,Minimum,Distance);Require(T>0,'Entrance with time margin was omitted');Require(Minimum>10,'Intermediate silence triggered departure');
         P:=StagePlayerAt(Synthetic,0);Require(P.Y>1,'Entrance does not start below the image');P:=StagePlayerAt(Synthetic,T);Q:=StagePlayerAt(Audio,T);Require(Hypot(P.X-Q.X,P.Y-Q.Y)<1E-12,'Entrance end jumps');
         Synthetic.Hits[0].Time:=0.12;Synthetic.Hits[0].Flight:=0.12;StageTimes(Synthetic,T,Minimum,Distance);Require(T=0,'No-margin entrance interferes with shot');
-        Require(BossKillTime(Synthetic,1)>9.9,'Sparse accents finish during remaining music');
+        Require(BossKillTime(Synthetic,Synthetic.BossCount-1)>9.9,'Sparse accents finish during remaining music');
         Other:=StageSchedule(Synthetic);P:=StagePlayerAt(Synthetic,Other.HoldTime+0.01);Q:=StagePlayerAt(Synthetic,Other.ExitStart-0.01);Require(Hypot(P.X-Q.X,P.Y-Q.Y)<1E-12,'Ship wanders after sound end');
         Synthetic.Hits:=nil;Synthetic.Envelope:=nil;Synthetic.Duration:=4;Synthetic.UpdateSoundBounds;Other:=StageSchedule(Synthetic);Require(Other.ClearTime=0,'Silent track never clears');Require(StageStateAt(Other,2)=ssEnded,'Silent track never exits');
         Synthetic.Duration:=0.05;SetLength(Synthetic.Envelope,5);Synthetic.Envelope[4]:=0.5;Synthetic.UpdateSoundBounds;Other:=StageSchedule(Synthetic);Require(Other.ClearTime>=0.05,'Short track clears before audio ends');Require(Other.ExitEnd>0.05,'Short clip incorrectly changes its host length');
@@ -48,9 +50,9 @@ begin
       end;
       Require(XError<1E-12,'Normal shot changes its lateral coordinate');Require(HitError<1E-10,'Forward shot misses the enemy');
       Root.AddPair('normalShotMaxLateralError',TJSONNumber.Create(XError));Root.AddPair('normalShotMaxImpactError',TJSONNumber.Create(HitError));
-      for Boss:=0 to 1 do
+      for Boss:=0 to Audio.BossCount-1 do
       begin
-        Kill:=BossKillTime(Audio,Boss);Start:=Kill-Min(6.0,Audio.Duration*0.18);Flight:=ShotFlightToY(Kill,0.19);
+        Kill:=BossKillTime(Audio,Boss);if Kill<0 then Continue;Start:=BossStartTime(Audio,Boss);Flight:=ShotFlightToY(Kill,0.19);
         P:=PlayerShotAt(psForward,Kill,Flight,0.19,Kill);Q:=BossAt(Kill,Start,Kill);Require(Hypot(P.X-Q.X,P.Y-Q.Y)<1E-10,'Forward boss shot misses');
       end;
       Renderer:=TRhythmRenderer.Create;Bitmap:=TBitmap.Create;Bitmap.PixelFormat:=pf32bit;Bitmap.SetSize(1280,720);
@@ -58,13 +60,13 @@ begin
       begin
         Plan:=BuildBarrage(Audio,1280,720,Direction);Minimum:=100;Emissions:=0;
         if Direction=0 then begin ScaleX:=720/1280;ScaleY:=1;end else begin ScaleX:=1;ScaleY:=720/1280;end;
-        for B in Plan do for J:=0 to 1008 do
+        for B in Plan do for J:=0 to Ceil((B.Finish-B.Launch)*240) do
         begin
-          T:=B.Launch+J/240;P:=EnemyBulletAt(B,T);Q:=StagePoint(T,EntryEnd,ExitStart,ExitEnd,Schedule.HoldTime);
+          T:=Min(B.Finish,B.Launch+J/240);P:=EnemyBulletAt(B,T);Q:=StagePoint(T,EntryEnd,ExitStart,ExitEnd,Schedule.HoldTime);
           Distance:=Hypot((P.X-Q.X)/ScaleX,(P.Y-Q.Y)/ScaleY);Minimum:=Min(Minimum,Distance);
         end;
         Require(Minimum>0.054,'Radial bullet intersects the reserved ship bounds');Require(Length(Plan)>100,'Radial pattern is unexpectedly sparse');
-        MaxLive:=0;for I:=0 to 600 do begin T:=I/20;Live:=0;for B in Plan do if (T>=B.Launch) and (T<B.Finish) then begin P:=EnemyBulletAt(B,T);if (P.X>=0) and (P.X<=1) and (P.Y>=0) and (P.Y<=1) then Inc(Live);end;MaxLive:=Max(MaxLive,Live);end;
+        MaxLive:=0;for I:=0 to Ceil(Audio.Duration*10) do begin T:=I/10;Live:=0;for B in Plan do if (T>=B.Launch) and (T<B.Finish) then begin P:=EnemyBulletAt(B,T);if (P.X>=0) and (P.X<=1) and (P.Y>=0) and (P.Y<=1) then Inc(Live);end;MaxLive:=Max(MaxLive,Live);end;
         Root.AddPair('acceptedRadialBullets_'+IntToStr(Direction),TJSONNumber.Create(Length(Plan)));Root.AddPair('maxVisibleBullets_'+IntToStr(Direction),TJSONNumber.Create(MaxLive));Root.AddPair('minimumShipDistanceInViewportUnits_'+IntToStr(Direction),TJSONNumber.Create(Minimum));
         Renderer.Render(Bitmap,Audio,14.48,Direction);Hash1:=FrameHash;Renderer.Render(Bitmap,Audio,26.68,Direction);Renderer.Render(Bitmap,Audio,14.48,Direction);Require(Hash1=FrameHash,'Seek is nondeterministic');
         Bitmap.SaveToFile(TPath.Combine(Folder,'radial-direction'+IntToStr(Direction)+'.bmp'));

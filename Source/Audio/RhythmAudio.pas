@@ -3,7 +3,7 @@
 
 interface
 
-uses System.Classes, System.SysUtils;
+uses System.Classes, System.SysUtils, RhythmSections;
 
 const RHYTHM_RATE = 44100;
 
@@ -12,6 +12,11 @@ type
     Time, Strength, Lane, Flight: Double;
   end;
   TRhythmAudio = class
+  private
+    FBossCues: TRhythmBossCues;
+    FBossCuesReady: Boolean;
+    FEnvelopePeak: Double;
+    FTimelineRevision: Cardinal;
   public
     Source, Key, PcmPath: string;
     PCM: TBytes;
@@ -20,9 +25,13 @@ type
     Duration,SoundEnd: Double;
     Sensitivity: Integer;
     CacheReused: Boolean;
+    property TimelineRevision: Cardinal read FTimelineRevision;
     procedure Detect;
     procedure UpdateSoundBounds;
     function NearestHit(Time: Double): Integer;
+    function BossCue(Index: Integer): TRhythmBossCue;
+    function BossCount: Integer;
+    function LevelAt(Time: Double): Double;
   end;
   TRhythmLoadThread = class(TThread)
   private
@@ -55,9 +64,37 @@ begin Result := Assigned(Cancel) and Cancel(); end;
 procedure TRhythmAudio.UpdateSoundBounds;
 var Peak:Double;I:Integer;
 begin
+  FBossCuesReady:=False;
+  Inc(FTimelineRevision);
   SoundEnd:=0;Peak:=0;for I:=0 to High(Envelope) do Peak:=Max(Peak,Envelope[I]);
+  FEnvelopePeak:=Peak;
   for I:=High(Envelope) downto 0 do
     if Envelope[I]>Max(0.0001,Peak*0.015) then begin SoundEnd:=Min(Duration,(I+1)*0.01);Break;end;
+end;
+
+function TRhythmAudio.BossCue(Index:Integer):TRhythmBossCue;
+var Times:TArray<Double>;I:Integer;
+begin
+  if not FBossCuesReady then
+  begin
+    SetLength(Times,Length(Hits));for I:=0 to High(Hits) do Times[I]:=Hits[I].Time;
+    FBossCues:=BuildBossCues(Envelope,Duration,SoundEnd,Times);FBossCuesReady:=True;
+  end;
+  Result:=Default(TRhythmBossCue);Result.KillTime:=-1;
+  if (Index>=0) and (Index<Length(FBossCues)) then Result:=FBossCues[Index];
+end;
+
+function TRhythmAudio.BossCount:Integer;
+begin if not FBossCuesReady then BossCue(-1);Result:=Length(FBossCues);end;
+
+function TRhythmAudio.LevelAt(Time:Double):Double;
+var I,First,Last:Integer;Sum:Double;
+begin
+  if (Length(Envelope)=0) or (FEnvelopePeak<=0) then Exit(0);
+  First:=EnsureRange(Round(Time*100)-20,0,High(Envelope));
+  Last:=EnsureRange(Round(Time*100)+20,First,High(Envelope));Sum:=0;
+  for I:=First to Last do Sum:=Sum+Envelope[I];
+  Result:=EnsureRange(Sum/((Last-First+1)*FEnvelopePeak),0.0,1.0);
 end;
 
 procedure TRhythmAudio.Detect;

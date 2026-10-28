@@ -31,6 +31,9 @@ type
     procedure Refresh(Index:Integer);
     procedure Changed;
     procedure SetDesigns(const Value:TRhythmDesigns);
+    procedure BuildControls;
+  protected
+    procedure SetParent(AParent:TWinControl);override;
   public
     constructor Create(AOwner:TComponent);override;
     destructor Destroy;override;
@@ -42,7 +45,7 @@ type
 implementation
 {$R *.dfm}
 uses Winapi.Windows,System.SysUtils,System.IOUtils,System.Types,System.Math,Vcl.Graphics,
-  RhythmPaths,RhythmDesignImages,Vcl.Dialogs;
+  RhythmPaths,RhythmDesignImages,Vcl.Dialogs,RhythmControls;
 function InitialBitmap(Index:Integer;Renderer:TRhythmRenderer):TBitmap;
 var Info:TRhythmDesignInfo;X,Y:Integer;P:PByte;
 begin
@@ -57,23 +60,36 @@ begin
   end;
 end;
 constructor TRhythmDesignFrame.Create(AOwner:TComponent);
+begin
+  inherited;Width:=MulDiv(1060,CurrentPPI,96);Height:=MulDiv(600,CurrentPPI,96);DoubleBuffered:=True;FUpdating:=True;FCandidateIndex:=-1;
+  FRenderer:=TRhythmRenderer.Create;
+  if Parent<>nil then BuildControls;
+end;
+procedure TRhythmDesignFrame.SetParent(AParent:TWinControl);
+begin
+  inherited;
+  // 子コントロールの生成は親ウィンドウへ接続した後に行う。
+  if (AParent<>nil) and (FRenderer<>nil) and (FScroll=nil) then BuildControls;
+end;
+procedure TRhythmDesignFrame.BuildControls;
 const Order:array[0..14] of Integer=(6,7,8,13,14,9,10,11,12,0,1,2,3,4,5);
 var Row,Pane:TPanel;I,K:Integer;Info:TRhythmDesignInfo;L:TLabel;B:TButton;Bitmap:TBitmap;
+  function S(Value:Integer):Integer;
+  begin Result:=MulDiv(Value,CurrentPPI,96);end;
   function LabelAt(const Text:string;X,Y,W:Integer):TLabel;
-  begin Result:=TLabel.Create(Self);Result.Parent:=Row;Result.AutoSize:=False;Result.SetBounds(X,Y,W,22);Result.Caption:=Text;end;
+  begin Result:=TLabel.Create(Self);Result.Parent:=Row;Result.AutoSize:=False;Result.SetBounds(S(X),S(Y),S(W),S(22));Result.Caption:=Text;end;
   function ImageAt(X:Integer):TImage;
   begin
-    Pane:=TPanel.Create(Self);Pane.Parent:=Row;Pane.Color:=RGB(7,13,29);Pane.ParentBackground:=False;Pane.BevelOuter:=bvNone;Pane.SetBounds(X,46,128,96);
+    Pane:=TPanel.Create(Self);Pane.Parent:=Row;Pane.Color:=RGB(7,13,29);Pane.ParentBackground:=False;Pane.BevelOuter:=bvNone;Pane.SetBounds(S(X),S(46),S(128),S(96));
     Result:=TImage.Create(Self);Result.Parent:=Pane;Result.Align:=alClient;Result.Proportional:=True;Result.Center:=True;Result.Stretch:=True;
   end;
   function ButtonAt(const Text:string;X,W:Integer;Click:TNotifyEvent):TButton;
-  begin Result:=TButton.Create(Self);Result.Parent:=Row;Result.SetBounds(X,45,W,30);Result.Caption:=Text;Result.Tag:=I;Result.OnClick:=Click;end;
+  begin Result:=TRhythmButton.Create(Self);Result.Parent:=Row;Result.SetBounds(S(X),S(45),S(W),S(30));Result.Caption:=Text;Result.Tag:=I;Result.OnClick:=Click;end;
 begin
-  inherited;Width:=1060;Height:=600;DoubleBuffered:=True;FUpdating:=True;FCandidateIndex:=-1;
-  FRenderer:=TRhythmRenderer.Create;
-  FScroll:=TScrollBox.Create(Self);FScroll.Parent:=Self;FScroll.Align:=alClient;FScroll.HorzScrollBar.Visible:=False;FScroll.VertScrollBar.Tracking:=True;FScroll.BorderStyle:=bsNone;FScroll.DoubleBuffered:=True;
+  FUpdating:=True;
+  FScroll:=TScrollBox.Create(Self);FScroll.Parent:=Self;FScroll.Align:=alClient;FScroll.HorzScrollBar.Visible:=True;FScroll.VertScrollBar.Tracking:=True;FScroll.BorderStyle:=bsNone;FScroll.DoubleBuffered:=True;
   for K:=High(Order) downto 0 do begin
-    I:=Order[K];Info:=RhythmDesignTypes.DesignInfo(I);Row:=TPanel.Create(Self);Row.Parent:=FScroll;Row.SetBounds(0,0,Max(804,FScroll.ClientWidth),208);Row.Align:=alTop;Row.BevelOuter:=bvNone;
+    I:=Order[K];Info:=RhythmDesignTypes.DesignInfo(I);Row:=TPanel.Create(Self);Row.Parent:=FScroll;Row.Constraints.MinWidth:=S(820);Row.SetBounds(0,0,Max(S(820),FScroll.ClientWidth),S(208));Row.Align:=alTop;Row.BevelOuter:=bvNone;
     L:=LabelAt(Info.Title+'  '+IntToStr(Info.Width)+' × '+IntToStr(Info.Height),12,5,760);L.Font.Style:=[fsBold];
     LabelAt('初期',12,25,120);FCurrentLabels[I]:=LabelAt('現在',152,25,120);
     FInitial[I]:=ImageAt(12);FCurrent[I]:=ImageAt(152);
@@ -82,12 +98,13 @@ begin
     B:=ButtonAt('AI作成',394,100,Generate);B.Name:='DesignGenerate'+IntToStr(I);
     FCancel[I]:=ButtonAt('取消',502,75,Cancel);FAdopt[I]:=ButtonAt('候補を採用',585,100,Adopt);
     B:=ButtonAt('初期に戻す',693,100,Reset);B.Name:='DesignReset'+IntToStr(I);
-    L:=LabelAt('AI画像の希望（空欄でも解像度・向き・透過を自動指定）',300,82,Max(470,Row.Width-312));L.Anchors:=[akLeft,akTop,akRight];
-    FMemos[I]:=TMemo.Create(Self);FMemos[I].Parent:=Row;FMemos[I].SetBounds(300,105,Max(470,Row.Width-312),63);FMemos[I].Anchors:=[akLeft,akTop,akRight];FMemos[I].MaxLength:=2000;FMemos[I].ScrollBars:=ssVertical;FMemos[I].Tag:=I;FMemos[I].OnChange:=MemoChange;
-    FStatus[I]:=LabelAt('標準素材',12,178,Row.Width-24);FStatus[I].Anchors:=[akLeft,akTop,akRight];
+    L:=LabelAt('AI画像の希望（空欄でも解像度・向き・透過を自動指定）',300,82,470);L.Width:=Max(S(470),Row.ClientWidth-S(312));L.Anchors:=[akLeft,akTop,akRight];
+    FMemos[I]:=TMemo.Create(Self);FMemos[I].Parent:=Row;FMemos[I].SetBounds(S(300),S(105),Max(S(470),Row.ClientWidth-S(312)),S(63));FMemos[I].Anchors:=[akLeft,akTop,akRight];FMemos[I].MaxLength:=2000;FMemos[I].ScrollBars:=ssVertical;FMemos[I].Tag:=I;FMemos[I].Text:=FDesigns[I].Memo;FMemos[I].OnChange:=MemoChange;
+    FStatus[I]:=LabelAt('標準素材',12,178,760);FStatus[I].Width:=Row.ClientWidth-S(24);FStatus[I].Anchors:=[akLeft,akTop,akRight];
     Refresh(I);
   end;
   FUpdating:=False;FTimer:=TTimer.Create(Self);FTimer.Interval:=100;FTimer.OnTimer:=Tick;
+  ApplyRhythmColors(Self);
 end;
 destructor TRhythmDesignFrame.Destroy;
 begin
@@ -101,6 +118,8 @@ var I:Integer;
 begin
   if FWorker<>nil then begin FActiveId:='';FWorker.Cancel;end;
   FDesigns:=Value;FCandidateIndex:=-1;FUpdating:=True;
+  // 親が未設定でも設定値を保持し、接続時に各行へ反映する。
+  if FScroll=nil then Exit;
   try for I:=0 to High(FDesigns) do begin FMemos[I].Text:=FDesigns[I].Memo;Refresh(I);end;
   finally FUpdating:=False;end;
 end;

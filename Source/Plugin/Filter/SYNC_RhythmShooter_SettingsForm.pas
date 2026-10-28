@@ -1,7 +1,7 @@
 ﻿unit SYNC_RhythmShooter_SettingsForm;
 interface
 uses System.Classes, System.SysUtils, Vcl.Controls, Vcl.ExtCtrls, Vcl.Forms,
-  Vcl.Graphics, Vcl.StdCtrls, Vcl.ComCtrls, Vcl.Dialogs, RhythmAudio, RhythmPlayback, RhythmScene, RhythmWaveView, RhythmSettings,RhythmDesignFrame;
+  Vcl.Graphics, Vcl.StdCtrls, Vcl.ComCtrls, Vcl.Dialogs, RhythmAudio, RhythmPlayback, RhythmScene, RhythmWaveView, RhythmSettings,RhythmDesignFrame,RhythmControls;
 type
   TFormRhythmShooterSettings = class(TForm)
     procedure FormCreate(Sender:TObject);
@@ -10,8 +10,10 @@ type
     FFile:TEdit;
     FDirection:TComboBox;
     FSensitivity,FSeek:TTrackBar;
-    FStatus,FClock:TLabel;
-    FPreview:TPaintBox;
+    FStatus,FClock,FLevel:TLabel;
+    FPreview:TRhythmPreviewSurface;
+    FPages:TPageControl;
+    FAnimationTab,FDesignTab:TRhythmButton;
     FWave:TRhythmWaveView;
     FTimer:TTimer;
     FFrame:TBitmap;
@@ -27,6 +29,9 @@ type
     FDesignEditor:TRhythmDesignFrame;
     procedure DesignChanged(Sender:TObject);
     procedure DesignBusyChanged(Sender:TObject);
+    procedure Navigate(Sender:TObject);
+    procedure PageChanged(Sender:TObject);
+    procedure LayoutOptions(Sender:TObject);
     procedure SetBusy(Value:Boolean);
     procedure BrowseClick(Sender:TObject);
     procedure LoadClick(Sender:TObject);
@@ -54,54 +59,103 @@ uses Winapi.Windows, System.Math, System.Types, System.IniFiles, System.IOUtils,
 {$R *.dfm}
 
 procedure TFormRhythmShooterSettings.FormCreate(Sender:TObject);
-var Top,Transport,Bottom:TPanel;L:TLabel;B:TButton;Ini:TMemIniFile;Pages:TPageControl;Animation,Design:TTabSheet;
-  procedure Button(Parent:TWinControl;const Text:string;X,Y,W:Integer;Click:TNotifyEvent);
-  begin B:=TButton.Create(Self);B.Parent:=Parent;B.SetBounds(X,Y,W,29);B.Caption:=Text;B.OnClick:=Click;end;
+var Top,MusicRow,OptionsRow,Transport,TransportButtons,Bottom,Navigation:TPanel;
+  L:TLabel;B:TButton;Ini:TMemIniFile;Pages:TPageControl;Animation,Design:TTabSheet;WorkArea:TRect;
+  function S(Value:Integer):Integer;
+  begin Result:=MulDiv(Value,CurrentPPI,96);end;
+  function Panel(Parent:TWinControl;AAlign:TAlign;H:Integer):TPanel;
+  begin
+    Result:=TPanel.Create(Self);Result.Parent:=Parent;Result.BevelOuter:=bvNone;
+    Result.Align:=AAlign;Result.Height:=S(H);Result.DoubleBuffered:=True;
+  end;
+  function LabelAt(Parent:TWinControl;const Text:string;AAlign:TAlign;W:Integer):TLabel;
+  begin
+    Result:=TLabel.Create(Self);Result.Parent:=Parent;Result.AutoSize:=False;
+    Result.Caption:=Text;Result.Layout:=tlCenter;Result.Align:=AAlign;Result.Width:=S(W);
+  end;
+  procedure Button(Parent:TWinControl;const Text:string;AAlign:TAlign;W:Integer;Click:TNotifyEvent);
+  begin
+    B:=TRhythmButton.Create(Self);B.Parent:=Parent;B.Caption:=Text;B.Width:=S(W);
+    B.AlignWithMargins:=True;B.Margins.SetBounds(S(6),S(6),S(6),S(6));B.Align:=AAlign;B.OnClick:=Click;
+  end;
 begin
-  Caption:='リズムシューティング 設定 / Revision 4';
-  DoubleBuffered:=True;ClientWidth:=1100;ClientHeight:=760;
-  Constraints.MinWidth:=850;Constraints.MinHeight:=620;FUpdating:=True;
+  Caption:='リズムシューティング 設定 / Revision 4';DoubleBuffered:=True;FUpdating:=True;
+  // DFM読込後の現在DPIを使い、動的に生成する寸法もフォントとそろえる。
+  WorkArea:=Screen.MonitorFromWindow(Handle).WorkareaRect;
+  ClientWidth:=Min(S(1100),Max(S(500),WorkArea.Width-S(24)));
+  ClientHeight:=Min(S(760),Max(S(400),WorkArea.Height-S(60)));
+  Constraints.MinWidth:=Min(S(850),Width);Constraints.MinHeight:=Min(S(620),Height);
+  FState:=TRhythmSettings.Defaults;FViewWidth:=1280;FViewHeight:=720;
   FPlayer:=TRhythmPlayback.Create;FRenderer:=TRhythmRenderer.Create;FFrame:=Vcl.Graphics.TBitmap.Create;FFrame.PixelFormat:=pf32bit;
-  Pages:=TPageControl.Create(Self);Pages.Parent:=Self;Pages.Align:=alClient;Pages.DoubleBuffered:=True;
-  Animation:=TTabSheet.Create(Self);Animation.PageControl:=Pages;Animation.Caption:='アニメーション';Animation.DoubleBuffered:=True;
-  Design:=TTabSheet.Create(Self);Design.PageControl:=Pages;Design.Caption:='カスタムデザイン';Design.DoubleBuffered:=True;
+  Navigation:=Panel(Self,alTop,48);Navigation.Padding.SetBounds(S(12),0,S(12),0);
+  Button(Navigation,'アニメーション',alLeft,160,Navigate);FAnimationTab:=TRhythmButton(B);B.Name:='AnimationTab';B.Tag:=0;
+  Button(Navigation,'カスタムデザイン',alLeft,160,Navigate);FDesignTab:=TRhythmButton(B);B.Name:='DesignTab';B.Tag:=1;B.Left:=S(180);
+  Pages:=TPageControl.Create(Self);Pages.Parent:=Self;Pages.Align:=alClient;Pages.DoubleBuffered:=True;Pages.Style:=tsFlatButtons;
+  Pages.AlignWithMargins:=True;Pages.Margins.SetBounds(S(12),0,S(12),S(8));FPages:=Pages;Pages.OnChange:=PageChanged;
+  Animation:=TTabSheet.Create(Self);Animation.PageControl:=Pages;Animation.Caption:='アニメーション';Animation.DoubleBuffered:=True;Animation.TabVisible:=False;
+  Design:=TTabSheet.Create(Self);Design.PageControl:=Pages;Design.Caption:='カスタムデザイン';Design.DoubleBuffered:=True;Design.TabVisible:=False;
   FDesignEditor:=TRhythmDesignFrame.Create(Self);FDesignEditor.Parent:=Design;FDesignEditor.Align:=alClient;
   FDesignEditor.OnChange:=DesignChanged;FDesignEditor.OnBusyChange:=DesignBusyChanged;
-  Top:=TPanel.Create(Self);Top.Parent:=Animation;Top.Align:=alTop;Top.Height:=94;Top.BevelOuter:=bvNone;
-  L:=TLabel.Create(Self);L.Parent:=Top;L.SetBounds(14,12,70,20);L.Caption:='音楽ファイル';
-  FFile:=TEdit.Create(Self);FFile.Parent:=Top;FFile.Name:='MusicFile';FFile.SetBounds(94,8,750,25);FFile.Anchors:=[akLeft,akTop,akRight];
-  Button(Top,'参照...',854,6,100,BrowseClick);B.Anchors:=[akTop,akRight];
-  Button(Top,'解析',966,6,112,LoadClick);B.Anchors:=[akTop,akRight];
-  L:=TLabel.Create(Self);L.Parent:=Top;L.SetBounds(14,52,70,20);L.Caption:='スクロール';
-  FDirection:=TComboBox.Create(Self);FDirection.Parent:=Top;FDirection.Name:='ScrollDirection';FDirection.SetBounds(94,46,140,25);FDirection.Style:=csDropDownList;
+  Top:=Panel(Animation,alTop,104);Top.Padding.SetBounds(S(8),S(4),S(8),S(4));
+  MusicRow:=Panel(Top,alTop,44);
+  LabelAt(MusicRow,'音楽ファイル',alLeft,96);
+  Button(MusicRow,'参照...',alRight,88,BrowseClick);B.Name:='MusicBrowse';
+  Button(MusicRow,'解析',alRight,88,LoadClick);B.Name:='MusicAnalyze';TRhythmButton(B).Primary:=True;
+  FFile:=TEdit.Create(Self);FFile.Parent:=MusicRow;FFile.Name:='MusicFile';FFile.AutoSize:=False;
+  FFile.AlignWithMargins:=True;FFile.Margins.SetBounds(S(6),S(6),S(6),S(6));FFile.Align:=alClient;
+  OptionsRow:=Panel(Top,alBottom,44);OptionsRow.OnResize:=LayoutOptions;
+  LabelAt(OptionsRow,'スクロール',alLeft,96);
+  FDirection:=TRhythmComboBox.Create(Self);FDirection.Parent:=OptionsRow;FDirection.Name:='ScrollDirection';
+  FDirection.AlignWithMargins:=True;FDirection.Margins.SetBounds(S(6),0,S(12),0);
+  FDirection.Left:=S(100);FDirection.Width:=S(152);FDirection.Align:=alLeft;
   FDirection.Items.Add('縦スクロール');FDirection.Items.Add('横スクロール');FDirection.ItemIndex:=0;FDirection.OnChange:=SettingChange;
-  L:=TLabel.Create(Self);L.Parent:=Top;L.SetBounds(258,52,75,20);L.Caption:='解析感度';
-  FSensitivity:=TTrackBar.Create(Self);FSensitivity.Parent:=Top;FSensitivity.Name:='Sensitivity';FSensitivity.SetBounds(334,42,260,42);FSensitivity.Min:=1;FSensitivity.Max:=100;FSensitivity.Position:=50;FSensitivity.Frequency:=10;FSensitivity.OnChange:=SettingChange;
-  L:=TLabel.Create(Self);L.Parent:=Top;L.SetBounds(620,52,450,30);L.Caption:='音量の立ち上がり → 命中・爆発 / 標準素材';
-  Bottom:=TPanel.Create(Self);Bottom.Parent:=Self;Bottom.Align:=alBottom;Bottom.Height:=76;Bottom.BevelOuter:=bvNone;
-  Button(Bottom,'適用して閉じる',916,6,160,SaveClick);B.Anchors:=[akTop,akRight];
-  FStatus:=TLabel.Create(Self);FStatus.Parent:=Bottom;FStatus.Align:=alBottom;FStatus.Height:=28;FStatus.Layout:=tlCenter;FStatus.AlignWithMargins:=True;FStatus.Caption:='WAV / MP3 を選択してください。';
-  Transport:=TPanel.Create(Self);Transport.Parent:=Animation;Transport.Align:=alBottom;Transport.Height:=128;Transport.BevelOuter:=bvNone;
-  FWave:=TRhythmWaveView.Create(Self);FWave.Parent:=Transport;FWave.Align:=alTop;FWave.Height:=42;FWave.OnMouseDown:=WaveMouseDown;
-  FSeek:=TTrackBar.Create(Self);FSeek.Parent:=Transport;FSeek.Name:='Timeline';FSeek.SetBounds(8,43,1080,34);FSeek.Anchors:=[akLeft,akTop,akRight];FSeek.Min:=0;FSeek.Max:=100000;FSeek.TickStyle:=tsNone;FSeek.OnChange:=SeekChange;
-  Button(Transport,'再生',16,88,90,PlayClick);B.Name:='PreviewPlay';Button(Transport,'一時停止',116,88,90,PauseClick);B.Name:='PreviewPause';Button(Transport,'停止',216,88,90,StopClick);B.Name:='PreviewStop';
-  FClock:=TLabel.Create(Self);FClock.Parent:=Transport;FClock.SetBounds(326,94,520,25);FClock.Caption:='00:00.000';
-  FPreview:=TPaintBox.Create(Self);FPreview.Parent:=Animation;FPreview.Align:=alClient;FPreview.OnPaint:=PreviewPaint;
-  FTimer:=TTimer.Create(Self);FTimer.Interval:=16;FTimer.OnTimer:=TimerTick;
+  L:=LabelAt(OptionsRow,'解析感度',alLeft,80);L.Left:=S(280);
+  FSensitivity:=TRhythmTrackBar.Create(Self);FSensitivity.Parent:=OptionsRow;FSensitivity.Name:='Sensitivity';
+  FSensitivity.Left:=S(360);FSensitivity.Width:=S(220);FSensitivity.Align:=alLeft;FSensitivity.TickStyle:=tsNone;
+  FSensitivity.AlignWithMargins:=True;FSensitivity.Margins.SetBounds(S(4),S(6),S(4),S(6));
+  FSensitivity.Min:=1;FSensitivity.Max:=100;FSensitivity.Position:=50;FSensitivity.Frequency:=10;FSensitivity.OnChange:=SettingChange;
+  FLevel:=LabelAt(OptionsRow,'50',alLeft,40);FLevel.Left:=S(600);
+  Bottom:=Panel(Self,alBottom,52);Bottom.Padding.SetBounds(S(12),0,S(12),0);
+  Button(Bottom,'適用して閉じる',alRight,170,SaveClick);B.Name:='ApplySettings';TRhythmButton(B).Primary:=True;
+  FStatus:=LabelAt(Bottom,'WAV / MP3 を選択してください。',alClient,400);
+  FStatus.WordWrap:=True;FStatus.AlignWithMargins:=True;FStatus.Margins.SetBounds(S(6),S(6),S(12),S(6));
+  Transport:=Panel(Animation,alBottom,128);Transport.Padding.SetBounds(S(8),S(4),S(8),S(4));
+  FWave:=TRhythmWaveView.Create(Self);FWave.Parent:=Transport;FWave.Align:=alTop;FWave.Height:=S(42);FWave.OnMouseDown:=WaveMouseDown;
+  FSeek:=TRhythmTrackBar.Create(Self);FSeek.Parent:=Transport;FSeek.Name:='Timeline';FSeek.Height:=S(32);FSeek.Align:=alTop;
+  FSeek.Min:=0;FSeek.Max:=100000;FSeek.TickStyle:=tsNone;FSeek.OnChange:=SeekChange;
+  TransportButtons:=Panel(Transport,alBottom,44);
+  Button(TransportButtons,'再生',alLeft,90,PlayClick);B.Name:='PreviewPlay';
+  Button(TransportButtons,'一時停止',alLeft,90,PauseClick);B.Name:='PreviewPause';B.Left:=S(110);
+  Button(TransportButtons,'停止',alLeft,90,StopClick);B.Name:='PreviewStop';B.Left:=S(220);
+  FClock:=LabelAt(TransportButtons,'00:00.000',alRight,240);FClock.Name:='PreviewClock';FClock.Alignment:=taRightJustify;
+  FClock.AlignWithMargins:=True;FClock.Margins.SetBounds(S(12),S(6),S(6),S(6));
+  FPreview:=TRhythmPreviewSurface.Create(Self);FPreview.Name:='ScenePreview';FPreview.Parent:=Animation;FPreview.Align:=alClient;FPreview.OnPaint:=PreviewPaint;
+  FTimer:=TTimer.Create(Self);FTimer.Enabled:=False;FTimer.Interval:=16;FTimer.OnTimer:=TimerTick;
   Ini:=TMemIniFile.Create(SettingsPath,TEncoding.UTF8);
   try
     FFile.Text:=Ini.ReadString('Preview','Music','');FDirection.ItemIndex:=EnsureRange(Ini.ReadInteger('Preview','Direction',0),0,1);
     FSensitivity.Position:=EnsureRange(Ini.ReadInteger('Preview','Sensitivity',50),1,100);
   finally Ini.Free;end;
-  FUpdating:=False;
-  FState:=TRhythmSettings.Defaults;FViewWidth:=1280;FViewHeight:=720;
   if FileExists(ChangeFileExt(SettingsPath,'.json')) then
     if TRhythmSettings.TryJSON(TFile.ReadAllText(ChangeFileExt(SettingsPath,'.json'),TEncoding.UTF8),FState) then
-    begin FUpdating:=True;FFile.Text:=FState.Music;FDirection.ItemIndex:=FState.Direction;FSensitivity.Position:=FState.Sensitivity;FUpdating:=False;end;
+    begin FFile.Text:=FState.Music;FDirection.ItemIndex:=FState.Direction;FSensitivity.Position:=FState.Sensitivity;end;
   if (FFile.Text<>'') and FileExists(FFile.Text) then FReloadAt:=GetTickCount64+100;
-  FDesignEditor.Designs:=FState.Designs;Pages.ActivePage:=Animation;
+  FDesignEditor.Designs:=FState.Designs;Pages.ActivePage:=Animation;FUpdating:=False;FTimer.Enabled:=True;
+  ApplyRhythmColors(Self);Color:=RhythmBackground;Navigation.Color:=RhythmBackground;Bottom.Color:=RhythmBackground;
+  FStatus.Font.Color:=RhythmMuted;FLevel.Font.Color:=RhythmAccent;PageChanged(Self);LayoutOptions(Self);ApplyRhythmTitleBar(Self);
 end;
-
+procedure TFormRhythmShooterSettings.Navigate(Sender:TObject);
+begin FPages.ActivePageIndex:=TControl(Sender).Tag;PageChanged(Self);end;
+procedure TFormRhythmShooterSettings.PageChanged(Sender:TObject);
+begin
+  if FPages=nil then Exit;
+  FAnimationTab.Selected:=FPages.ActivePageIndex=0;FDesignTab.Selected:=FPages.ActivePageIndex=1;
+end;
+procedure TFormRhythmShooterSettings.LayoutOptions(Sender:TObject);
+begin
+  if (FDirection<>nil) and (FDirection.Parent<>nil) then
+    FDirection.Margins.Top:=Max(0,(FDirection.Parent.ClientHeight-FDirection.Height) div 2);
+end;
 procedure TFormRhythmShooterSettings.Configure(const FileName:string;Direction,Sensitivity:Integer);
 var State:TRhythmSettings;
 begin State:=TRhythmSettings.Defaults;State.Music:=FileName;State.Direction:=Direction;State.Sensitivity:=Sensitivity;ConfigureState(State);end;
@@ -188,6 +242,7 @@ begin
 end;
 procedure TFormRhythmShooterSettings.SettingChange(Sender:TObject);
 begin
+  if (Sender=FSensitivity) and (FLevel<>nil) then FLevel.Caption:=IntToStr(FSensitivity.Position);
   if FUpdating then Exit;
   if Sender=FSensitivity then FReloadAt:=GetTickCount64+500;
   if Sender=FDirection then begin FPlayer.Pause;SetBusy(True);try FPreview.Repaint;finally SetBusy(False);end;FStatus.Caption:='方向の動作計画を更新しました（音声PCMは再利用）。';end;

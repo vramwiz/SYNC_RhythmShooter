@@ -14,7 +14,7 @@ type
     constructor Create(const Assets:array of TBitmap);
     function BeginFrame(Target:TBitmap):Boolean;
     function EndFrame:Boolean;
-    procedure DrawAsset(Index:Integer;const Bounds:TRect);
+    procedure DrawAsset(Index:Integer;const Bounds:TRect;Opacity:Single=1);
     procedure Ring(X,Y,Radius:Single);
     procedure Star(X,Y,Radius,Trail:Single;Layer,Direction:Integer);
   end;
@@ -74,12 +74,12 @@ begin
 end;
 function TRhythmD2D.EndFrame:Boolean;
 begin Result:=FTarget.EndDraw()>=0;end;
-procedure TRhythmD2D.DrawAsset(Index:Integer;const Bounds:TRect);
+procedure TRhythmD2D.DrawAsset(Index:Integer;const Bounds:TRect;Opacity:Single);
 var R:TD2D1RectF;
 begin
   if (Index<0) or (Index>High(FBitmaps)) or (FBitmaps[Index]=nil) then Exit;
   R.left:=Bounds.Left;R.top:=Bounds.Top;R.right:=Bounds.Right;R.bottom:=Bounds.Bottom;
-  FTarget.DrawBitmap(FBitmaps[Index],@R,1,D2D1_BITMAP_INTERPOLATION_MODE_NEAREST_NEIGHBOR);
+  FTarget.DrawBitmap(FBitmaps[Index],@R,Opacity,D2D1_BITMAP_INTERPOLATION_MODE_NEAREST_NEIGHBOR);
 end;
 procedure TRhythmD2D.Ring(X,Y,Radius:Single);
 var Shape:TD2D1Ellipse;
