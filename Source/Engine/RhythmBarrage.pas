@@ -3,6 +3,7 @@ interface
 uses RhythmAudio, RhythmMotion;
 type
   TRhythmBarragePattern=(bpPetals,bpSpiral,bpFans,bpCross);
+  TRhythmFlybyRoute=(frUpperCross,frLowerEdge,frLowerSweep);
   TRhythmEnemyBullet=record
     Launch,Finish:Double;
     Origin,Velocity:TRhythmPoint;
@@ -14,11 +15,13 @@ type
     Launch,Finish,Lane,Phase,Size:Double;
     FromLeft:Boolean;
     Variant:Integer;
+    Route:TRhythmFlybyRoute;
   end;
 function BossAt(KillTime,StartTime,Time:Double):TRhythmPoint;
 function EnemyBulletAt(const Bullet:TRhythmEnemyBullet;Time:Double):TRhythmPoint;
 function BuildBarrage(Audio:TRhythmAudio;Width,Height,Direction:Integer):TArray<TRhythmEnemyBullet>;
 function BuildFlybys(Audio:TRhythmAudio):TArray<TRhythmFlyby>;
+function BuildLowerFlybys(Audio:TRhythmAudio):TArray<TRhythmFlyby>;
 function FlybyAt(const Enemy:TRhythmFlyby;Time:Double):TRhythmPoint;
 implementation
 uses System.Math, System.Generics.Collections,RhythmStage;
@@ -117,7 +120,7 @@ begin
         Enemy.Launch:=T+J*0.17;Enemy.Finish:=Enemy.Launch+4.6-Progress*1.0;
         Enemy.Lane:=0.08+((Wave*7+J*3) mod 5)*0.03;
         Enemy.Phase:=Wave*0.7+J*0.31;Enemy.Size:=0.037+((Wave+J) mod 3)*0.006;
-        Enemy.FromLeft:=Wave mod 2=0;Enemy.Variant:=(Wave+J) mod 3;
+        Enemy.FromLeft:=Wave mod 2=0;Enemy.Variant:=(Wave+J) mod 3;Enemy.Route:=frUpperCross;
         List.Add(Enemy);
       end;
       Inc(Wave);T:=T+2.6-Progress*1.0-Level*0.35;
@@ -125,10 +128,45 @@ begin
     Result:=List.ToArray;
   finally List.Free;end;
 end;
+function BuildLowerFlybys(Audio:TRhythmAudio):TArray<TRhythmFlyby>;
+const LeftOrder:array[0..7] of Boolean=(True,False,False,True,False,True,True,False);
+var List:TList<TRhythmFlyby>;Enemy:TRhythmFlyby;T,Progress,Life,Stop:Double;Wave,J,Count:Integer;
+begin
+  Result:=nil;if (Audio=nil) or (Audio.SoundEnd<=0) then Exit;
+  Stop:=Min(Audio.SoundEnd,StageSchedule(Audio).ClearTime)-0.35;
+  List:=TList<TRhythmFlyby>.Create;
+  try
+    T:=2.2;Wave:=0;
+    while T+4.0<Stop do begin
+      Progress:=EnsureRange(T/Max(1.0,Audio.SoundEnd),0.0,1.0);
+      Life:=4.4+((Wave*5) mod 4)*0.28-Progress*0.35;Count:=3;if Progress>0.55 then Count:=4;
+      for J:=0 to Count-1 do begin
+        Enemy:=Default(TRhythmFlyby);Enemy.Launch:=T+J*0.19;Enemy.Finish:=Enemy.Launch+Life;
+        if Enemy.Finish>Stop then Continue;
+        Enemy.Lane:=0.055+J*0.012;Enemy.Phase:=Wave*0.61+J*0.37;
+        Enemy.Size:=0.045+((Wave+J) mod 3)*0.004;Enemy.FromLeft:=LeftOrder[Wave mod 8];Enemy.Variant:=(Wave*2+J) mod 3;
+        if Wave mod 3=1 then Enemy.Route:=frLowerSweep else Enemy.Route:=frLowerEdge;
+        List.Add(Enemy);
+      end;
+      Inc(Wave);T:=T+3.8+((Wave*17) mod 7)*0.19-Progress*0.9;
+    end;
+    Result:=List.ToArray;
+  finally List.Free;end;
+end;
 function FlybyAt(const Enemy:TRhythmFlyby;Time:Double):TRhythmPoint;
-var U:Double;
+var U,Bend,Across:Double;
 begin
   U:=EnsureRange((Time-Enemy.Launch)/Max(0.01,Enemy.Finish-Enemy.Launch),0.0,1.0);
+  if Enemy.Route<>frUpperCross then begin
+    // Side corridors stay outside the ship's entire path. Only turn across
+    // once above the player's region; these are distant traffic, not targets.
+    Result.Y:=1.16-1.40*U;Bend:=0;
+    if Enemy.Route=frLowerSweep then begin Bend:=EnsureRange((U-0.49)/0.51,0.0,1.0);Bend:=Bend*Bend*(3-2*Bend);end;
+    Across:=Enemy.Lane+0.008*Sin(U*2*Pi+Enemy.Phase);
+    Across:=Across*(1-Bend)+(0.76-Enemy.Lane*0.25)*Bend;
+    if Enemy.FromLeft then Result.X:=Across else Result.X:=1-Across;
+    Exit;
+  end;
   if Enemy.FromLeft then Result.X:=-0.12+1.24*U else Result.X:=1.12-1.24*U;
   // 通常弾の命中列より上を通過させ、撃破対象とは別の編隊にする。
   Result.Y:=Enemy.Lane+0.035*Sin(U*2*Pi+Enemy.Phase);

@@ -8,9 +8,9 @@ type
   TRhythmPoint = RhythmMotion.TRhythmPoint;
   TRhythmRenderer = class
   private
-    FAssets: array[0..20] of TBitmap;
-    FAlphaAssets: array[0..20] of TBitmap;
-    FScaled: array[0..20,0..2] of TBitmap;
+    FAssets: array[0..23] of TBitmap;
+    FAlphaAssets: array[0..23] of TBitmap;
+    FScaled: array[0..23,0..2] of TBitmap;
     FD2D:TRhythmD2D;
     FD2DActive,FUseD2D,FLastD2D:Boolean;
     FAssetCount: Integer;
@@ -22,6 +22,8 @@ type
     FCustom:array[0..14] of Boolean;
     function MapPoint(const P: TRhythmPoint; Width,Height,Direction: Integer): TPoint;
     procedure PrepareAlphaAssets;
+    procedure BrightenStandardEnemies;
+    procedure PrepareUpwardEnemies;
     procedure Sprite(Canvas: TCanvas; Index: Integer; const P: TRhythmPoint;
       Size: Double; Width,Height,Direction: Integer;Opacity:Double=1);
     procedure Explosion(Canvas:TCanvas;const P:TRhythmPoint;Age:Double;Boss:Boolean;Width,Height,Direction:Integer);
@@ -73,15 +75,94 @@ begin
   Result:=Power(1-Age/Lifetime,1.5);
 end;
 
+procedure TRhythmRenderer.BrightenStandardEnemies;
+const Originals:array[0..4] of Integer=(8,9,10,13,14);
+  // RGB shadow / main armor / lit armor for fighter, drone, interceptor.
+  // Colored seams and broad midtones survive the tiny flyby display size.
+  Armor:array[0..2,0..2,0..2] of Byte=(
+    ((128,71,88),(238,137,158),(250,187,200)),
+    ((102,78,145),(193,151,231),(229,196,250)),
+    ((133,99,49),(239,185,86),(250,214,135)));
+var I,X,Y,R,G,B,Luma,Peak,Lift,Kind,LowTone,HighTone,Weight,Scale,Channel:Integer;
+  Bitmap:Vcl.Graphics.TBitmap;Pixel:PByte;
+begin
+  // Correct factory artwork once per disk load, before directional/alpha copies.
+  // Small enemies need colored faces, while bosses retain their accepted curve.
+  // Object-specific images keep their colors, including their original seams.
+  for I in Originals do begin
+    if FCustom[I] then Continue;
+    Kind:=-1;if I=8 then Kind:=0 else if I=13 then Kind:=1 else if I=14 then Kind:=2;
+    Bitmap:=FAssets[I];if Bitmap.Empty then Continue;
+    Bitmap.PixelFormat:=pf24bit;
+    for Y:=0 to Bitmap.Height-1 do begin
+      Pixel:=Bitmap.ScanLine[Y];
+      for X:=0 to Bitmap.Width-1 do begin
+        B:=Pixel[0];G:=Pixel[1];R:=Pixel[2];
+        // Preserve the transparent key and existing bright emissive pixels.
+        if not ((R=255) and (G=0) and (B=255)) then begin
+          Luma:=(54*R+183*G+19*B) shr 8;Peak:=Max(R,Max(G,B));
+          if Kind>=0 then begin
+            // Consolidate dark plating and near-black outlines into the same
+            // colored armor family; do not brighten only the tiny glowing core.
+            // Keep the factory cyan reactor/exhaust colors as emissive accents.
+            if (Peak<224) and not ((G>=140) and (B>=160) and (G-R>=40) and (B-R>=60)) then begin
+              if Luma<152 then begin
+                if Luma<=24 then begin LowTone:=0;HighTone:=0;Weight:=0;Scale:=1;end
+                else if Luma<80 then begin LowTone:=0;HighTone:=1;Weight:=Luma-24;Scale:=56;end
+                else begin LowTone:=1;HighTone:=2;Weight:=Luma-80;Scale:=72;end;
+                for Channel:=0 to 2 do
+                  Pixel[2-Channel]:=(Integer(Armor[Kind,LowTone,Channel])*(Scale-Weight)+
+                    Integer(Armor[Kind,HighTone,Channel])*Weight) div Scale;
+              end else if Luma<208 then begin
+                // Join the lit armor back to the source highlights smoothly.
+                Weight:=208-Luma;
+                for Channel:=0 to 2 do
+                  Pixel[2-Channel]:=(Integer(Armor[Kind,2,Channel])*Weight+
+                    Integer(Pixel[2-Channel])*(56-Weight)) div 56;
+              end;
+            end;
+          end else if (Luma>=24) and (Luma<184) and (Peak<224) then begin
+            if Luma<=96 then Lift:=12+(Luma-24)*40 div 72
+            else Lift:=(184-Luma)*52 div 88;
+            Lift:=Min(Lift,224-Peak);
+            Pixel[0]:=B+Lift;Pixel[1]:=G+Lift;Pixel[2]:=R+Lift;
+          end;
+        end;
+        Inc(Pixel,3);
+      end;
+    end;
+  end;
+end;
+
+procedure TRhythmRenderer.PrepareUpwardEnemies;
+const Originals:array[0..2] of Integer=(8,13,14);
+var I,X,Y:Integer;Source,Rotated:Vcl.Graphics.TBitmap;P,Q:PByte;
+begin
+  for I:=0 to 2 do begin
+    Source:=FAssets[Originals[I]];FreeAndNil(FAssets[21+I]);Rotated:=Vcl.Graphics.TBitmap.Create;FAssets[21+I]:=Rotated;
+    if Source.Empty then Continue;
+    if Source.AlphaFormat=afIgnored then begin
+      Rotated.PixelFormat:=pf24bit;Rotated.SetSize(Source.Width,Source.Height);
+      for Y:=0 to Source.Height-1 do for X:=0 to Source.Width-1 do Rotated.Canvas.Pixels[Source.Width-1-X,Source.Height-1-Y]:=Source.Canvas.Pixels[X,Y];
+      Rotated.TransparentColor:=clFuchsia;Rotated.Transparent:=True;
+    end else begin
+      Rotated.PixelFormat:=pf32bit;Rotated.SetSize(Source.Width,Source.Height);Rotated.AlphaFormat:=afPremultiplied;
+      for Y:=0 to Source.Height-1 do begin P:=Source.ScanLine[Y];Q:=Rotated.ScanLine[Source.Height-1-Y];
+        for X:=0 to Source.Width-1 do begin Move(P^,PByte(NativeUInt(Q)+NativeUInt((Source.Width-1-X)*4))^,4);Inc(P,4);end;
+      end;
+    end;
+  end;
+end;
 procedure TRhythmRenderer.PrepareAlphaAssets;
 var I,X,Y,A:Integer;Temp:Vcl.Graphics.TBitmap;P,Q:PByte;Premultiplied,HasAlpha:Boolean;
 begin
+  PrepareUpwardEnemies;
   Temp:=Vcl.Graphics.TBitmap.Create;
   try
     for I:=0 to High(FAssets) do
     begin
       FreeAndNil(FAlphaAssets[I]);FAlphaAssets[I]:=Vcl.Graphics.TBitmap.Create;
-      if FAssets[I].Empty or not (I in [8,11,12,13,14,15,18,19,20]) then Continue;
+      if FAssets[I].Empty or not (I in [8,11,12,13,14,15,18,19,20,21,22,23]) then Continue;
       HasAlpha:=FAssets[I].AlphaFormat<>afIgnored;
       Premultiplied:=FAssets[I].AlphaFormat=afPremultiplied;
       Temp.Assign(FAssets[I]);Temp.PixelFormat:=pf32bit;
@@ -127,6 +208,7 @@ begin
       FAssets[I].TransparentColor:=clFuchsia;
     end;
   end;
+  BrightenStandardEnemies;
   for I:=0 to High(RotateIndices) do
   begin
     Source:=FAssets[RotateIndices[I]];Rotated:=FAssets[15+I];
@@ -166,6 +248,7 @@ begin
       FAssets[I].Transparent:=(I>=6) or (I mod 3<>0);FAssets[I].TransparentColor:=clFuchsia;
     end;
   end;
+  BrightenStandardEnemies;
   for I:=0 to High(RotateIndices) do begin
     Source:=FAssets[RotateIndices[I]];Rotated:=FAssets[15+I];Rotated.Free;Rotated:=Vcl.Graphics.TBitmap.Create;FAssets[15+I]:=Rotated;
     if Source.Empty then Continue;
@@ -207,7 +290,7 @@ begin
   Center:=MapPoint(P,Width,Height,Direction);
   // Keep arbitrary custom ship silhouettes inside the existing avoidance
   // corridor, including opaque square imports. Default artwork is unchanged.
-  if (Index in [6,7]) and FCustom[Index] then Size:=Size*0.8;
+  if Index in [6,7] then if FCustom[Index] then Size:=Size*0.8;
   W:=Max(2,Round(Size*Min(Width,Height))); H:=W;
   if Index in [9,10] then W:=W*8 div 5;
   if Direction=1 then
@@ -319,7 +402,7 @@ end;
 procedure TRhythmRenderer.Render(Target:Vcl.Graphics.TBitmap;Audio:TRhythmAudio;Time:Double;Direction:Integer;const MessageText:string;Zoom,OffsetX,OffsetY:Double);
 var I,J,First,Last,BossIndex:Integer;H:TRhythmHit;P,Q,Aim:TRhythmPoint;
   Age,BossTime,StartTime,Flight,Alpha:Double;
-  C:TCanvas;Width,Height:Integer;Text,PlanKey:string;EnemyBullet:TRhythmEnemyBullet;Enemy:TRhythmFlyby;Schedule:TRhythmStageSchedule;
+  C:TCanvas;Width,Height:Integer;Text,PlanKey:string;EnemyBullet:TRhythmEnemyBullet;Enemy:TRhythmFlyby;Schedule:TRhythmStageSchedule;Additional:TArray<TRhythmFlyby>;
 begin
   Width:=Target.Width;Height:=Target.Height;if (Width<1) or (Height<1) then Exit;
   if (Abs(Zoom-1)>1E-8) or (Abs(OffsetX)>1E-8) or (Abs(OffsetY)>1E-8) then
@@ -334,15 +417,23 @@ begin
   if Audio<>nil then
   begin
     PlanKey:=Audio.Key+'|'+IntToHex(NativeUInt(Audio),16)+'|'+IntToStr(Audio.TimelineRevision)+'|'+IntToStr(Width)+'x'+IntToStr(Height)+'|'+IntToStr(Direction);
-    if PlanKey<>FPlanKey then begin FBarrage:=BuildBarrage(Audio,Width,Height,Direction);FFlybys:=BuildFlybys(Audio);FPlanKey:=PlanKey;end;
+    if PlanKey<>FPlanKey then begin
+      FBarrage:=BuildBarrage(Audio,Width,Height,Direction);FFlybys:=BuildFlybys(Audio);
+      if Direction=0 then begin
+        Additional:=BuildLowerFlybys(Audio);I:=Length(FFlybys);SetLength(FFlybys,I+Length(Additional));
+        for J:=0 to High(Additional) do FFlybys[I+J]:=Additional[J];
+      end;
+      FPlanKey:=PlanKey;
+    end;
   end;
   FLastD2D:=False;FD2DActive:=FUseD2D and (FD2D<>nil) and FD2D.BeginFrame(Target);
   Background(C,Time,Width,Height,Direction);
   if Audio<>nil then
   begin
-    for Enemy in FFlybys do if (Time>=Enemy.Launch) and (Time<Enemy.Finish) then
+    for Enemy in FFlybys do if (Time>=Enemy.Launch) and (Time<Enemy.Finish) and ((Direction<>0) or (Time<Schedule.ClearTime)) then
     begin
       P:=FlybyAt(Enemy,Time);J:=8;if Enemy.Variant=1 then J:=13 else if Enemy.Variant=2 then J:=14;
+      if Enemy.Route<>frUpperCross then J:=21+Enemy.Variant;
       Alpha:=Min(1.0,Min((Time-Enemy.Launch)/0.3,(Enemy.Finish-Time)/0.4));
       Sprite(C,J,P,Enemy.Size,Width,Height,Direction,Alpha*0.9);
     end;
