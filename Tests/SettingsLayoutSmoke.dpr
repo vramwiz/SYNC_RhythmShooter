@@ -3,7 +3,7 @@
 uses
   Winapi.Windows, System.SysUtils, System.Classes, System.IOUtils, System.Types,
   Vcl.Forms, Vcl.Controls, Vcl.StdCtrls, Vcl.ComCtrls, Vcl.Graphics, Vcl.Imaging.pngimage,
-  RhythmSettings, RhythmDesignFrame, RhythmControls, SYNC_RhythmShooter_SettingsForm;
+  RhythmSettings, RhythmStyles, RhythmAudio, RhythmWaveView, RhythmDesignFrame, RhythmControls, SYNC_RhythmShooter_SettingsForm;
 
 type
   TControlAccess = class(TControl);
@@ -54,6 +54,27 @@ begin
   end;
 end;
 
+procedure CheckOptionCaption(Form:TFormRhythmShooterSettings;const LabelName,ControlName:string);
+var L,C:TControl;
+begin
+  L:=TControl(Form.FindComponent(LabelName));C:=TControl(Form.FindComponent(ControlName));
+  if (L=nil) or (C=nil) or (L.Parent<>C.Parent) or (L.BoundsRect.Right>C.Left) then
+    raise Exception.Create('Caption is not to the left of its control: '+LabelName);
+end;
+procedure CheckWaveHitTest;
+var Wave:TRhythmWaveView;Audio:TRhythmAudio;
+begin
+  Wave:=TRhythmWaveView.Create(nil);Audio:=TRhythmAudio.Create;
+  try
+    Audio.Duration:=10;Wave.SetBounds(0,0,101,42);Wave.SetAudio(Audio);
+    if (Wave.TimeAt(-20)<>0) or (Wave.TimeAt(0)<>0) or (Abs(Wave.TimeAt(50)-5)>1E-9) or
+      (Wave.TimeAt(100)<>10) or (Wave.TimeAt(150)<>10) then raise Exception.Create('Waveform hit test does not reach/clamp its endpoints');
+    Wave.Width:=1;if Wave.TimeAt(0)<>0 then raise Exception.Create('Single-pixel waveform hit test failed');
+    Wave.Width:=101;Audio.Duration:=0;if Wave.TimeAt(50)<>0 then raise Exception.Create('Zero-duration waveform hit test failed');
+    Wave.SetAudio(nil);if Wave.TimeAt(50)<>0 then raise Exception.Create('Unprepared waveform hit test failed');
+  finally Wave.Free;Audio.Free;end;
+end;
+
 const DPIs: array[0..3] of Integer = (96, 144, 192, 96);
 var
   Form: TFormRhythmShooterSettings;
@@ -68,6 +89,7 @@ begin
     SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
     Application.Initialize;
     Application.ShowMainForm := False;
+    CheckWaveHitTest;
     Folder := TPath.Combine(ExtractFileDir(ParamStr(0)), 'LayoutVerification');
     ForceDirectories(Folder);
     Form := TFormRhythmShooterSettings.Create(nil);
@@ -80,6 +102,8 @@ begin
       Form.Show;
       Writeln('INITIAL_PPI=', Form.CurrentPPI, ' FONT_HEIGHT=', Form.Font.Height);
       CheckLayout(Form);
+      if Form.FindComponent('PreviewPause')<>nil then raise Exception.Create('Separate pause button still exists');
+      if TButton(Form.FindComponent('PreviewPlay')).Caption<>'再生' then raise Exception.Create('Idle toggle caption is wrong');
       Bitmap:=Form.GetFormImage;PNG:=TPngImage.Create;
       try PNG.Assign(Bitmap);PNG.SaveToFile(TPath.Combine(Folder,'initial.png'));
       finally PNG.Free;Bitmap.Free;end;
@@ -121,6 +145,30 @@ begin
           end;
         end;
       end;
+      Settings.Style:=rsFireworks;Settings.FireworksRichness:=100;
+      Settings.Designs[8].Memo:='keep design while changing fireworks';
+      Form.ConfigureState(Settings,320,180);
+      for D:=Low(DPIs) to High(DPIs) do begin
+        Form.ScaleForPPI(DPIs[D]);
+        Form.ClientWidth:=MulDiv(850,DPIs[D],96);Form.ClientHeight:=MulDiv(760,DPIs[D],96);
+        Form.Repaint;Application.ProcessMessages;CheckLayout(Form);
+        CheckOptionCaption(Form,'StyleCaption','AnimationStyle');CheckOptionCaption(Form,'DirectionCaption','ScrollDirection');
+        CheckOptionCaption(Form,'SensitivityCaption','Sensitivity');CheckOptionCaption(Form,'RichnessCaption','FireworksRichness');
+        if TControl(Form.FindComponent('AnimationOptions')).Height>MulDiv(44,Form.CurrentPPI,96) then
+          raise Exception.Create('Normal-width options did not fit on one row');
+        if not TTrackBar(Form.FindComponent('FireworksRichness')).Parent.Visible then
+          raise Exception.Create('Fireworks richness row is hidden');
+        if Form.Snapshot.FireworksRichness<>100 then raise Exception.Create('Richness was not restored');
+      end;
+      Form.Constraints.MinWidth:=0;Form.ClientWidth:=MulDiv(600,Form.CurrentPPI,96);
+      Form.Repaint;Application.ProcessMessages;CheckLayout(Form);
+      if TControl(Form.FindComponent('AnimationOptions')).Height<=MulDiv(44,Form.CurrentPPI,96) then
+        raise Exception.Create('Narrow options did not wrap safely');
+      Settings.Style:=rsBall;Form.ConfigureState(Settings,320,180);
+      if TTrackBar(Form.FindComponent('FireworksRichness')).Parent.Visible then
+        raise Exception.Create('Fireworks richness row is shown for pinball');
+      if Form.Snapshot.Designs[8].Memo<>Settings.Designs[8].Memo then
+        raise Exception.Create('Style switching erased shooting design memo');
       Form.Close;
     finally
       Form.Free;

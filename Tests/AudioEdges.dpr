@@ -1,8 +1,8 @@
 ﻿program AudioEdges;
 {$APPTYPE CONSOLE}
 uses System.SysUtils, System.Classes, System.IOUtils, System.Math, System.JSON,
-  Winapi.MMSystem, RhythmAudio in '..\Source\Audio\RhythmAudio.pas',
-  RhythmPaths in '..\Source\Common\RhythmPaths.pas',
+  Winapi.MMSystem, RhythmAudio in '..\Source\Composition\RhythmAudio.pas',
+  RhythmPaths in '..\Source\Shared\Common\RhythmPaths.pas',
   MimiChildProcess in '..\Source\Lib\Process\MimiChildProcess.pas';
 var Root:TJSONObject;Folder,Path,FirstKey,ErrorText:string;Audio:TRhythmAudio;
   Samples:TArray<SmallInt>;I,J,LowCount,HighCount:Integer;T,Age,Value,Distance:Double;Stream:TFileStream;

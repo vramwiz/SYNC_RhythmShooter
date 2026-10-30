@@ -1,5 +1,5 @@
 [project]
-version=2010301
+version=2010601
 file=D:\DelphiProg\MyApp\SYNC_RhythmShooter\Aup2\sample.aup2
 display.scene=0
 preview.scene=0
@@ -11,7 +11,7 @@ video.height=1080
 video.rate=30
 video.scale=1
 audio.rate=44100
-cursor.frame=635
+cursor.frame=0
 cursor.layer=1
 preview.frame=0
 display.frame=0
@@ -41,7 +41,7 @@ effect.name=リズムシューティング
 X=0
 Y=0
 設定=
-設定JSON={"schema":1,"music":"C:\\Users\\vramw\\Music\\magnific_aQo5nq8fSh.mp3","direction":0,"sensitivity":50,"zoom":100.0,"x":0.0,"y":0.0}
+設定JSON={"schema":1,"music":"C:\\Users\\vramw\\Music\\magnific_aQo5nq8fSh.mp3","direction":0,"sensitivity":16,"zoom":100.0,"x":0.0,"y":0.0,"style":"ball","fireworksRichness":50,"plan":{"key":"4f0b43b244e85a6aab53a6811d56e3c0a0478afa0e046d144b43c7d61fbba685","source":"2e722315dc71767cc2cfa7ff5f32ea25f8a1036787476cf221d0a6cf58551fe3","digest":"c3252afa72500f430ac42ac314a178f5dd63220edbade179eb668658403defa4","style":"ball","version":4,"sensitivity":16,"direction":0,"variant":0},"designs":[]}
 音楽ファイル=
 スクロール方向=縦
 解析感度=50

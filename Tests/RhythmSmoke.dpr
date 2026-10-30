@@ -2,10 +2,10 @@
 {$APPTYPE CONSOLE}
 uses System.SysUtils, System.Classes, System.Math, System.IOUtils, System.JSON,
   System.Hash, System.Diagnostics, Vcl.Graphics, Winapi.Windows,
-  RhythmAudio in '..\Source\Audio\RhythmAudio.pas',
-  RhythmPlayback in '..\Source\Audio\RhythmPlayback.pas',
-  RhythmScene in '..\Source\Engine\RhythmScene.pas',
-  RhythmPaths in '..\Source\Common\RhythmPaths.pas',
+  RhythmAudio in '..\Source\Composition\RhythmAudio.pas',
+  RhythmPlayback in '..\Source\Shared\Audio\RhythmPlayback.pas',
+  RhythmScene in '..\Source\Composition\RhythmScene.pas',
+  RhythmPaths in '..\Source\Shared\Common\RhythmPaths.pas',
   MimiChildProcess in '..\Source\Lib\Process\MimiChildProcess.pas';
 var A,B:TRhythmAudio;Renderer:TRhythmRenderer;Bitmap:Vcl.Graphics.TBitmap;
   Root,Item:TJSONObject;Events:TJSONArray;Watch:TStopwatch;Player:TRhythmPlayback;

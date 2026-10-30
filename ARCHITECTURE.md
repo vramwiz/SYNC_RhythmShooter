@@ -1,81 +1,63 @@
-﻿# アニメーションの構成と拡張（2026-10-30）
+﻿最新: [BALL_PERSISTENCE.md](BALL_PERSISTENCE.md)。Ballの新規計画版5、旧v4互換。計画本文に描画復元メタデータ、オブジェクト参照にsourceStampを保存。ホストは軽量な復元データ→既存計画検証を使い、PCMを必須にしない。Shooting=1、Fireworks=2を維持。今回未ビルド・未実行。
 
-基準は `D:\DelphiProg\MyApp\SYNC_RhythmShooter` の `3cab353aea5481a0fc16e6879ef627eab1092938`。着手時の作業ツリーはクリーンで、受入済みの敵造形・通常敵の配色・下方進入を含んでいた。別の古いチェックアウトは使用していない。
+最新差分: [TRAJECTORY_UPDATE_20261030.md](TRAJECTORY_UPDATE_20261030.md)。計画版はShooting=1、Ball=4、Fireworks=2。共通の計画参照にvariantを追加し、花火の華やかさだけへ使用する。Shooting/Ballは0で従来のキー式を維持。プロジェクト分離・SDK境界・保存先は変更しない。今回変更後は未ビルド・未実行。
 
-今回はソース整理と静的確認だけ。**コンパイル・実行・配備は未確認**であり、以前のビルド成功は今回の結果ではない。ビルドはユーザーが行う。
+最新の追加: [FIREWORKS_STYLE.md](FIREWORKS_STYLE.md)。Shooting/Ball/Fireworksの3製品・3スタイルを共有基盤で扱う。今回もビルド/実行は未確認。
 
-## 責務と依存方向
+# 共通コードとアニメーション構成（2026-10-30、未ビルド）
 
-```mermaid
-flowchart TD
-  Host[AviUtl2 / 専用プレビュー] --> Facade[RhythmScene: 既存APIの互換窓口]
-  Facade --> Engine[RhythmAnimation: 絶対時刻・変換・描画実行]
-  Facade --> Shooting[RhythmShootingScene: 現行シューティング]
-  Engine --> Contract[TAnimationScene: Prepare / Draw]
-  Shooting --> Contract
-  Engine --> Surface[RhythmRenderSurface: GDI / D2D]
-  Surface --> Bank[RhythmImageBank: 画像・透過・派生・キャッシュ]
-  Surface --> D2D[RhythmD2D: ネイティブ描画]
-  Shooting --> Background[RhythmParallax: 多重スクロール]
-  Facade --> Art[RhythmShootingAssets: 素材カタログ・向き・配色]
-  Art --> Bank
-  Shooting --> Plan[既存 RhythmBarrage / RhythmStage / RhythmMotion]
-  Shooting --> Audio[RhythmAudio: 既存音声・キャッシュ互換API]
-  Audio --> Analysis[RhythmAudioAnalysis: PCM・RMS・アクセント]
-```
+現在の基準は `23314ff`。同じRootに `SYNC_RhythmShooter` と `SYNC_RhythmBall` のDPR/DPROJを置き、ソース本体はコピーせず共有する。プロジェクトごとの識別名・初期スタイルはDPRの `ConfigureRhythmProduct` で設定する。Rootフォルダは現状のままで、ソース参照は相対パス。
 
-共有描画実行部は音声クラス、敵、弾、ボス、クリア状態を参照しない。シーンは任意の絶対時刻を受け取って描く。音声など入力データの結び付け方は各シーンの責任とし、汎用オブジェクトへのキャストや全モード共通の巨大設定レコードは設けていない。
+## フォルダの責務
 
-### 共有できる部分
-
-| ファイル | 責務 |
+| フォルダ | 内容 |
 |---|---|
-| `Source/Audio/RhythmAudioAnalysis.pas` | 44.1kHz・ステレオS16 PCMからRMS波形とアクセントを求める純粋処理。時刻・強度・解析位置だけを返し、敵レーンや弾速を知らない。 |
-| `Source/Engine/RhythmImageBank.pas` | 素材カタログ、標準画像と検証済みカスタム参照の読込、透過、回転、アルファ画像、画像選択キー。機体配色や機種番号を持たない。 |
-| `Source/Engine/RhythmRenderSurface.pas` | 描画面、GDI/D2Dの選択、ピクセル単位のスプライト描画、縮小画像キャッシュ、GPUリソースの再作成と解放。 |
-| `Source/Engine/RhythmParallax.pas` | 既存の3層背景、固定シードの星、カスタム背景の繰返し表示。敵や音楽には依存しない。 |
-| `Source/Engine/RhythmAnimation.pas` | `TAnimationFrame`、差替え口の `TAnimationScene`、実行部 `TAnimationRenderer`。絶対時刻・描画範囲・方向、拡大/X/Y、描画失敗時のGDI再描画、共通メッセージ。 |
-| 既存 `RhythmPlayback` / `RhythmPaths` / `RhythmDesignImages` 等 | 音声時計、ファイル位置、画像の検証・保存。今回の振舞いは変更していない。 |
+| Source/Shared/Audio | 純粋なPCM/RMS/アクセント解析と音声時計 |
+| Source/Shared/Render | アニメーション実行部、素材バンク、GDI/D2D描画面、背景、図形プリミティブ |
+| Source/Shared/Settings | スタイル列挙、プロジェクト識別、既存JSON、計画参照 |
+| Source/Shared/Common・Assets | DLL相対/ユーザー保存先、画像検証・読込・保存 |
+| Source/Shared/UI・Integrations・Host | 共通設定画面、波形、カスタムデザインと既存AI連携、AviUtl2の公開境界 |
+| Source/Composition | スタイルとシーンの組立、準備ワーカー、従来の音声/素材カタログの互換アダプター |
+| Source/Shooting | 自機・敵・ボス・弾幕・回避・クリア、標準素材生成と受入済み配色 |
+| Source/Ball | 接触時刻の計画/保存検証、ボール描画 |
+| Source/Lib | 既存SDK・共通外部コード。今回変更していない |
 
-`RhythmD2D.Create` には任意の透過色マスクを追加した。既存の1引数呼出しも残し、既定の透過色処理は従来どおり。新しい素材カタログでは「0番・3番だけ不透明」という番号規則を描画基盤へ持ち込まず、素材定義から渡せる。
+Sharedの設定画面からCompositionへ処理を委譲し、スタイル固有計画は各専用ユニットへ置く。Host/Formユニットには互換性のため既存のSYNC_RhythmShooter名を残しているが、両DPRから同じソースを参照する。別のShooter DLLを読み込む依存ではない。
 
-### シューティング固有部分
+## 差替え口
 
-- `RhythmShootingAssets.pas`：現行15素材・9派生画像の定義、敵の受入済み配色、横向き/上向き、アルファ派生の対象。画像準備は素材バンクの構築完了後に一度だけ行い、画像変更時だけ再作成する。カスタム画像の色は加工しない。
-- `RhythmShootingScene.pas`：弾幕・編隊の計画キャッシュ、命中逆算、通常敵・ボス・弾・爆発の描画、登場・クリア・離脱、素材の表示サイズと向き。既存の描画順序と数式を移した。
-- `RhythmBarrage` / `RhythmStage` / `RhythmMotion` / `RhythmSections`：既存のシューティング計画と動作。歴史的なファイル位置は保ち、今回ロジックを変更していない。これらは汎用の時間/解析モデルとは扱わない。
-- `RhythmScene.pas`：既存の `TRhythmRenderer` と `PlayerAt` / `EnemyAt` / `BulletAt` / `ExplosionOpacity` を維持する約74行の互換窓口。ホストとプレビューが同じ現行シーンを使う。
+`TAnimationScene.Prepare/Draw` は絶対時刻、方向、描画範囲を受ける。`TAnimationRenderer.Create(Scene, ImageBank)` がシーンと素材バンクを所有し、拡大/X/Y、描画失敗時のGDI再描画、共通の案内表示を担う。入力音声は借用であり、呼出側がPrepare/Draw中の生存を保証する。
 
-`RhythmAudio` も互換境界である。音声読込・キャッシュと従来の `TRhythmHit` / ボス参照を残し、解析本体だけを共有ユニットへ委譲した。旧キャッシュに必要な `lane` / `flight` はこのアダプターで従来どおり算出する。将来のアニメーションが `RhythmAudioAnalysis` を使う際、これらのゲーム用フィールドを使う必要はない。キャッシュ形式の全面移行はしていない。
+`RhythmScene` は既存TRhythmRenderer APIを保つ構成窓口。スタイル切替は新しいシーンと素材バンクを作成してから交換する。シューティング用の公開ヘルパーも維持する。新しい種類は専用Scene/計画/必要な素材バンクを追加し、スタイル定義と構成箇所だけを拡張する。共有描画基盤へ敵/弾の条件分岐を増やさない。
 
-## 別アニメーションを追加する手順
+画像は素材バンクを通して変更し、派生・透過・縮小・GPUキャッシュをまとめて更新する。カスタム画像への色補正は行わない。図形はSurface.Circle/Line、画像はSurface.DrawAssetで両描画経路を使う。Canvasへ直接GDI描画をするシーンはUseD2DをFalseにする。既存Parallaxを使う場合は背景6スロットを方向×3層で用意する。
 
-1. `TAnimationScene` を継承したシーンを追加する。必要な音楽解析や専用データを、そのシーンの型付きプロパティ等で渡す。`Prepare(Frame)` はデータ/設定/描画範囲の変更に応じた計画の準備、`Draw(Surface, Frame)` は指定された絶対時刻の描画に限定する。前フレームの進行、壁時計、グローバル乱数へ依存させない。 描画はGDI/D2D共通の Surface.DrawAsset を使う。Canvasへの直接GDI描画を使うシーンは UseD2D をFalseにする（試験プローブもこの経路）。共有Parallaxを使う場合は背景6スロットを方向×3層の順に用意する。
-2. 素材が必要なら `TAnimationImageBank` を継承し、標準ファイル名・表示名・不透明/透過のカタログと派生画像を定義する。色調整などは `PrepareImages` に置き、カスタム画像には無断適用しない。`EnsurePrepared` は描画面が構築後に自動で呼ぶので、基底コンストラクタから未構築の派生状態を呼び出さない。
-3. 構成箇所で `TAnimationRenderer.Create(新しいシーン, 新しい素材バンク)` と結び付ける。描画基盤や既存シューティングへモード分岐を追加しない。現行の `RhythmScene` はシューティング用の構成例であり、新しいシーンから参照しない。
-4. アニメーション実行部はシーンと素材バンクを所有して解放する。音楽等の入力データはシーンが借用するので、`Prepare` / `Draw` の実行中は呼出側が生存を保証する。画像の標準復帰・選択変更は `ApplyChoices` を通し、派生画像・縮小キャッシュ・GPU登録を整合させる。
-5. 現行の15スロットJSONとUIはシューティングの互換境界である。将来、新しい素材カタログやモード固有設定を公開する際は、そのモードの設定/移行を別途設計し、旧IDを別の意味へ置き換えない。今回モード選択UIや別アニメーション本体は追加していない。
+## 音声と計画
 
-共有コアの使用例は新しい試験ソース `Tests/AnimationArchitectureSmoke.dpr` にある。素材・音楽・シューティングを持たない描画プローブを差し込み、途中シークと変換の契約を調べるための試験であり、製品の新モードではない。
+RhythmAudioAnalysisは44.1kHzステレオS16 PCMから時刻・強度・波形だけを求める。Composition/RhythmAudioは旧イベントJSONのlane/flightやボス参照を残す互換境界。BallはHitsの時刻・強度と有効音声終端を使い、敵レーン・弾速・ボス計画は使わない。
 
-## 維持した互換性
+RhythmPrepareが専用画面の準備スレッドを担当する。音楽/感度は音声キャッシュの責務、スタイル/方向は演出計画の責務とする。ボールは接触配列を別の計画JSONへ保存し、設定JSONには版・条件・キー・内容SHAを記録する。本番は準備済みデータを読み、解析/ボール計画生成を開始しない。
 
-- AviUtl2の必須export、公開設定、SDK型、JSONスキーマ1と素材ID、AI作成・候補採用の導線は変更していない。
-- PCM/イベントキャッシュ名、schema、analysisVersion、検証・読込・書込、ロードスレッドは維持。RMS・アクセント検出の数式も維持し、抽出結果に従来と同じ整数ハッシュでレーンを付ける。
-- プレビューも本番も従来の `TRhythmRenderer` を経由する。拡大/X/Yを変えて音声解析を開始する経路は追加していない。
-- 受入済み通常敵の色補正は数式を変えずに移動。標準BMP、カスタム画像、素材参照、ユーザー設定を書き換えていない。
-- スプライトの表示サイズ、GDIとD2Dそれぞれの座標丸め、透明度、回転方向、背景の種・速度、戦闘/クリアの数式を維持した。
+UI要求は番号で照合し、古い完了結果を採用しない。再準備中は再生を止め、以前の結果を新設定へ適用しない。正常・失敗時に操作を復帰し、画面終了では自分のワーカーを中止・回収する。
 
-## 参照設定とユーザー側での確認
+## 互換性と確認状態
 
-主 `SYNC_RhythmShooter.dpr` / `.dproj` と `Tools/RhythmPreview.dpr` に新規7ユニットを追加。新規ファイルは既存の Audio / Engine フォルダに置き、既存テストのユニット探索パスで解決できるようにした。通常のビルドイベントや配備設定は変更していない。IDEでプロジェクトを開いたままなら外部変更後の参照一覧を再読込する。
+既存schema 1、素材ID、ホスト公開項目、SDK型、AI作成/採用経路を維持。styleがない旧JSONはシューティングとする。新規設定のみプロジェクト別の初期スタイルを使う。Shooting専用7ユニットは処理を変更せず移動した。標準画像・カスタム画像・ユーザーデータは今回書き換えていない。
 
-- `Tests/AnimationArchitectureSmoke.dpr` と `Scripts/TestArchitecture.cmd` を追加。ユーザーがスクリプトを呼ぶと、専用の `Win64/ArchitectureTests` へ試験をコンパイルして非GUI実行する。製品のビルド後イベント・配備は呼ばず、音声デコード・再生やAI通信も行わない。
-- この試験はシーン差替え、絶対時刻・シーク・拡大/X/Y、既知PCMのアクセントと従来レーン/弾速の適合を対象とする。
-- 既存 `CombatSmoke` / `LowerEnemySmoke`、設定保存・カスタム素材関連の試験ソースは維持した。今回のリンク構成での画像、決定的シーク、音ハメ、クリア、カスタム画像とJSON再開はユーザー側のビルド/回帰で確認が必要。
+ユーザー向けの仕様、保存先、ビルド、確認手順は [BALL_STYLE.md](BALL_STYLE.md) を参照。旧テストとScriptsの探索パス、両DPR/DPROJ、両プレビューDPRを新配置に合わせる。将来Rootを改名しても相対参照は維持される。ProductIdを変更する場合は別途保存先の移行が必要。
 
-## 今回実施した静的確認
+今回の確認は静的な依存、参照、XML、スクリプト構文、移動前との内容照合まで。**ビルド・試験実行・アプリ起動・配備・commit/pushは行っていない。コンパイルと実表示は未検証。**
 
-全追跡ファイルの着手時ハッシュを保管し、上書き前にHEAD・作業ツリー・ハッシュ一致を確認した。受入済み配色の移動、戦闘描画の順序と数式、既存音声API、キャッシュ処理の残存をソース照合した。共有描画部/解析部にゲーム用ユニット参照がないこと、ローカル31ユニットの依存に循環がないこと、新規参照の整合とXML、差分の空白を静的確認した。
+## ピンボール計画v2
 
-これらはコンパイルや実行の代わりではない。**今回のソースは未ビルドで、新しい試験も未実行。** アプリ起動・実表示・音声同期・GUI保存再開・配備・commit/push は行っていない。
+Source/Ball/RhythmBallGeometry は盤面の等方座標、障害物/曲線の型、接触半径、Bezier凸包と移動円の交差検査を担当。RhythmBallPlan は音時刻から障害物の出現・流入・反射・破壊と軌道を計画しJSON保存。RhythmBallScene は同じ座標変換で盤面とエフェクトを描く。準備スレッド/本番描画の責務境界は維持する。スタイルID ball は固定、StylePlanVersion(rsBall)のみ2へ上げ、Shootingは1のまま。ビルド/実行未確認。
+
+## 花火の追加（2026-10-30）
+
+- Source/Fireworks/RhythmFireworksPlan: 音の時刻から打ち上げ・開花・種類/色/粒子数/余韻を計画しJSON保存。
+- Source/Fireworks/RhythmFireworksScene: 星空・街並み/地形、打ち上げ、牡丹/柳/二重輪、終端静止を共通D2D/GDI描画面で描く。
+- Shared/Settingsはstyle=fireworksと新製品IDを追加。既存の列挙値・JSON ID・SDK公開設定は維持。Composition/RhythmSceneが3種類を組み立て、RhythmPrepareが準備と保存後の読込検証を担当する。
+- Shared/Audio/RhythmPlaybackは任意のプレビュー余韻を私有出力バッファへ無音追加する。解析済み音声は借用のまま変更しない。既存呼出しの既定値は追加0秒。花火のみ、作業スレッドから返された描画終端までの余白を渡す。再生・停止・シークは同じ音声デバイス時計を使い、別の壁時計を混ぜない。
+- 新プロジェクトSYNC_RhythmFireworksは出力/DCU/設定/配備先/GUIDを分離する。各製品から3スタイルを選べる。ホスト描画は準備済み計画を読み、音声解析を始めない。
+
+共有UI/工場/ビルド探索パスだけを拡張し、Shooting専用ユニットとBall v3の生成/描画は変更しない。新規アニメーションは、Style ID/版、専用Plan/Scene、準備・組立・UI選択、プロジェクト参照と出力、試験ソースの順に追加する。共通音声解析/再生・描画面は複製しない。

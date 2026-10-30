@@ -1,0 +1,189 @@
+﻿<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+    <PropertyGroup>
+        <ProjectGuid>{7D03EE8B-46B0-4964-AA8D-5BBC3E2EF178}</ProjectGuid>
+        <ProjectVersion>20.4</ProjectVersion>
+        <FrameworkType>None</FrameworkType>
+        <Config Condition="'$(Config)'==''">Release</Config>
+        <Platform Condition="'$(Platform)'==''">Win64</Platform>
+        <ProjectName Condition="'$(ProjectName)'==''">SYNC_RhythmBall</ProjectName>
+        <TargetedPlatforms>2</TargetedPlatforms>
+        <AppType>Library</AppType>
+        <MainSource>SYNC_RhythmBall.dpr</MainSource>
+        <Base>True</Base>
+        <ProjectDir>$(MSBuildProjectDirectory)</ProjectDir>
+        <RhythmDeployDirectory Condition="'$(RhythmDeployDirectory)'==''">C:\ProgramData\aviutl2\Plugin\SYNC_RhythmBall</RhythmDeployDirectory>
+    </PropertyGroup>
+    <PropertyGroup Condition="'$(Config)'=='Base' or '$(Base)'!=''">
+        <Base>true</Base>
+    </PropertyGroup>
+    <PropertyGroup Condition="'$(Config)'=='Debug' or '$(Cfg_1)'!=''">
+        <Cfg_1>true</Cfg_1>
+        <CfgParent>Base</CfgParent>
+        <Base>true</Base>
+    </PropertyGroup>
+    <PropertyGroup Condition="('$(Platform)'=='Win64' and '$(Cfg_1)'=='true') or '$(Cfg_1_Win64)'!=''">
+        <Cfg_1_Win64>true</Cfg_1_Win64>
+        <CfgParent>Cfg_1</CfgParent>
+        <Cfg_1>true</Cfg_1>
+        <Base>true</Base>
+    </PropertyGroup>
+    <PropertyGroup Condition="'$(Config)'=='Release' or '$(Cfg_2)'!=''">
+        <Cfg_2>true</Cfg_2>
+        <CfgParent>Base</CfgParent>
+        <Base>true</Base>
+    </PropertyGroup>
+    <PropertyGroup Condition="('$(Platform)'=='Win64' and '$(Cfg_2)'=='true') or '$(Cfg_2_Win64)'!=''">
+        <Cfg_2_Win64>true</Cfg_2_Win64>
+        <CfgParent>Cfg_2</CfgParent>
+        <Cfg_2>true</Cfg_2>
+        <Base>true</Base>
+    </PropertyGroup>
+    <PropertyGroup Condition="'$(Base)'!=''">
+        <GenDll>true</GenDll>
+        <DCC_DcuOutput>.\$(Platform)\RhythmBall\$(Config)\DCU</DCC_DcuOutput>
+        <DCC_ExeOutput>.\$(Platform)\RhythmBall\$(Config)</DCC_ExeOutput>
+        <DCC_UnitSearchPath>Source\Shared\Audio;Source\Shared\Render;Source\Shared\Settings;Source\Shared\Common;Source\Shared\Assets;Source\Shared\UI;Source\Shared\Host;Source\Shared\Integrations;Source\Composition;Source\Shooting;Source\Ball;Source\Fireworks;Source\Lib;Source\Lib\Process;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
+        <DCC_Namespace>System;Xml;Data;Datasnap;Web;Soap;Winapi;Vcl;$(DCC_Namespace)</DCC_Namespace>
+        <SanitizedProjectName>SYNC_RhythmBall</SanitizedProjectName>
+    </PropertyGroup>
+    <PropertyGroup Condition="'$(Cfg_1)'!=''">
+        <BT_BuildType>Debug</BT_BuildType>
+        <DCC_Define>DEBUG;$(DCC_Define)</DCC_Define>
+        <DCC_DebugDCUs>true</DCC_DebugDCUs>
+        <DCC_DebugInformation>1</DCC_DebugInformation>
+        <DCC_LocalDebugSymbols>true</DCC_LocalDebugSymbols>
+        <DCC_Optimize>false</DCC_Optimize>
+        <DCC_GenerateStackFrames>true</DCC_GenerateStackFrames>
+        <DCC_DebugInfoInExe>true</DCC_DebugInfoInExe>
+        <DCC_RemoteDebug>true</DCC_RemoteDebug>
+        <DCC_IntegerOverflowCheck>true</DCC_IntegerOverflowCheck>
+        <DCC_RangeChecking>true</DCC_RangeChecking>
+    </PropertyGroup>
+    <PropertyGroup Condition="'$(Cfg_1_Win64)'!=''">
+        <PreBuildEvent><![CDATA[powershell -NoProfile -ExecutionPolicy Bypass -File "$(PROJECTDIR)\Scripts\BuildPlugin.ps1" -ProjectName SYNC_RhythmBall -Stage Prepare -Config Debug -LibraryPath "$(OUTPUTPATH)"]]></PreBuildEvent>
+        <PreBuildEventIgnoreExitCode>False</PreBuildEventIgnoreExitCode>
+        <PreLinkEvent><![CDATA[]]></PreLinkEvent>
+        <PreLinkEventIgnoreExitCode>False</PreLinkEventIgnoreExitCode>
+        <PostBuildEvent><![CDATA[powershell -NoProfile -ExecutionPolicy Bypass -File "$(PROJECTDIR)\Scripts\BuildPlugin.ps1" -ProjectName SYNC_RhythmBall -Stage Complete -Config Debug -LibraryPath "$(OUTPUTPATH)" -DeployDirectory "$(RhythmDeployDirectory)"]]></PostBuildEvent>
+        <PostBuildEventIgnoreExitCode>False</PostBuildEventIgnoreExitCode>
+        <PostBuildEventExecuteWhen>Always</PostBuildEventExecuteWhen>
+    </PropertyGroup>
+    <PropertyGroup Condition="'$(Cfg_2)'!=''">
+        <BT_BuildType>Debug</BT_BuildType>
+        <DCC_Optimize>true</DCC_Optimize>
+        <DCC_RemoteDebug>false</DCC_RemoteDebug>
+        <DCC_LocalDebugSymbols>false</DCC_LocalDebugSymbols>
+        <DCC_Define>RELEASE;$(DCC_Define)</DCC_Define>
+        <DCC_SymbolReferenceInfo>0</DCC_SymbolReferenceInfo>
+        <DCC_DebugInformation>0</DCC_DebugInformation>
+    </PropertyGroup>
+    <PropertyGroup Condition="'$(Cfg_2_Win64)'!=''">
+        <PreBuildEvent><![CDATA[powershell -NoProfile -ExecutionPolicy Bypass -File "$(PROJECTDIR)\Scripts\BuildPlugin.ps1" -ProjectName SYNC_RhythmBall -Stage Prepare -Config Release -LibraryPath "$(OUTPUTPATH)"]]></PreBuildEvent>
+        <PreBuildEventIgnoreExitCode>False</PreBuildEventIgnoreExitCode>
+        <PreLinkEvent><![CDATA[]]></PreLinkEvent>
+        <PreLinkEventIgnoreExitCode>False</PreLinkEventIgnoreExitCode>
+        <PostBuildEvent><![CDATA[powershell -NoProfile -ExecutionPolicy Bypass -File "$(PROJECTDIR)\Scripts\BuildPlugin.ps1" -ProjectName SYNC_RhythmBall -Stage Complete -Config Release -LibraryPath "$(OUTPUTPATH)" -DeployDirectory "$(RhythmDeployDirectory)"]]></PostBuildEvent>
+        <PostBuildEventIgnoreExitCode>False</PostBuildEventIgnoreExitCode>
+        <PostBuildEventExecuteWhen>Always</PostBuildEventExecuteWhen>
+        <VerInfo_Locale>1041</VerInfo_Locale>
+        <Manifest_File>(なし)</Manifest_File>
+        <AppDPIAwarenessMode>none</AppDPIAwarenessMode>
+    </PropertyGroup>
+    <ItemGroup>
+        <DelphiCompile Include="$(MainSource)">
+            <MainSource>MainSource</MainSource>
+        </DelphiCompile>
+        <DCCReference Include="Source\Shared\Settings\RhythmStyles.pas"/>
+        <DCCReference Include="Source\Shared\Settings\RhythmProduct.pas"/>
+        <DCCReference Include="Source\Shared\Settings\RhythmPlanRef.pas"/>
+        <DCCReference Include="Source\Composition\RhythmPrepare.pas"/>
+        <DCCReference Include="Source\Ball\RhythmBallGeometry.pas"/>
+        <DCCReference Include="Source\Ball\RhythmBallPlan.pas"/>
+        <DCCReference Include="Source\Ball\RhythmBallScene.pas"/>
+        <DCCReference Include="Source\Fireworks\RhythmFireworksPlan.pas"/>
+        <DCCReference Include="Source\Fireworks\RhythmFireworksScene.pas"/>
+        <DCCReference Include="Source\Composition\RhythmDesignTypes.pas"/>
+        <DCCReference Include="Source\Shared\Assets\RhythmDesignImages.pas"/>
+        <DCCReference Include="Source\Shared\Integrations\RhythmDesignRequest.pas"/>
+        <DCCReference Include="Source\Shared\Integrations\RhythmCodexClient.pas"/>
+        <DCCReference Include="Source\Shared\UI\RhythmDesignFrame.pas"/>
+        <DCCReference Include="Source\Shared\UI\RhythmControls.pas"/>
+        <DCCReference Include="Source\Shared\Common\RhythmPaths.pas"/>
+        <DCCReference Include="Source\Shooting\RhythmMotion.pas"/>
+        <DCCReference Include="Source\Shared\Settings\RhythmSettings.pas"/>
+        <DCCReference Include="Source\Lib\Process\MimiChildProcess.pas"/>
+        <DCCReference Include="Source\Composition\RhythmAudio.pas"/>
+        <DCCReference Include="Source\Shooting\RhythmSections.pas"/>
+        <DCCReference Include="Source\Shared\Audio\RhythmPlayback.pas"/>
+        <DCCReference Include="Source\Shared\Render\RhythmImageBank.pas"/>
+        <DCCReference Include="Source\Shooting\RhythmShootingAssets.pas"/>
+        <DCCReference Include="Source\Shared\Render\RhythmRenderSurface.pas"/>
+        <DCCReference Include="Source\Shared\Render\RhythmParallax.pas"/>
+        <DCCReference Include="Source\Shared\Render\RhythmAnimation.pas"/>
+        <DCCReference Include="Source\Shooting\RhythmShootingScene.pas"/>
+        <DCCReference Include="Source\Shared\Audio\RhythmAudioAnalysis.pas"/>
+        <DCCReference Include="Source\Composition\RhythmScene.pas"/>
+        <DCCReference Include="Source\Shared\Render\RhythmD2D.pas"/>
+        <DCCReference Include="Source\Shooting\RhythmBarrage.pas"/>
+        <DCCReference Include="Source\Shooting\RhythmStage.pas"/>
+        <DCCReference Include="Source\Shared\UI\RhythmWaveView.pas"/>
+        <DCCReference Include="Source\Lib\AviUtl2FilterTypes.pas"/>
+        <DCCReference Include="Source\Lib\PluginFilterTable.pas"/>
+        <DCCReference Include="Source\Shared\Host\SYNC_RhythmShooter_LastFrameCapture.pas"/>
+        <DCCReference Include="Source\Shared\Host\SYNC_RhythmShooter_SettingsForm.pas">
+            <Form>FormRhythmShooterSettings</Form>
+        </DCCReference>
+        <DCCReference Include="Source\Shared\Host\SYNC_RhythmShooter_FilterPlugin.pas"/>
+        <BuildConfiguration Include="Base">
+            <Key>Base</Key>
+        </BuildConfiguration>
+        <BuildConfiguration Include="Debug">
+            <Key>Cfg_1</Key>
+            <CfgParent>Base</CfgParent>
+        </BuildConfiguration>
+        <BuildConfiguration Include="Release">
+            <Key>Cfg_2</Key>
+            <CfgParent>Base</CfgParent>
+        </BuildConfiguration>
+    </ItemGroup>
+    <ProjectExtensions>
+        <Borland.Personality>Delphi.Personality.12</Borland.Personality>
+        <Borland.ProjectType>Application</Borland.ProjectType>
+        <BorlandProject>
+            <Delphi.Personality>
+                <Source>
+                    <Source Name="MainSource">SYNC_RhythmBall.dpr</Source>
+                </Source>
+                <Excluded_Packages>
+                    <Excluded_Packages Name="$(BDSBIN)\dcloffice2k370.bpl">Microsoft Office 2000 オートメーション サーバー ラッパー コンポーネントのサンプル</Excluded_Packages>
+                    <Excluded_Packages Name="$(BDSBIN)\dclofficexp370.bpl">Microsoft Office XP オートメーション サーバー ラッパー コンポーネントのサンプル</Excluded_Packages>
+                </Excluded_Packages>
+            </Delphi.Personality>
+            <Platforms>
+                <Platform value="Win32">False</Platform>
+                <Platform value="Win64">True</Platform>
+            </Platforms>
+        </BorlandProject>
+        <ProjectFileVersion>12</ProjectFileVersion>
+    </ProjectExtensions>
+    <Import Project="$(BDS)\Bin\CodeGear.Delphi.Targets" Condition="Exists('$(BDS)\Bin\CodeGear.Delphi.Targets')"/>
+    <Import Project="$(APPDATA)\Embarcadero\$(BDSAPPDATABASEDIR)\$(PRODUCTVERSION)\UserTools.proj" Condition="Exists('$(APPDATA)\Embarcadero\$(BDSAPPDATABASEDIR)\$(PRODUCTVERSION)\UserTools.proj')"/>
+    <PropertyGroup Condition="'$(Config)'=='Debug' And '$(Platform)'=='Win64'">
+        <PreBuildEvent><![CDATA[powershell -NoProfile -ExecutionPolicy Bypass -File "$(PROJECTDIR)\Scripts\BuildPlugin.ps1" -ProjectName SYNC_RhythmBall -Stage Prepare -Config Debug -LibraryPath "$(OUTPUTPATH)"]]></PreBuildEvent>
+        <PreBuildEventIgnoreExitCode>False</PreBuildEventIgnoreExitCode>
+        <PreLinkEvent><![CDATA[]]></PreLinkEvent>
+        <PreLinkEventIgnoreExitCode>False</PreLinkEventIgnoreExitCode>
+        <PostBuildEvent><![CDATA[powershell -NoProfile -ExecutionPolicy Bypass -File "$(PROJECTDIR)\Scripts\BuildPlugin.ps1" -ProjectName SYNC_RhythmBall -Stage Complete -Config Debug -LibraryPath "$(OUTPUTPATH)" -DeployDirectory "$(RhythmDeployDirectory)"]]></PostBuildEvent>
+        <PostBuildEventIgnoreExitCode>False</PostBuildEventIgnoreExitCode>
+        <PostBuildEventExecuteWhen>Always</PostBuildEventExecuteWhen>
+    </PropertyGroup>
+    <PropertyGroup Condition="'$(Config)'=='Release' And '$(Platform)'=='Win64'">
+        <PreBuildEvent><![CDATA[powershell -NoProfile -ExecutionPolicy Bypass -File "$(PROJECTDIR)\Scripts\BuildPlugin.ps1" -ProjectName SYNC_RhythmBall -Stage Prepare -Config Release -LibraryPath "$(OUTPUTPATH)"]]></PreBuildEvent>
+        <PreBuildEventIgnoreExitCode>False</PreBuildEventIgnoreExitCode>
+        <PreLinkEvent><![CDATA[]]></PreLinkEvent>
+        <PreLinkEventIgnoreExitCode>False</PreLinkEventIgnoreExitCode>
+        <PostBuildEvent><![CDATA[powershell -NoProfile -ExecutionPolicy Bypass -File "$(PROJECTDIR)\Scripts\BuildPlugin.ps1" -ProjectName SYNC_RhythmBall -Stage Complete -Config Release -LibraryPath "$(OUTPUTPATH)" -DeployDirectory "$(RhythmDeployDirectory)"]]></PostBuildEvent>
+        <PostBuildEventIgnoreExitCode>False</PostBuildEventIgnoreExitCode>
+        <PostBuildEventExecuteWhen>Always</PostBuildEventExecuteWhen>
+    </PropertyGroup>
+</Project>
