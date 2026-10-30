@@ -107,6 +107,13 @@
         <DCCReference Include="Source\Audio\RhythmAudio.pas"/>
         <DCCReference Include="Source\Audio\RhythmSections.pas"/>
         <DCCReference Include="Source\Audio\RhythmPlayback.pas"/>
+        <DCCReference Include="Source\Engine\RhythmImageBank.pas"/>
+        <DCCReference Include="Source\Engine\RhythmShootingAssets.pas"/>
+        <DCCReference Include="Source\Engine\RhythmRenderSurface.pas"/>
+        <DCCReference Include="Source\Engine\RhythmParallax.pas"/>
+        <DCCReference Include="Source\Engine\RhythmAnimation.pas"/>
+        <DCCReference Include="Source\Engine\RhythmShootingScene.pas"/>
+        <DCCReference Include="Source\Audio\RhythmAudioAnalysis.pas"/>
         <DCCReference Include="Source\Engine\RhythmScene.pas"/>
         <DCCReference Include="Source\Engine\RhythmD2D.pas"/>
         <DCCReference Include="Source\Engine\RhythmBarrage.pas"/>

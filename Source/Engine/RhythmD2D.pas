@@ -11,7 +11,7 @@ type
     FStarBrush:array[0..2] of ID2D1SolidColorBrush;
     FStarTrailBrush:ID2D1SolidColorBrush;
   public
-    constructor Create(const Assets:array of TBitmap);
+    constructor Create(const Assets:array of TBitmap;const ColorKeys:TArray<Boolean> = nil);
     function BeginFrame(Target:TBitmap):Boolean;
     function EndFrame:Boolean;
     procedure DrawAsset(Index:Integer;const Bounds:TRect;Opacity:Single=1);
@@ -20,10 +20,15 @@ type
   end;
 implementation
 uses Winapi.Windows, Winapi.DXGIFormat, System.SysUtils;
-constructor TRhythmD2D.Create(const Assets:array of Vcl.Graphics.TBitmap);
+constructor TRhythmD2D.Create(const Assets:array of Vcl.Graphics.TBitmap;const ColorKeys:TArray<Boolean>);
 var Props:TD2D1RenderTargetProperties;BitmapProps:TD2D1BitmapProperties;
   I,X,Y:Integer;Temp:Vcl.Graphics.TBitmap;Pixels:TBytes;Source,Destination:PByte;
   Size:TD2D1SizeU;Color:TD2D1ColorF;
+  function UsesColorKey(Index:Integer):Boolean;
+  begin
+    if Length(ColorKeys)=0 then Result:=(Index<>0) and (Index<>3)
+    else if Index<Length(ColorKeys) then Result:=ColorKeys[Index] else Result:=False;
+  end;
 begin
   inherited Create;
   if D2D1CreateFactory(D2D1_FACTORY_TYPE_MULTI_THREADED,ID2D1Factory,nil,FFactory)<0 then
@@ -45,7 +50,7 @@ begin
         begin
           if Temp.AlphaFormat<>afIgnored then begin
             Destination[0]:=Source[0];Destination[1]:=Source[1];Destination[2]:=Source[2];Destination[3]:=Source[3];
-          end else if (I<>0) and (I<>3) and (Source[0]=255) and (Source[1]=0) and (Source[2]=255) then
+          end else if UsesColorKey(I) and (Source[0]=255) and (Source[1]=0) and (Source[2]=255) then
           begin Destination[0]:=0;Destination[1]:=0;Destination[2]:=0;Destination[3]:=0;end
           else begin Destination[0]:=Source[0];Destination[1]:=Source[1];Destination[2]:=Source[2];Destination[3]:=255;end;
           Inc(Source,4);Inc(Destination,4);

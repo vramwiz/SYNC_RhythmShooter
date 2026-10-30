@@ -56,7 +56,7 @@ function LoadCachedRhythmAudio(const Source:string;Sensitivity:Integer):TRhythmA
 implementation
 
 uses Winapi.Windows, System.IOUtils, System.Hash, System.Math,
-  System.Generics.Collections, System.JSON, RhythmPaths, RhythmMotion, MimiChildProcess;
+  System.Generics.Collections, System.JSON, RhythmPaths, RhythmMotion, MimiChildProcess, RhythmAudioAnalysis;
 
 function Cancelled(const Cancel: TFunc<Boolean>): Boolean;
 begin Result := Assigned(Cancel) and Cancel(); end;
@@ -98,70 +98,18 @@ begin
 end;
 
 procedure TRhythmAudio.Detect;
-const Hop = 441;
-var
-  Frame, Count, I, J, First, Last, LastPeak: Integer;
-  Sum, L, R, Prior, Mean, Score, Threshold, Peak, GlobalPeak: Double;
-  Flux: TArray<Double>;
-  Found: TList<TRhythmHit>;
-  H: TRhythmHit;
-  Samples: PSmallInt;
+var Analysis:TRhythmAnalysis;I,J:Integer;Accent:TRhythmAccent;H:TRhythmHit;
 begin
-  Count := Length(PCM) div 4;
-  Duration := Count / RHYTHM_RATE;
-  SetLength(Envelope, (Count + Hop - 1) div Hop);
-  SetLength(Flux, Length(Envelope));
-  Samples := PSmallInt(PCM);
-  GlobalPeak := 0;
-  for I := 0 to High(Envelope) do
-  begin
-    Sum := 0; First := I * Hop; Last := Min(Count, First + Hop);
-    for Frame := First to Last - 1 do
-    begin
-      L := Samples[Frame * 2] / 32768.0;
-      R := Samples[Frame * 2 + 1] / 32768.0;
-      Sum := Sum + (L * L + R * R) * 0.5;
-    end;
-    Envelope[I] := Sqrt(Sum / Max(1, Last - First));
-    GlobalPeak := Max(GlobalPeak, Envelope[I]);
+  Analysis:=AnalyzeRhythmPCM(PCM,Sensitivity);Duration:=Analysis.Duration;Envelope:=Analysis.Envelope;
+  SetLength(Hits,Length(Analysis.Accents));
+  for I:=0 to High(Analysis.Accents) do begin
+    Accent:=Analysis.Accents[I];H.Time:=Accent.Time;H.Strength:=Accent.Strength;
+    // Legacy shooting metadata is kept here for existing callers and v1 caches.
+    // Other animations can consume RhythmAudioAnalysis without this adapter.
+    J:=(Accent.HopIndex*73+(Accent.HopIndex mod 17)*131) mod 997;
+    H.Lane:=0.14+J/996.0*0.72;H.Flight:=ShotFlightTime(H.Time,H.Lane,H.Strength);Hits[I]:=H;
   end;
-  Prior := 0;
-  for I := 0 to High(Envelope) do
-  begin
-    Flux[I] := Max(0.0, Envelope[I] - Prior);
-    Prior := Prior * 0.55 + Envelope[I] * 0.45;
-  end;
-  Found := TList<TRhythmHit>.Create;
-  try
-    LastPeak := -1000;
-    for I := 2 to High(Envelope) - 2 do
-    begin
-      Mean := 0; First := Max(0, I - 40); Last := Min(High(Flux), I + 40);
-      for J := First to Last do Mean := Mean + Flux[J];
-      Mean := Mean / (Last - First + 1);
-      Threshold := Max(GlobalPeak * 0.012, Mean * (3.5 - Sensitivity * 0.025));
-      Score := Flux[I];
-      if (Score <= Threshold) or (Score < Flux[I-1]) or (Score <= Flux[I+1]) or
-        (Envelope[I] < GlobalPeak * 0.035) then Continue;
-      // 180 ms of separation keeps fast arrangements readable. The larger
-      // local onset replaces a weaker candidate rather than shifting its time.
-      if (I - LastPeak < 18) and (Found.Count > 0) then
-      begin
-        if Score <= Flux[LastPeak] then Continue;
-        Found.Delete(Found.Count - 1);
-      end;
-      H.Time := I * Hop / RHYTHM_RATE;
-      Peak := EnsureRange(Score / Max(0.000001, GlobalPeak * 0.22), 0.15, 1.0);
-      H.Strength := Peak;
-      // A bounded integer hash provides stable variation without global RNG state.
-      J := (I * 73 + (I mod 17) * 131) mod 997;
-      H.Lane := 0.14 + J / 996.0 * 0.72;
-      H.Flight := ShotFlightTime(H.Time,H.Lane,H.Strength);
-      if H.Time >= 0.12 then Found.Add(H);
-      LastPeak := I;
-    end;
-    Hits := Found.ToArray;UpdateSoundBounds;
-  finally Found.Free; end;
+  UpdateSoundBounds;
 end;
 
 function TRhythmAudio.NearestHit(Time: Double): Integer;
