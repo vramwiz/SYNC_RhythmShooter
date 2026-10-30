@@ -1,6 +1,6 @@
 ﻿unit RhythmScene;
 interface
-uses Vcl.Graphics,RhythmAudio,RhythmMotion,RhythmDesignTypes,RhythmAnimation,RhythmShootingScene,RhythmBallScene,RhythmFireworksScene,RhythmStyles,RhythmPlanRef;
+uses Vcl.Graphics,RhythmAudio,RhythmMotion,RhythmDesignTypes,RhythmAnimation,RhythmShootingScene,RhythmBallScene,RhythmFireworksScene,RhythmRunnerScene,RhythmStyles,RhythmPlanRef;
 type
   TRhythmPoint=RhythmMotion.TRhythmPoint;
   // Compatibility facade shared by AviUtl2 and the preview. New animations can
@@ -11,6 +11,7 @@ type
     FShooting:TShootingAnimation;
     FBall:TBallAnimation;
     FFireworks:TFireworksAnimation;
+    FRunner:TRunnerAnimation;
     FStyle:TRhythmStyle;
     FChoices:TRhythmDesigns;
     FUseD2D:Boolean;
@@ -42,22 +43,23 @@ uses RhythmShootingAssets,RhythmImageBank,RhythmProduct;
 constructor TRhythmRenderer.Create;
 begin inherited;FUseD2D:=True;CreateStyle(ProductDefaultStyle);end;
 procedure TRhythmRenderer.CreateStyle(Style:TRhythmStyle);
-var Images:TAnimationImageBank;Scene:TAnimationScene;NewRenderer:TAnimationRenderer;Shooting:TShootingAnimation;Ball:TBallAnimation;Fireworks:TFireworksAnimation;
+var Images:TAnimationImageBank;Scene:TAnimationScene;NewRenderer:TAnimationRenderer;Shooting:TShootingAnimation;Ball:TBallAnimation;Fireworks:TFireworksAnimation;Runner:TRunnerAnimation;
 begin
-  Shooting:=nil;Ball:=nil;Fireworks:=nil;
+  Shooting:=nil;Ball:=nil;Fireworks:=nil;Runner:=nil;
   if Style=rsShooting then begin Shooting:=TShootingAnimation.Create;Scene:=Shooting;
     try Images:=TShootingImageBank.Create;except Scene.Free;raise;end;
   end else begin
     if Style=rsFireworks then begin Fireworks:=TFireworksAnimation.Create;Scene:=Fireworks;end
+    else if Style=rsRunner then begin Runner:=TRunnerAnimation.Create;Scene:=Runner;end
     else begin Ball:=TBallAnimation.Create;Scene:=Ball;end;
     try Images:=TAnimationImageBank.Create([],0);except Scene.Free;raise;end;
   end;
   NewRenderer:=TAnimationRenderer.Create(Scene,Images);
   try NewRenderer.UseD2D:=FUseD2D;if Style=rsShooting then NewRenderer.ApplyChoices(FChoices);except NewRenderer.Free;raise;end;
-  FRenderer.Free;FRenderer:=NewRenderer;FShooting:=Shooting;FBall:=Ball;FFireworks:=Fireworks;FStyle:=Style;
+  FRenderer.Free;FRenderer:=NewRenderer;FShooting:=Shooting;FBall:=Ball;FFireworks:=Fireworks;FRunner:=Runner;FStyle:=Style;
 end;
 procedure TRhythmRenderer.ConfigureStyle(Style:TRhythmStyle;const Plan:TRhythmPlanRef);
-begin if Style<>FStyle then CreateStyle(Style);if FBall<>nil then FBall.SetReference(Plan);if FFireworks<>nil then FFireworks.SetReference(Plan);end;
+begin if Style<>FStyle then CreateStyle(Style);if FBall<>nil then FBall.SetReference(Plan);if FFireworks<>nil then FFireworks.SetReference(Plan);if FRunner<>nil then FRunner.SetReference(Plan);end;
 destructor TRhythmRenderer.Destroy;
 begin FRenderer.Free;inherited;end;
 function TRhythmRenderer.GetAssetCount:Integer;
@@ -78,7 +80,7 @@ procedure TRhythmRenderer.Render(Target:TBitmap;Audio:TRhythmAudio;Time:Double;D
   const MessageText:string;Zoom,OffsetX,OffsetY:Double);
 var Text:string;
 begin
-  if FShooting<>nil then FShooting.Audio:=Audio;if FBall<>nil then FBall.Audio:=Audio;if FFireworks<>nil then FFireworks.Audio:=Audio;Text:='';if Audio=nil then Text:=MessageText;
+  if FShooting<>nil then FShooting.Audio:=Audio;if FBall<>nil then FBall.Audio:=Audio;if FFireworks<>nil then FFireworks.Audio:=Audio;if FRunner<>nil then FRunner.Audio:=Audio;Text:='';if Audio=nil then Text:=MessageText;
   FRenderer.Render(Target,Time,Direction,Text,Zoom,OffsetX,OffsetY);
 end;
 function PlayerAt(Time:Double):TRhythmPoint;

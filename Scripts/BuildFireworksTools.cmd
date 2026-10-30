@@ -8,5 +8,5 @@ if errorlevel 1 exit /b %errorlevel%
 pushd "%~dp0.."
 if errorlevel 1 exit /b %errorlevel%
 if not exist "Win64\RhythmFireworks\%RHYTHM_CONFIG%\ToolsDCU" mkdir "Win64\RhythmFireworks\%RHYTHM_CONFIG%\ToolsDCU"
-dcc64 -B -Q -E"Win64\RhythmFireworks\%RHYTHM_CONFIG%" -NU"Win64\RhythmFireworks\%RHYTHM_CONFIG%\ToolsDCU" -U"%BDS%\lib\Win64\release;Source\Shared\Audio;Source\Shared\Render;Source\Shared\Settings;Source\Shared\Common;Source\Shared\Assets;Source\Shared\UI;Source\Shared\Host;Source\Shared\Integrations;Source\Composition;Source\Shooting;Source\Ball;Source\Fireworks;Source\Lib;Source\Lib\Process" Tools\RhythmFireworksPreview.dpr
+dcc64 -B -Q -E"Win64\RhythmFireworks\%RHYTHM_CONFIG%" -NU"Win64\RhythmFireworks\%RHYTHM_CONFIG%\ToolsDCU" -U"%BDS%\lib\Win64\release;Source\Shared\Audio;Source\Shared\Render;Source\Shared\Settings;Source\Shared\Common;Source\Shared\Assets;Source\Shared\UI;Source\Shared\Host;Source\Shared\Integrations;Source\Composition;Source\Shooting;Source\Ball;Source\Fireworks;Source\Runner;Source\Lib;Source\Lib\Process" Tools\RhythmFireworksPreview.dpr
 exit /b %errorlevel%

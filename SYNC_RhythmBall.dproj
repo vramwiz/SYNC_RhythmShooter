@@ -42,7 +42,7 @@
         <GenDll>true</GenDll>
         <DCC_DcuOutput>.\$(Platform)\RhythmBall\$(Config)\DCU</DCC_DcuOutput>
         <DCC_ExeOutput>.\$(Platform)\RhythmBall\$(Config)</DCC_ExeOutput>
-        <DCC_UnitSearchPath>Source\Shared\Audio;Source\Shared\Render;Source\Shared\Settings;Source\Shared\Common;Source\Shared\Assets;Source\Shared\UI;Source\Shared\Host;Source\Shared\Integrations;Source\Composition;Source\Shooting;Source\Ball;Source\Fireworks;Source\Lib;Source\Lib\Process;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
+        <DCC_UnitSearchPath>Source\Runner;Source\Shared\Audio;Source\Shared\Render;Source\Shared\Settings;Source\Shared\Common;Source\Shared\Assets;Source\Shared\UI;Source\Shared\Host;Source\Shared\Integrations;Source\Composition;Source\Shooting;Source\Ball;Source\Fireworks;Source\Lib;Source\Lib\Process;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
         <DCC_Namespace>System;Xml;Data;Datasnap;Web;Soap;Winapi;Vcl;$(DCC_Namespace)</DCC_Namespace>
         <SanitizedProjectName>SYNC_RhythmBall</SanitizedProjectName>
     </PropertyGroup>
@@ -93,6 +93,9 @@
         <DelphiCompile Include="$(MainSource)">
             <MainSource>MainSource</MainSource>
         </DelphiCompile>
+        <DCCReference Include="Source\Shared\Settings\RhythmPreparedData.pas"/>
+        <DCCReference Include="Source\Runner\RhythmRunnerPlan.pas"/>
+        <DCCReference Include="Source\Runner\RhythmRunnerScene.pas"/>
         <DCCReference Include="Source\Shared\Settings\RhythmStyles.pas"/>
         <DCCReference Include="Source\Shared\Settings\RhythmProduct.pas"/>
         <DCCReference Include="Source\Shared\Settings\RhythmPlanRef.pas"/>

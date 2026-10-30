@@ -10,9 +10,9 @@ pushd "%~dp0.."
 if errorlevel 1 exit /b %errorlevel%
 if not exist "Win64\ToolsDCU" mkdir "Win64\ToolsDCU"
 if not exist "Win64\%RHYTHM_CONFIG%" mkdir "Win64\%RHYTHM_CONFIG%"
-dcc64 -B -Q -E"Win64\%RHYTHM_CONFIG%" -NU"Win64\ToolsDCU" -U"%BDS%\lib\Win64\release;Source\Shared\Audio;Source\Shared\Render;Source\Shared\Settings;Source\Shared\Common;Source\Shared\Assets;Source\Shared\UI;Source\Shared\Host;Source\Shared\Integrations;Source\Composition;Source\Shooting;Source\Ball;Source\Fireworks;Source\Lib;Source\Lib\Process" Tools\BuildAssets.dpr
+dcc64 -B -Q -E"Win64\%RHYTHM_CONFIG%" -NU"Win64\ToolsDCU" -U"%BDS%\lib\Win64\release;Source\Shared\Audio;Source\Shared\Render;Source\Shared\Settings;Source\Shared\Common;Source\Shared\Assets;Source\Shared\UI;Source\Shared\Host;Source\Shared\Integrations;Source\Composition;Source\Shooting;Source\Ball;Source\Fireworks;Source\Runner;Source\Lib;Source\Lib\Process" Tools\BuildAssets.dpr
 if errorlevel 1 exit /b %errorlevel%
 "Win64\%RHYTHM_CONFIG%\BuildAssets.exe" "%CD%\Assets"
 if errorlevel 1 exit /b %errorlevel%
-dcc64 -B -Q -E"Win64\%RHYTHM_CONFIG%" -NU"Win64\ToolsDCU" -U"%BDS%\lib\Win64\release;Source\Shared\Audio;Source\Shared\Render;Source\Shared\Settings;Source\Shared\Common;Source\Shared\Assets;Source\Shared\UI;Source\Shared\Host;Source\Shared\Integrations;Source\Composition;Source\Shooting;Source\Ball;Source\Fireworks;Source\Lib;Source\Lib\Process" Tools\RhythmPreview.dpr
+dcc64 -B -Q -E"Win64\%RHYTHM_CONFIG%" -NU"Win64\ToolsDCU" -U"%BDS%\lib\Win64\release;Source\Shared\Audio;Source\Shared\Render;Source\Shared\Settings;Source\Shared\Common;Source\Shared\Assets;Source\Shared\UI;Source\Shared\Host;Source\Shared\Integrations;Source\Composition;Source\Shooting;Source\Ball;Source\Fireworks;Source\Runner;Source\Lib;Source\Lib\Process" Tools\RhythmPreview.dpr
 exit /b %errorlevel%

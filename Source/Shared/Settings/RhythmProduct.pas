@@ -10,7 +10,7 @@ uses System.SysUtils;
 var GId:string='SYNC_RhythmShooter';GTitle:string='リズムシューティング';GStyle:TRhythmStyle=rsShooting;
 procedure ConfigureRhythmProduct(const Id,Title:string;InitialStyle:TRhythmStyle);
 begin
-  if (Id<>'SYNC_RhythmShooter') and (Id<>'SYNC_RhythmBall') and (Id<>'SYNC_RhythmFireworks') then raise EArgumentException.Create('Unknown product identity.');
+  if (Id<>'SYNC_RhythmShooter') and (Id<>'SYNC_RhythmBall') and (Id<>'SYNC_RhythmFireworks') and (Id<>'SYNC_RhythmRunner') then raise EArgumentException.Create('Unknown product identity.');
   GId:=Id;GTitle:=Title;GStyle:=InitialStyle;
 end;
 function ProductId:string;begin Result:=GId;end;

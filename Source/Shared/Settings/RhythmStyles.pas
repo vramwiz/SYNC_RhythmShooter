@@ -1,6 +1,6 @@
 ﻿unit RhythmStyles;
 interface
-type TRhythmStyle=(rsShooting,rsBall,rsFireworks);
+type TRhythmStyle=(rsShooting,rsBall,rsFireworks,rsRunner);
 function StyleId(Style:TRhythmStyle):string;
 function StyleTitle(Style:TRhythmStyle):string;
 function TryStyle(const Id:string;out Style:TRhythmStyle):Boolean;
@@ -10,11 +10,11 @@ function StyleVariant(Style:TRhythmStyle;FireworksRichness:Integer):Integer;
 const FIREWORKS_DEFAULT_RICHNESS=50;
 implementation
 function StyleId(Style:TRhythmStyle):string;
-begin case Style of rsBall:Result:='ball';rsFireworks:Result:='fireworks';else Result:='shooting';end;end;
+begin case Style of rsBall:Result:='ball';rsFireworks:Result:='fireworks';rsRunner:Result:='runner';else Result:='shooting';end;end;
 function StyleTitle(Style:TRhythmStyle):string;
-begin case Style of rsBall:Result:='ボール（ピンボール）';rsFireworks:Result:='花火';else Result:='シューティング';end;end;
+begin case Style of rsBall:Result:='ボール（ピンボール）';rsFireworks:Result:='花火';rsRunner:Result:='ランナー';else Result:='シューティング';end;end;
 function TryStyle(const Id:string;out Style:TRhythmStyle):Boolean;
-begin Style:=rsShooting;Result:=True;if Id='shooting' then Exit;if Id='ball' then begin Style:=rsBall;Exit;end;if Id='fireworks' then begin Style:=rsFireworks;Exit;end;Result:=False;end;
+begin Style:=rsShooting;Result:=True;if Id='shooting' then Exit;if Id='ball' then begin Style:=rsBall;Exit;end;if Id='fireworks' then begin Style:=rsFireworks;Exit;end;if Id='runner' then begin Style:=rsRunner;Exit;end;Result:=False;end;
 function StylePlanVersion(Style:TRhythmStyle):Integer;
 begin case Style of rsBall:Result:=5;rsFireworks:Result:=2;else Result:=1;end;end;
 function CompatiblePlanVersion(Style:TRhythmStyle;Version:Integer):Boolean;

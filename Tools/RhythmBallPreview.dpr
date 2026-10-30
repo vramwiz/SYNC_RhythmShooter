@@ -1,5 +1,8 @@
 ﻿program RhythmBallPreview;
 uses Vcl.Forms,
+  RhythmPreparedData in '..\Source\Shared\Settings\RhythmPreparedData.pas',
+  RhythmRunnerPlan in '..\Source\Runner\RhythmRunnerPlan.pas',
+  RhythmRunnerScene in '..\Source\Runner\RhythmRunnerScene.pas',
   RhythmStyles in '..\Source\Shared\Settings\RhythmStyles.pas',
   RhythmProduct in '..\Source\Shared\Settings\RhythmProduct.pas',
   RhythmPlanRef in '..\Source\Shared\Settings\RhythmPlanRef.pas',

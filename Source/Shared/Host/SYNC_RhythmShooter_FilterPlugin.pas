@@ -6,7 +6,7 @@ procedure FinalizeRhythmShooterPlugin;
 function GetRhythmShooterFilterTable:PFILTER_PLUGIN_TABLE;
 implementation
 uses System.SysUtils, System.IOUtils, System.Hash, RhythmPaths, System.Math, System.UITypes, System.Generics.Collections, Vcl.Forms, Vcl.Dialogs, Vcl.Graphics,
-  PluginFilterTable, RhythmAudio, RhythmBallPlan, RhythmScene, RhythmSettings,RhythmDesignTypes,RhythmStyles,RhythmProduct, SYNC_RhythmShooter_SettingsForm;
+  PluginFilterTable, RhythmAudio, RhythmBallPlan, RhythmRunnerPlan, RhythmScene, RhythmSettings,RhythmDesignTypes,RhythmStyles,RhythmProduct, SYNC_RhythmShooter_SettingsForm;
 const
   MUSIC_NAME:PWideChar=#$97F3#$697D#$30D5#$30A1#$30A4#$30EB;
   DIRECTION_NAME:PWideChar=#$30B9#$30AF#$30ED#$30FC#$30EB#$65B9#$5411;
@@ -88,8 +88,8 @@ procedure PollAudio(const Settings:TRhythmSettings);
 var Key,Source,Revision:string;Sensitivity:Integer;Loaded:TRhythmAudio;
 begin
   Source:=Settings.Music;Sensitivity:=Settings.Sensitivity;Key:=Source+'|'+IntToStr(Sensitivity);
-  if Settings.Style=rsBall then Key:='prepared-ball|'+Key+'|'+Settings.Plan.Key+'|'+Settings.Plan.Digest+'|'+Settings.Plan.SourceRevision+'|'+IntToStr(Settings.Direction);
-  if (GRequest=Key) and (Settings.Style=rsBall) and (GAudio=nil) and (GError<>'') and (GetTickCount64>=GBallProbeAt) then begin
+  if Settings.Style in [rsBall,rsRunner] then Key:='prepared-'+StyleId(Settings.Style)+'|'+Key+'|'+Settings.Plan.Key+'|'+Settings.Plan.Digest+'|'+Settings.Plan.SourceRevision+'|'+IntToStr(Settings.Direction);
+  if (GRequest=Key) and (Settings.Style in [rsBall,rsRunner]) and (GAudio=nil) and (GError<>'') and (GetTickCount64>=GBallProbeAt) then begin
     GBallProbeAt:=GetTickCount64+1000;Revision:=BallRestorationRevision(Settings);
     if Revision<>GFailedBallRevision then begin GRequest:='';GColdRetryKey:='';end
     else if GColdRetryKey<>Key then begin GColdRetryKey:=Key;GRequest:='';end;
@@ -105,6 +105,7 @@ begin
     Loaded:=nil;
     try
       if Settings.Style=rsBall then Loaded:=TRhythmBallPlan.LoadAudioMetadata(Settings.Plan,Source,Settings.Direction)
+      else if Settings.Style=rsRunner then Loaded:=TRunnerPlan.LoadAudioMetadata(Settings.Plan,Source,Settings.Direction)
       else Loaded:=LoadCachedRhythmAudio(Source,Sensitivity);
       if Loaded=nil then begin GError:='設定画面で音楽を解析して適用してください（解析キャッシュ未準備）。';Exit;end;
       if (GCache.Count>=4) or (GCacheBytes+Length(Loaded.PCM)>512*Int64(1024)*1024) then
@@ -112,7 +113,7 @@ begin
       GCache.Add(Key,Loaded);Inc(GCacheBytes,Length(Loaded.PCM));GAudio:=Loaded;Loaded:=nil;GColdRetryKey:='';
     except on E:Exception do begin
       Loaded.Free;GError:=E.Message;
-      if Settings.Style=rsBall then begin GFailedBallRevision:=BallRestorationRevision(Settings);GBallProbeAt:=GetTickCount64+1000;end;
+      if Settings.Style in [rsBall,rsRunner] then begin GFailedBallRevision:=BallRestorationRevision(Settings);GBallProbeAt:=GetTickCount64+1000;end;
     end;end;
   end;
 end;

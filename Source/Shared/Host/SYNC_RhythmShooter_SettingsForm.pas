@@ -126,7 +126,7 @@ begin
   FStyle:=TRhythmComboBox.Create(Self);FStyle.Parent:=FStylePanel;FStyle.Name:='AnimationStyle';
   FStyle.Width:=S(160);FStyle.ShowHint:=True;
   FStyle.Hint:='スタイル変更時は動作計画を再準備します。音声キャッシュは再利用します。';
-  FStyle.Items.Add(StyleTitle(rsShooting));FStyle.Items.Add(StyleTitle(rsBall));FStyle.Items.Add(StyleTitle(rsFireworks));
+  FStyle.Items.Add(StyleTitle(rsShooting));FStyle.Items.Add(StyleTitle(rsBall));FStyle.Items.Add(StyleTitle(rsFireworks));FStyle.Items.Add(StyleTitle(rsRunner));
   FStyle.ItemIndex:=Ord(FState.Style);FStyle.OnChange:=SettingChange;FStyleLabel.FocusControl:=FStyle;
   FDirectionPanel:=Panel(FOptionsBar,alNone,44);FDirectionPanel.Name:='DirectionOptions';
   FDirectionLabel:=LabelAt(FDirectionPanel,'方向',alNone,40);FDirectionLabel.Name:='DirectionCaption';
@@ -285,7 +285,7 @@ procedure TFormRhythmShooterSettings.UpdateStyleControls;
 var I,DirectionIndex:Integer;IsReady,WasUpdating:Boolean;Control:TControl;VerticalText,HorizontalText:string;
 begin
   FState.Style:=SelectedStyle;FState.FireworksRichness:=FFireworksRichness.Position;
-  FFireworksRow.Visible:=SelectedStyle=rsFireworks;
+  FFireworksRow.Visible:=SelectedStyle=rsFireworks;FDirectionPanel.Visible:=SelectedStyle<>rsRunner;
   FRichnessLevel.Caption:=IntToStr(FFireworksRichness.Position);
   if FFireworksRichness.Position<35 then FRichnessLevel.Hint:='控えめ' else if FFireworksRichness.Position<70 then FRichnessLevel.Hint:='標準' else FRichnessLevel.Hint:='華やか';
   LayoutOptions(Self);UpdatePlayCaption;
@@ -474,6 +474,7 @@ begin
       case FWorker.Stage of
         2:begin
           if SelectedStyle=rsFireworks then ProgressText:='打ち上げと開花を準備中'
+          else if SelectedStyle=rsRunner then ProgressText:='足場とジャンプ軌道を準備中'
           else if SelectedStyle=rsBall then ProgressText:='障害物と軌道を準備中'
           else ProgressText:='動作計画を準備中';
         end;

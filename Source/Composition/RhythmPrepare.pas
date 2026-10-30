@@ -15,12 +15,12 @@ type TRhythmPrepareThread=class(TThread)
     property Stage:Integer read GetStage;
   end;
 implementation
-uses System.SysUtils,Winapi.Windows,RhythmBallPlan,RhythmFireworksPlan;
+uses System.SysUtils,System.Math,Winapi.Windows,RhythmBallPlan,RhythmFireworksPlan,RhythmRunnerPlan;
 function TRhythmPrepareThread.GetStage:Integer;begin Result:=InterlockedCompareExchange(FStage,0,0);end;
 constructor TRhythmPrepareThread.Create(const Source:string;Sensitivity,Direction:Integer;Style:TRhythmStyle;Force:Boolean;Existing:TRhythmAudio;Serial:Cardinal;Variant:Integer);
 begin inherited Create(True);FreeOnTerminate:=False;FSource:=Source;FSensitivity:=Sensitivity;FDirection:=Direction;FVariant:=Variant;FStyle:=Style;FForce:=Force;FExisting:=Existing;RequestId:=Serial;end;
 procedure TRhythmPrepareThread.Execute;
-var Ball,Verified:TRhythmBallPlan;Fireworks,Checked:TFireworksPlan;RestoredAudio:TRhythmAudio;
+var Ball,Verified:TRhythmBallPlan;Fireworks,Checked:TFireworksPlan;RestoredAudio:TRhythmAudio;Runner,RestoredRunner:TRunnerPlan;
 begin
   try
     if Terminated then Abort;
@@ -41,6 +41,19 @@ begin
         try Verified:=TRhythmBallPlan.Load(Plan,RestoredAudio,FDirection);finally RestoredAudio.Free;end;
         try Summary:=Format('%d音イベント → %d衝突＋%d共鳴 / 終端外%d',[Verified.PulseCount,Verified.ObstacleCount,Verified.PulseCount-Verified.ObstacleCount,Verified.ExcludedCount]);finally Verified.Free;end;
       finally Ball.Free;end;
+    end;
+    if FStyle=rsRunner then begin
+      Plan.SourceRevision:=Audio.SourceRevision;
+      Runner:=TRunnerPlan.Build(Audio,function:Boolean begin Result:=Terminated;end);
+      try
+        InterlockedExchange(FStage,3);if Terminated then Abort;Runner.Save(Plan,Audio);if Terminated then Abort;
+        InterlockedExchange(FStage,4);RestoredAudio:=TRunnerPlan.LoadAudioMetadata(Plan,Audio.Source,FDirection);
+        try RestoredRunner:=TRunnerPlan.Load(Plan,RestoredAudio,FDirection);finally RestoredAudio.Free;end;
+        try
+          PreviewEnd:=Max(Audio.Duration,RestoredRunner.EndTime);
+          Summary:=Format('%d音 / %d着地点 / ゴール %.3f 秒',[RestoredRunner.PulseCount,RestoredRunner.Count,RestoredRunner.GoalTime]);
+        finally RestoredRunner.Free;end;
+      finally Runner.Free;end;
     end;
     if FStyle=rsFireworks then begin
       Fireworks:=TFireworksPlan.Build(Audio,FDirection,FVariant,function:Boolean begin Result:=Terminated;end);

@@ -1,4 +1,6 @@
-﻿最新: [BALL_PERSISTENCE.md](BALL_PERSISTENCE.md)。Ballの新規計画版5、旧v4互換。計画本文に描画復元メタデータ、オブジェクト参照にsourceStampを保存。ホストは軽量な復元データ→既存計画検証を使い、PCMを必須にしない。Shooting=1、Fireworks=2を維持。今回未ビルド・未実行。
+﻿新規追加は [RUNNER_STYLE.md](RUNNER_STYLE.md)。現在HEAD基準6df4731、4製品/4スタイル。Source/Runnerに計画/描画、Shared/Settings/RhythmPreparedDataに準備済みJSON/メタデータ保存・復元を追加。既存Ball5/旧4・Fireworks2・Shooting1と公開SDKを維持。今回ソースと静的確認のみ。
+
+最新: [BALL_PERSISTENCE.md](BALL_PERSISTENCE.md)。Ballの新規計画版5、旧v4互換。計画本文に描画復元メタデータ、オブジェクト参照にsourceStampを保存。ホストは軽量な復元データ→既存計画検証を使い、PCMを必須にしない。Shooting=1、Fireworks=2を維持。今回未ビルド・未実行。
 
 最新差分: [TRAJECTORY_UPDATE_20261030.md](TRAJECTORY_UPDATE_20261030.md)。計画版はShooting=1、Ball=4、Fireworks=2。共通の計画参照にvariantを追加し、花火の華やかさだけへ使用する。Shooting/Ballは0で従来のキー式を維持。プロジェクト分離・SDK境界・保存先は変更しない。今回変更後は未ビルド・未実行。
 
