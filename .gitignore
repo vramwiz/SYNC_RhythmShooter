@@ -16,3 +16,4 @@ __recovery/
 *.exe
 ThirdParty/FFmpeg/bin/
 Cache/
+/Verification/

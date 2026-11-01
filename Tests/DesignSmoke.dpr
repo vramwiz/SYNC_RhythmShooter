@@ -1,7 +1,12 @@
 ﻿program DesignSmoke;
 {$APPTYPE CONSOLE}
 {$POINTERMATH ON}
-uses Winapi.Windows,System.SysUtils,System.Classes,System.IOUtils,System.JSON,System.Hash,System.Math,System.Diagnostics,
+uses
+  RhythmBombPlan in '..\Source\BombAction\RhythmBombPlan.pas',
+  RhythmBombScene in '..\Source\BombAction\RhythmBombScene.pas',
+  RhythmRacePlan in '..\Source\Race\RhythmRacePlan.pas',
+  RhythmRaceScene in '..\Source\Race\RhythmRaceScene.pas',
+  Winapi.Windows,System.SysUtils,System.Classes,System.IOUtils,System.JSON,System.Hash,System.Math,System.Diagnostics,
   Vcl.Graphics,RhythmPaths,RhythmAudio,RhythmScene,RhythmSettings,RhythmDesignTypes,RhythmDesignImages,
   RhythmDesignRequest,RhythmCodexClient;
 var Folder,SpritePath,BackgroundPath,OriginalHash,DefaultHash,CustomHash,ErrorText,OldExe:string;

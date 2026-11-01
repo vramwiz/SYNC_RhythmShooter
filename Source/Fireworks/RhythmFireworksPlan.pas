@@ -14,11 +14,12 @@ type
   TFireworksPlan=class
   private
     FBursts:TArray<TFireworkBurst>;
-    FEndTime:Double;
+    FEndTime,FAudioDuration,FSoundEnd:Double;FEvents:TArray<TRhythmHit>;FVersion:Integer;
     FExcluded,FSourceEvents,FRichness:Integer;
     function GetCount:Integer;
     function GetBurst(Index:Integer):TFireworkBurst;
   public
+    class function LoadAudioMetadata(const Ref:TRhythmPlanRef;const Source:string;Direction:Integer):TRhythmAudio;static;
     class function Build(Audio:TRhythmAudio;Direction:Integer;Richness:Integer=FIREWORKS_DEFAULT_RICHNESS;const Cancel:TFunc<Boolean> = nil):TFireworksPlan;static;
     procedure Save(var Ref:TRhythmPlanRef;const Cancel:TFunc<Boolean> = nil);
     class function Load(const Ref:TRhythmPlanRef;Audio:TRhythmAudio;Direction:Integer):TFireworksPlan;static;
@@ -73,7 +74,7 @@ begin
   D:=B.Size*(1-Exp(-2.3*Age))*1.22;G:=0.055;
   Result.X:=Cos(A)*V;Result.Y:=Sin(A)*V;
   case B.Kind of
-    fwWillow:begin D:=D*0.80;G:=0.095;end;
+    fwWillow:begin D:=D*0.80;G:=0.095;if B.Lifetime>3.3 then G:=0.025;end;
     fwRings:begin if Index mod 2=0 then D:=D*0.62;G:=0;Result.X:=Cos(A);Result.Y:=Sin(A);end;
     fwStar:begin
       T:=Phase*10;Vertex:=Floor(T);T:=Frac(T);
@@ -96,17 +97,24 @@ begin
   Result.X:=Result.X*D;Result.Y:=Result.Y*D+G*Age*Age;
 end;
 class function TFireworksPlan.Build(Audio:TRhythmAudio;Direction,Richness:Integer;const Cancel:TFunc<Boolean>):TFireworksPlan;
-var List:TList<TFireworkBurst>;B:TFireworkBurst;I,M,Volley:Integer;Seed:Cardinal;
+var List:TList<TFireworkBurst>;B:TFireworkBurst;I,M,Volley,N,Nearest,Chain,Formation,Layer:Integer;Quiet:TArray<Boolean>;Clock,LastQuiet,Level,Flight:Double;Seed:Cardinal;
   Gap,Density,LastTime,CenterX,CenterY,Energy,Spread:Double;
   function Next:Double;
   begin Seed:=Cardinal((UInt64(Seed)*1664525+1013904223) and $FFFFFFFF);Result:=(Seed shr 8)/16777216.0;end;
 begin
   if Audio=nil then raise EArgumentNilException.Create('Audio');CheckCancel(Cancel);
+  if not Finite(Audio.Duration) or not Finite(Audio.SoundEnd) or (Audio.Duration<=0) or (Audio.SoundEnd<0) or (Audio.SoundEnd>Audio.Duration) then raise Exception.Create('Invalid fireworks audio bounds');
   if (Direction<0) or (Direction>1) or (Richness<0) or (Richness>100) then raise EArgumentException.Create('Invalid fireworks options.');
   Result:=TFireworksPlan.Create;List:=nil;
   try
-    List:=TList<TFireworkBurst>.Create;Result.FEndTime:=Audio.SoundEnd;Result.FRichness:=Richness;LastTime:=-1;
-    Volley:=FireworkVolleyCount(Richness);Energy:=Richness/100;
+    List:=TList<TFireworkBurst>.Create;Result.FVersion:=3;Result.FAudioDuration:=Audio.Duration;Result.FSoundEnd:=Audio.SoundEnd;Result.FEvents:=Copy(Audio.Hits);Result.FEndTime:=Audio.SoundEnd;Result.FRichness:=Richness;LastTime:=-1;
+    Volley:=FireworkVolleyCount(Richness);Energy:=Richness/100;SetLength(Quiet,Length(Audio.Hits));LastQuiet:=-8;
+    for N:=1 to Ceil(Audio.SoundEnd*4) do begin CheckCancel(Cancel);Clock:=N*0.25;
+      if (Clock-LastQuiet>=6) and (Audio.LevelAt(Clock)>0.55) and ((Clock+0.85>Audio.SoundEnd) or (Audio.LevelAt(Clock+0.85)<0.18)) then begin
+        Nearest:=Audio.NearestHit(Clock);while (Nearest>=0) and (Audio.Hits[Nearest].Time>Clock) do Dec(Nearest);
+        if (Nearest>=0) and (Clock-Audio.Hits[Nearest].Time<0.9) then begin Quiet[Nearest]:=True;LastQuiet:=Clock;end;
+      end;
+    end;Chain:=0;
     for I:=0 to High(Audio.Hits) do begin
       CheckCancel(Cancel);
       if not Finite(Audio.Hits[I].Time) or not Finite(Audio.Hits[I].Strength) or (Audio.Hits[I].Time<0) or
@@ -120,6 +128,13 @@ begin
       Gap:=2;if I>0 then Gap:=Min(Gap,LastTime-Audio.Hits[I-1].Time);
       if I<High(Audio.Hits) then Gap:=Min(Gap,Audio.Hits[I+1].Time-LastTime);
       Density:=EnsureRange(Gap/0.50,0.35,1.0);Spread:=0.10+Energy*0.22;
+      if (I=0) or (LastTime-Audio.Hits[I-1].Time>0.35) then Chain:=0 else Inc(Chain);Formation:=(I div 12) mod 3;
+      if Gap<=0.35 then case Formation of
+        0:CenterX:=0.16+0.68*(Chain mod 8)/7;
+        1:begin CenterX:=0.25;if Chain mod 2=1 then CenterX:=0.75;end;
+        2:CenterX:=0.50;
+      end;
+      Level:=Audio.LevelAt(LastTime);
       for M:=0 to Volley-1 do begin
         CheckCancel(Cancel);
         B:=Default(TFireworkBurst);B.Time:=LastTime;B.AccentIndex:=I;B.Member:=M;
@@ -127,9 +142,13 @@ begin
         B.Kind:=TFireworkKind((I+M*2) mod 6);B.Hue:=Trunc(Next*8);
         B.X:=EnsureRange(CenterX+(M-(Volley-1)/2)*Spread,0.10,0.90);
         B.Y:=EnsureRange(CenterY+(Next-0.5)*0.06,0.13,0.56);
-        // Vertical launches are easy to track. A fixed flight duration preserves
-        // consecutive accent order even when the bloom spacing is very small.
-        B.GroundX:=B.X;B.LaunchTime:=Max(0.0,B.Time-1.05);
+        B.GroundX:=B.X;
+        if (Gap<=0.35) and (Formation=2) then begin B.GroundX:=0.50;B.X:=EnsureRange(0.18+0.64*((Chain+M) mod 7)/6,0.08,0.92);end;
+        Layer:=(I div 3+M) mod 3;
+        if (Level>0.55) and ((Gap<0.35) or (B.Strength>=0.7)) then case Layer of
+          0:B.Y:=0.17+Next*0.08;1:B.Y:=0.38+Next*0.09;2:B.Y:=0.61+Next*0.06;
+        end;
+        Flight:=0.70+(0.88-B.Y)*0.90;B.LaunchTime:=Max(0.0,B.Time-Flight);
         B.Size:=(0.09+B.Strength*0.105)*(0.78+Energy*0.44)*(0.72+Density*0.28);
         B.Rays:=EnsureRange(Round((32+B.Strength*60)*(0.65+Energy*0.70)*(0.58+Density*0.42)),16,128);
         case B.Kind of
@@ -138,6 +157,9 @@ begin
           fwStar,fwHeart:B.Lifetime:=2.15+B.Strength*0.25;
           fwPalm:begin B.Lifetime:=2.60+B.Strength*0.35;B.Hue:=0;end;
         else B.Lifetime:=2.15+B.Strength*0.35;end;
+        if (Level>0.55) and (Layer=2) then B.Size:=B.Size*0.62;
+        if B.Strength>=0.75 then B.Size:=B.Size*1.20;B.Size:=EnsureRange(B.Size,0.05,0.32);
+        if Quiet[I] and (M=0) then begin B.Kind:=fwWillow;B.Y:=0.18;B.Size:=Min(0.32,0.24+B.Strength*0.08);B.Lifetime:=4.50;B.Hue:=0;B.LaunchTime:=Max(0.0,B.Time-1.33);end;
         List.Add(B);Result.FEndTime:=Max(Result.FEndTime,B.Time+B.Lifetime);
       end;
     end;
@@ -150,9 +172,10 @@ function TFireworksPlan.BurstBefore(Time:Double):Integer;
 var A,B,M:Integer;
 begin A:=0;B:=Count;while A<B do begin M:=(A+B) div 2;if FBursts[M].Time<=Time then A:=M+1 else B:=M;end;Result:=A-1;end;
 procedure TFireworksPlan.VisibleRange(Time:Double;out First,Last:Integer);
-begin First:=Max(0,BurstBefore(Time-3.21));Last:=Min(Count-1,BurstBefore(Time+1.26)+1);end;
+begin if FVersion<3 then begin First:=Max(0,BurstBefore(Time-3.21));Last:=Min(Count-1,BurstBefore(Time+1.26)+1);end
+  else begin First:=Max(0,BurstBefore(Time-4.61));Last:=Min(Count-1,BurstBefore(Time+1.66)+1);end;end;
 procedure TFireworksPlan.Save(var Ref:TRhythmPlanRef;const Cancel:TFunc<Boolean>);
-var Root,Item:TJSONObject;Items:TJSONArray;B:TFireworkBurst;Path,Temp:string;Id:TGUID;
+var Root,Item:TJSONObject;Items:TJSONArray;B:TFireworkBurst;Path,Temp:string;Id:TGUID;H:TRhythmHit;
 begin
   if (Ref.Style<>rsFireworks) or (Ref.Version<>StylePlanVersion(rsFireworks)) or (Ref.Variant<>FRichness) then raise Exception.Create('Invalid fireworks reference.');
   Root:=TJSONObject.Create;Temp:='';
@@ -161,6 +184,8 @@ begin
     Root.AddPair('key',Ref.Key);Root.AddPair('source',Ref.SourceKey);Root.AddPair('sensitivity',TJSONNumber.Create(Ref.Sensitivity));
     Root.AddPair('richness',TJSONNumber.Create(FRichness));Root.AddPair('events',TJSONNumber.Create(FSourceEvents));
     Root.AddPair('direction',TJSONNumber.Create(Ref.Direction));Root.AddPair('end',TJSONNumber.Create(FEndTime));Root.AddPair('excluded',TJSONNumber.Create(FExcluded));
+    Item:=TJSONObject.Create;Root.AddPair('audio',Item);Item.AddPair('schema',TJSONNumber.Create(1));Item.AddPair('duration',TJSONNumber.Create(FAudioDuration));Item.AddPair('soundEnd',TJSONNumber.Create(FSoundEnd));Item.AddPair('events',TJSONNumber.Create(Length(FEvents)));
+    Items:=TJSONArray.Create;Root.AddPair('sourceEvents',Items);for H in FEvents do begin Item:=TJSONObject.Create;Items.AddElement(Item);Item.AddPair('time',TJSONNumber.Create(H.Time));Item.AddPair('strength',TJSONNumber.Create(H.Strength));end;
     Items:=TJSONArray.Create;Root.AddPair('bursts',Items);
     for B in FBursts do begin
       CheckCancel(Cancel);Item:=TJSONObject.Create;Items.AddElement(Item);
@@ -176,6 +201,22 @@ begin
     Temp:='';Ref.Digest:=THashSHA2.GetHashStringFromFile(Path);
   finally if (Temp<>'') and FileExists(Temp) then TFile.Delete(Temp);Root.Free;end;
 end;
+class function TFireworksPlan.LoadAudioMetadata(const Ref:TRhythmPlanRef;const Source:string;Direction:Integer):TRhythmAudio;
+var Root,Info,J:TJSONObject;V:TJSONValue;Items:TJSONArray;Path:string;I:Integer;
+begin
+  if Ref.Version<3 then Exit(LoadCachedRhythmAudio(Source,Ref.Sensitivity,False));Result:=nil;Root:=nil;
+  if not Ref.Matches(Ref.SourceKey,Ref.Sensitivity,Direction,rsFireworks,Ref.Variant) then raise Exception.Create('Fireworks metadata identity');
+  Path:=PlanPath(Ref.Key);if not ValidDigest(Ref.Digest) or not FileExists(Path) or not SameText(THashSHA2.GetHashStringFromFile(Path),Ref.Digest) then raise Exception.Create('Fireworks metadata digest');
+  V:=TJSONObject.ParseJSONValue(TFile.ReadAllText(Path,TEncoding.UTF8));if not (V is TJSONObject) then begin V.Free;raise Exception.Create('Fireworks metadata JSON');end;Root:=TJSONObject(V);
+  try Info:=Root.GetValue<TJSONObject>('audio');Items:=Root.GetValue<TJSONArray>('sourceEvents');if (Info=nil) or (Items=nil) or (Items.Count>100000) then raise Exception.Create('Fireworks metadata missing');
+    Result:=TRhythmAudio.Create;
+    try Result.Source:=ExpandFileName(Source);Result.SourceRevision:=Ref.SourceRevision;Result.Key:=Ref.SourceKey;Result.Sensitivity:=Ref.Sensitivity;Result.CacheReused:=True;
+      Result.Duration:=Info.GetValue<Double>('duration');Result.SoundEnd:=Info.GetValue<Double>('soundEnd');if not Finite(Result.Duration) or not Finite(Result.SoundEnd) or (Result.Duration<=0) or (Result.SoundEnd<0) or (Result.SoundEnd>Result.Duration) or (Info.GetValue<Integer>('events')<>Items.Count) or not AudioSourceUnchanged(Result) then raise Exception.Create('Fireworks metadata bounds/source');
+      SetLength(Result.Hits,Items.Count);for I:=0 to Items.Count-1 do begin J:=Items.Items[I] as TJSONObject;Result.Hits[I].Time:=J.GetValue<Double>('time');Result.Hits[I].Strength:=J.GetValue<Double>('strength');end;
+    except Result.Free;Result:=nil;raise;end;
+  finally Root.Free;end;
+end;
+
 class function TFireworksPlan.Load(const Ref:TRhythmPlanRef;Audio:TRhythmAudio;Direction:Integer):TFireworksPlan;
 var Root,Item:TJSONObject;V:TJSONValue;Items:TJSONArray;B:TFireworkBurst;I,Kind,Volley,EventCount,PreviousAccent,PreviousMember:Integer;Seed:Int64;Path:string;ComputedEnd:Double;
 begin
@@ -192,9 +233,9 @@ begin
       (Root.GetValue<string>('key','')<>Ref.Key) or (Root.GetValue<string>('source','')<>Audio.Key) or (Root.GetValue<Integer>('sensitivity',0)<>Audio.Sensitivity) or
       (Root.GetValue<Integer>('direction',-1)<>Direction) or (Root.GetValue<Integer>('richness',-1)<>Ref.Variant) then raise Exception.Create('Fireworks identity mismatch.');
     Items:=Root.GetValue<TJSONArray>('bursts');if (Items=nil) or (Items.Count>80000) then raise Exception.Create('Invalid fireworks count.');
-    Result:=TFireworksPlan.Create;Result.FEndTime:=Root.GetValue<Double>('end');Result.FExcluded:=Root.GetValue<Integer>('excluded',0);
+    Result:=TFireworksPlan.Create;Result.FVersion:=Ref.Version;Result.FAudioDuration:=Audio.Duration;Result.FSoundEnd:=Audio.SoundEnd;Result.FEvents:=Copy(Audio.Hits);Result.FEndTime:=Root.GetValue<Double>('end');Result.FExcluded:=Root.GetValue<Integer>('excluded',0);
     Result.FRichness:=Ref.Variant;Result.FSourceEvents:=Root.GetValue<Integer>('events',-1);Volley:=FireworkVolleyCount(Ref.Variant);
-    if not Finite(Result.FEndTime) or (Result.FEndTime<Audio.SoundEnd) or (Result.FEndTime>Audio.Duration+3.22) or
+    if not Finite(Result.FEndTime) or (Result.FEndTime<Audio.SoundEnd) or (Result.FEndTime>Audio.Duration+4.61) or
       (Result.FExcluded<0) or (Result.FSourceEvents<0) or (Result.FSourceEvents>20000) or
       (Result.FSourceEvents+Result.FExcluded<>Length(Audio.Hits)) or (Items.Count<>Result.FSourceEvents*Volley) or ((Audio.SoundEnd<=0) and (Items.Count>0)) then raise Exception.Create('Invalid fireworks bounds.');
     SetLength(Result.FBursts,Items.Count);ComputedEnd:=Audio.SoundEnd;EventCount:=0;PreviousAccent:=-1;PreviousMember:=-1;
@@ -205,9 +246,9 @@ begin
       B.Size:=Item.GetValue<Double>('size');B.Strength:=Item.GetValue<Double>('strength');B.Lifetime:=Item.GetValue<Double>('life');Kind:=Item.GetValue<Integer>('kind');
       B.Hue:=Item.GetValue<Integer>('hue');B.Rays:=Item.GetValue<Integer>('rays');Seed:=Item.GetValue<Int64>('seed');
       if not Finite(B.Time) or not Finite(B.LaunchTime) or not Finite(B.X) or not Finite(B.Y) or not Finite(B.GroundX) or not Finite(B.Size) or not Finite(B.Strength) or not Finite(B.Lifetime) or
-        (B.Time<0) or (B.Time>Audio.SoundEnd+0.011) or (B.LaunchTime<0) or (B.LaunchTime>B.Time) or (Abs(B.LaunchTime-Max(0.0,B.Time-1.05))>1E-8) or
-        (B.X<0.08) or (B.X>0.92) or (B.Y<0.12) or (B.Y>0.58) or (B.GroundX<0.08) or (B.GroundX>0.92) or (B.Size<0.05) or (B.Size>0.25) or
-        (B.Strength<0) or (B.Strength>1) or (B.Lifetime<1.9) or (B.Lifetime>3.201) or (Kind<0) or (Kind>Ord(High(TFireworkKind))) or (B.Hue<0) or (B.Hue>7) or (B.Rays<16) or (B.Rays>128) or (Seed<0) or (Seed>High(Cardinal)) then raise Exception.Create('Firework out of range.');
+        (B.Time<0) or (B.Time>Audio.SoundEnd+0.011) or (B.LaunchTime<0) or (B.LaunchTime>B.Time) or ((Ref.Version=2) and (Abs(B.LaunchTime-Max(0.0,B.Time-1.05))>1E-8)) or
+        (B.X<0.08) or (B.X>0.92) or (B.Y<0.12) or (B.Y>0.72) or (B.GroundX<0.08) or (B.GroundX>0.92) or (B.Size<0.05) or (B.Size>0.32) or
+        (B.Strength<0) or (B.Strength>1) or (B.Lifetime<1.9) or (B.Lifetime>4.51) or (Kind<0) or (Kind>Ord(High(TFireworkKind))) or (B.Hue<0) or (B.Hue>7) or (B.Rays<16) or (B.Rays>128) or (Seed<0) or (Seed>High(Cardinal)) then raise Exception.Create('Firework out of range.');
       if (B.AccentIndex<0) or (B.AccentIndex>=Length(Audio.Hits)) or (B.Member<0) or (B.Member>=Volley) then
         raise Exception.Create('Invalid firework accent link.');
       if (B.AccentIndex<>PreviousAccent) then begin
@@ -215,9 +256,9 @@ begin
         if (B.AccentIndex<>PreviousAccent+1) or (B.Member<>0) then raise Exception.Create('Missing firework accent.');
         Inc(EventCount);
       end else if B.Member<>PreviousMember+1 then raise Exception.Create('Invalid volley order.');
-      if (B.Time<>Audio.Hits[B.AccentIndex].Time) or
-        (B.Strength<>EnsureRange(Audio.Hits[B.AccentIndex].Strength,0.0,1.0)) or
-        (Abs(B.GroundX-B.X)>1E-8) then raise Exception.Create('Firework accent or launch mismatch.');
+      if (Abs(B.Time-Audio.Hits[B.AccentIndex].Time)>1E-9) or
+        (Abs(B.Strength-EnsureRange(Audio.Hits[B.AccentIndex].Strength,0.0,1.0))>1E-10) or
+        ((Ref.Version=2) and (Abs(B.GroundX-B.X)>1E-8)) then raise Exception.CreateFmt('Firework accent or launch mismatch: v%d t=%.17g expected=%.17g strength=%.17g expected=%.17g',[Ref.Version,B.Time,Audio.Hits[B.AccentIndex].Time,B.Strength,EnsureRange(Audio.Hits[B.AccentIndex].Strength,0.0,1.0)]);
       PreviousAccent:=B.AccentIndex;PreviousMember:=B.Member;
       if (I>0) and (B.Time<Result.FBursts[I-1].Time) then raise Exception.Create('Firework times are not ordered.');
       B.Kind:=TFireworkKind(Kind);B.Seed:=Cardinal(Seed);Result.FBursts[I]:=B;ComputedEnd:=Max(ComputedEnd,B.Time+B.Lifetime);

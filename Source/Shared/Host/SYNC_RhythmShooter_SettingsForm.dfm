@@ -1,4 +1,4 @@
-object FormRhythmShooterSettings: TFormRhythmShooterSettings
+﻿object FormRhythmShooterSettings: TFormRhythmShooterSettings
   Left = 0
   Top = 0
   Caption = #12522#12474#12512#12471#12517#12540#12486#12451#12531#12464#35373#23450
@@ -11,6 +11,8 @@ object FormRhythmShooterSettings: TFormRhythmShooterSettings
   Font.Name = 'Segoe UI'
   Font.Style = []
   Position = poScreenCenter
+  PixelsPerInch = 96
+  Scaled = True
   OnCreate = FormCreate
   OnDestroy = FormDestroy
   TextHeight = 17

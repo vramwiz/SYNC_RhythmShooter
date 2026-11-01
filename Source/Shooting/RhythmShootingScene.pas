@@ -15,6 +15,8 @@ type
       Size:Double;Width,Height,Direction:Integer;Opacity:Double=1);
     procedure Explosion(Surface:TAnimationRenderSurface;const P:TRhythmPoint;
       Age:Double;Boss:Boolean;Width,Height,Direction:Integer);
+    procedure EnemyProjectile(Surface:TAnimationRenderSurface;const Bullet:TRhythmEnemyBullet;
+      const P:TRhythmPoint;Size:Double;Width,Height,Direction:Integer;Opacity:Double);
   public
     // Audio is borrowed from the existing host/preview cache; never freed here.
     property Audio:TRhythmAudio read FAudio write FAudio;
@@ -26,7 +28,7 @@ function EnemyAt(const Hit:TRhythmHit;Time:Double):TRhythmPoint;
 function BulletAt(const Hit:TRhythmHit;Time:Double):TRhythmPoint;
 function ExplosionOpacity(Age,Lifetime:Double):Double;
 implementation
-uses System.SysUtils,System.Math,RhythmParallax;
+uses System.SysUtils,System.Math,RhythmParallax,RhythmShootingAssets;
 function PlayerAt(Time: Double): TRhythmPoint;
 begin
   Result:=RhythmMotion.PlayerAt(Time);
@@ -75,23 +77,107 @@ begin
   end;
   Bucket:=0;if (Index in [11,18]) and (Size>0.025) then Bucket:=1;
   if (Index in [11,18]) and (Size>0.04) then Bucket:=2;
+  if Index in [SHOOT_BOSS_BULLET_FIRST..SHOOT_BOSS_BULLET_LAST] then begin
+    if Size>0.020 then Bucket:=1;if Size>0.022 then Bucket:=2;
+  end;
   Surface.DrawAsset(Index,Center,W,H,Opacity,Index=12,Bucket);
 end;
+procedure TShootingAnimation.EnemyProjectile(Surface:TAnimationRenderSurface;const Bullet:TRhythmEnemyBullet;
+  const P:TRhythmPoint;Size:Double;Width,Height,Direction:Integer;Opacity:Double);
+var Index:Integer;
+begin
+  case Bullet.Pattern of
+    bpPetals:Index:=SHOOT_BOSS_BULLET_FIRST;
+    bpSpiral:Index:=SHOOT_BOSS_BULLET_FIRST+1;
+    bpFans:Index:=SHOOT_BOSS_BULLET_FIRST+2;
+  else Index:=SHOOT_BOSS_BULLET_FIRST+3;end;
+  if Surface.Images.IsCustom[11] then begin
+    // Keep the user's shared bullet intact, with a pattern-coloured halo behind it.
+    Sprite(Surface,Index,P,Size*1.5,Width,Height,Direction,Opacity*0.8);
+    Sprite(Surface,11,P,Size,Width,Height,Direction,Opacity);
+  end else Sprite(Surface,Index,P,Size,Width,Height,Direction,Opacity);
+end;
 procedure TShootingAnimation.Explosion(Surface:TAnimationRenderSurface;const P:TRhythmPoint;Age:Double;Boss:Boolean;Width,Height,Direction:Integer);
-var Lifetime,LocalAge,Size,Alpha:Double;I:Integer;Burst:TRhythmPoint;
+var Lifetime,LocalAge,Size,Alpha,U,Magnitude,Seed,Angle,Radius,DX,DY,LocalU,Fade,FlashLife:Double;
+  I,Count:Integer;Burst:TRhythmPoint;Center:TPoint;ShortSide:Integer;
+  procedure Layer(Index:Integer;X,Y,Diameter,Opacity:Double);
+  var Target:TPoint;Pixels:Integer;
+  begin
+    if (Opacity<=0) or (Diameter<=0) then Exit;
+    Target:=Point(Center.X+Round(X*ShortSide),Center.Y+Round(Y*ShortSide));
+    Pixels:=Max(2,Round(Diameter*ShortSide));
+    Surface.DrawAsset(Index,Target,Pixels,Pixels,Min(1.0,Opacity),True);
+  end;
 begin
   if Boss then begin Lifetime:=1.35;Size:=0.16+Age*0.20;end
   else begin Lifetime:=0.60;Size:=0.04+Age*0.18;end;
   Alpha:=ExplosionOpacity(Age,Lifetime);if Alpha<=0 then Exit;
-  Sprite(Surface,12,P,Size,Width,Height,Direction,Alpha);
-  if Boss then for I:=0 to 5 do
-  begin
-    LocalAge:=Age-I*0.055-0.06;
-    Burst.X:=P.X+Cos(I*2.399)*0.07;Burst.Y:=P.Y+Sin(I*2.399)*0.05;
-    Sprite(Surface,12,Burst,0.05+Max(0.0,LocalAge)*0.14,Width,Height,Direction,
-      ExplosionOpacity(LocalAge,0.7)*0.8);
+  if Surface.Images.IsCustom[12] then begin
+    // Preserve the existing custom-image growth, opacity and delayed boss bursts.
+    Sprite(Surface,12,P,Size,Width,Height,Direction,Alpha);
+    if Boss then for I:=0 to 5 do begin
+      LocalAge:=Age-I*0.055-0.06;
+      Burst.X:=P.X+Cos(I*2.399)*0.07;Burst.Y:=P.Y+Sin(I*2.399)*0.05;
+      Sprite(Surface,12,Burst,0.05+Max(0.0,LocalAge)*0.14,Width,Height,Direction,
+        ExplosionOpacity(LocalAge,0.7)*0.8);
+    end;
+    Exit;
+  end;
+  // Every layer is reconstructed from absolute age. Screen-space offsets keep
+  // rings circular and smoke rising in either scrolling direction/aspect ratio.
+  U:=Age/Lifetime;Magnitude:=1;if Boss then Magnitude:=2.2;
+  Center:=MapPoint(P,Width,Height,Direction);ShortSide:=Min(Width,Height);
+  Seed:=Frac(Abs(P.X*37.17+P.Y*53.11));
+  Count:=3;if Boss then Count:=5;
+  Fade:=0.45*EnsureRange((U-0.18)/0.18,0.0,1.0)*(1-U);
+  for I:=0 to Count-1 do begin
+    Angle:=I*2.399963+Seed*2*Pi;
+    DX:=Cos(Angle)*(0.010+0.030*U)*Magnitude;
+    DY:=(Sin(Angle)*(0.008+0.020*U)-0.010-0.030*U)*Magnitude;
+    Layer(SHOOT_SMOKE,DX,DY,(0.032+0.065*U)*Magnitude,Fade);
+  end;
+  Layer(SHOOT_SHOCKWAVE,0,0,(0.045+0.19*Sqrt(U))*Magnitude,0.75*Power(1-U,1.6));
+  Layer(12,0,0,Size*0.92,Alpha);
+  Count:=2;if Boss then Count:=5;
+  for I:=0 to Count-1 do begin
+    LocalAge:=Age-(I+1)*Lifetime*0.055;
+    if (LocalAge>=0) and (LocalAge<Lifetime*0.62) then begin
+      LocalU:=LocalAge/(Lifetime*0.62);Angle:=I*2.399963+Seed*2*Pi;
+      Radius:=(0.009+0.035*LocalU)*Magnitude;
+      Fade:=ExplosionOpacity(LocalAge,Lifetime*0.62)*Min(1.0,LocalAge/(Lifetime*0.06))*0.70;
+      Layer(12,Cos(Angle)*Radius,Sin(Angle)*Radius-0.010*LocalU*Magnitude,
+        (0.026+0.060*LocalU)*Magnitude,Fade);
+    end;
+  end;
+  if U<0.74 then begin
+    Count:=8;if Boss then Count:=14;
+    Fade:=Power(1-U/0.74,1.4);
+    for I:=0 to Count-1 do begin
+      Angle:=I*2.399963+Seed*2*Pi;
+      Radius:=(0.012+0.11*(1-Sqr(1-U)))*(0.75+0.075*(I mod 4))*Magnitude;
+      DX:=Cos(Angle)*Radius;DY:=Sin(Angle)*Radius+0.022*U*U*Magnitude;
+      Layer(SHOOT_EMBER,DX*0.82,DY*0.82,0.006*Magnitude,Fade*0.6);
+      Layer(SHOOT_SPARK,DX,DY,(0.010-0.004*U)*Magnitude,Fade);
+    end;
+  end;
+  if U>0.42 then begin
+    Count:=4;if Boss then Count:=6;
+    Fade:=0.60*EnsureRange((U-0.42)/0.12,0.0,1.0)*Power(1-U,1.1);
+    for I:=0 to Count-1 do begin
+      Angle:=I*2.399963+Seed*2*Pi;
+      Radius:=(0.025+0.050*U)*Magnitude;
+      Layer(SHOOT_EMBER,Cos(Angle)*Radius,Sin(Angle)*Radius+0.018*U*U*Magnitude,
+        0.006*Magnitude,Fade);
+    end;
+  end;
+  FlashLife:=Min(0.12,Lifetime*0.20);
+  if Age<FlashLife then begin
+    Fade:=Sqr(1-Age/FlashLife);
+    Layer(SHOOT_FLASH,0,0,0.055*Magnitude*(1+0.25*Age/FlashLife),Fade);
+    Layer(SHOOT_FLASH,0,0,0.030*Magnitude,Fade*0.9);
   end;
 end;
+
 
 procedure TShootingAnimation.Prepare(const Frame:TAnimationFrame);
 var Audio:TRhythmAudio;PlanKey:string;Width,Height,Direction,I,J:Integer;Additional:TArray<TRhythmFlyby>;
@@ -160,7 +246,7 @@ begin
         begin
           BossTime:=BossKillTime(Audio,EnemyBullet.Boss);
           Alpha:=EnsureRange((BossTime+0.45-Time)/0.45,0.0,1.0);
-          Sprite(Surface,11,Q,0.018+EnemyBullet.Intensity*0.005,Width,Height,Direction,Alpha);
+          EnemyProjectile(Surface,EnemyBullet,Q,0.018+EnemyBullet.Intensity*0.005,Width,Height,Direction,Alpha);
         end;
       end;
   end;

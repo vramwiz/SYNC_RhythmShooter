@@ -1,0 +1,55 @@
+﻿program RhythmMiningPreview;
+uses
+  RhythmBallCircuitPlan in '..\Source\Ball\RhythmBallCircuitPlan.pas',
+RhythmBallCircuitScene in '..\Source\Ball\RhythmBallCircuitScene.pas',
+RhythmBreakoutAction in '..\Source\Breakout\RhythmBreakoutAction.pas',
+RhythmFightingPlan in '..\Source\Fighting\RhythmFightingPlan.pas',
+RhythmFightingScene in '..\Source\Fighting\RhythmFightingScene.pas',
+RhythmMiningPlan in '..\Source\Mining\RhythmMiningPlan.pas',
+RhythmMiningScene in '..\Source\Mining\RhythmMiningScene.pas',
+RhythmTrainPlan in '..\Source\Train\RhythmTrainPlan.pas',
+RhythmTrainScene in '..\Source\Train\RhythmTrainScene.pas',
+RhythmNavalPlan in '..\Source\Naval\RhythmNavalPlan.pas',
+RhythmNavalScene in '..\Source\Naval\RhythmNavalScene.pas', Vcl.Forms,
+  RhythmBombPlan in '..\Source\BombAction\RhythmBombPlan.pas',
+  RhythmBombScene in '..\Source\BombAction\RhythmBombScene.pas',
+  RhythmRacePlan in '..\Source\Race\RhythmRacePlan.pas',
+  RhythmRaceScene in '..\Source\Race\RhythmRaceScene.pas',
+  RhythmPreparedData in '..\Source\Shared\Settings\RhythmPreparedData.pas',
+  RhythmBreakoutCampaign in '..\Source\Breakout\RhythmBreakoutCampaign.pas',
+  RhythmBreakoutScore in '..\Source\Breakout\RhythmBreakoutScore.pas',
+  RhythmBreakoutGeometry in '..\Source\Breakout\RhythmBreakoutGeometry.pas',
+  RhythmBreakoutPlan in '..\Source\Breakout\RhythmBreakoutPlan.pas',
+  RhythmBreakoutScene in '..\Source\Breakout\RhythmBreakoutScene.pas',
+  RhythmRunnerPlan in '..\Source\Runner\RhythmRunnerPlan.pas',
+  RhythmRunnerScene in '..\Source\Runner\RhythmRunnerScene.pas',
+  RhythmStyles in '..\Source\Shared\Settings\RhythmStyles.pas',
+  RhythmProduct in '..\Source\Shared\Settings\RhythmProduct.pas',
+  RhythmPlanRef in '..\Source\Shared\Settings\RhythmPlanRef.pas',
+  RhythmPrepare in '..\Source\Composition\RhythmPrepare.pas',
+  RhythmBallGeometry in '..\Source\Ball\RhythmBallGeometry.pas',
+  RhythmBallPlan in '..\Source\Ball\RhythmBallPlan.pas',
+  RhythmFireworksPlan in '..\Source\Fireworks\RhythmFireworksPlan.pas',
+  RhythmFireworksScene in '..\Source\Fireworks\RhythmFireworksScene.pas',
+  RhythmBallScene in '..\Source\Ball\RhythmBallScene.pas',
+  SYNC_RhythmShooter_SettingsForm in '..\Source\Shared\Host\SYNC_RhythmShooter_SettingsForm.pas',
+  RhythmAudio in '..\Source\Composition\RhythmAudio.pas',
+  RhythmPlayback in '..\Source\Shared\Audio\RhythmPlayback.pas',
+  RhythmImageBank in '..\Source\Shared\Render\RhythmImageBank.pas',
+  RhythmShootingAssets in '..\Source\Shooting\RhythmShootingAssets.pas',
+  RhythmRenderSurface in '..\Source\Shared\Render\RhythmRenderSurface.pas',
+  RhythmParallax in '..\Source\Shared\Render\RhythmParallax.pas',
+  RhythmAnimation in '..\Source\Shared\Render\RhythmAnimation.pas',
+  RhythmShootingScene in '..\Source\Shooting\RhythmShootingScene.pas',
+  RhythmAudioAnalysis in '..\Source\Shared\Audio\RhythmAudioAnalysis.pas',
+  RhythmScene in '..\Source\Composition\RhythmScene.pas',
+  RhythmPaths in '..\Source\Shared\Common\RhythmPaths.pas',
+  MimiChildProcess in '..\Source\Lib\Process\MimiChildProcess.pas';
+var Preview:TFormRhythmShooterSettings;
+begin
+  ConfigureRhythmProduct('SYNC_RhythmMining','リズム採掘',rsMining);
+  Application.Initialize;Application.MainFormOnTaskbar:=True;
+  Application.CreateForm(TFormRhythmShooterSettings,Preview);
+  if ParamCount>0 then Preview.Configure(ParamStr(1),0,50);
+  Application.Run;
+end.

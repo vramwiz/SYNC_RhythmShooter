@@ -22,6 +22,7 @@ type
       Opacity:Double=1;ForceAlpha:Boolean=False;Bucket:Integer=0);
     procedure Circle(X,Y,Radius:Double;Color:TColor;Filled:Boolean;Stroke:Double=1);
     procedure Line(X1,Y1,X2,Y2:Double;Color:TColor;Stroke:Double=1);
+    procedure FillRect(X1,Y1,X2,Y2:Double;Color:TColor);
     procedure ApplyChoices(const Choices:array of TRhythmDesign;Force:Boolean=False);
     property Images:TAnimationImageBank read FImages;
     property Canvas:TCanvas read GetCanvas;
@@ -81,6 +82,12 @@ begin
   if FD2DActive then begin FD2D.Line(X1,Y1,X2,Y2,Color,Stroke);Exit;end;
   Canvas.Pen.Style:=psSolid;Canvas.Pen.Color:=Color;Canvas.Pen.Width:=Max(1,Round(Stroke));
   Canvas.MoveTo(Round(X1),Round(Y1));Canvas.LineTo(Round(X2),Round(Y2));Canvas.Pen.Width:=1;
+end;
+procedure TAnimationRenderSurface.FillRect(X1,Y1,X2,Y2:Double;Color:TColor);
+begin
+  if (X2<=X1) or (Y2<=Y1) then Exit;
+  if FD2DActive then begin FD2D.FillRect(X1,Y1,X2,Y2,Color);Exit;end;
+  Canvas.Brush.Style:=bsSolid;Canvas.Brush.Color:=Color;Canvas.FillRect(Rect(Round(X1),Round(Y1),Round(X2),Round(Y2)));
 end;
 procedure TAnimationRenderSurface.ApplyChoices(const Choices:array of TRhythmDesign;Force:Boolean);
 begin

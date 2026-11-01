@@ -32,8 +32,12 @@ type
   end;
 
   TRhythmComboBox = class(TComboBox)
+  private
+    procedure UpdateItemMetrics;
+    procedure CMFontChanged(var Message:TMessage); message CM_FONTCHANGED;
   protected
     procedure CreateWnd; override;
+    procedure ChangeScale(M,D:Integer;isDpiChange:Boolean); override;
     procedure DrawItem(Index: Integer; Rect: TRect; State: TOwnerDrawState); override;
   public
     constructor Create(AOwner: TComponent); override;
@@ -120,17 +124,34 @@ begin
 end;
 
 constructor TRhythmComboBox.Create(AOwner: TComponent);
-begin inherited; Style := csOwnerDrawFixed; Color := RhythmInput; Font.Color := RhythmText; end;
+begin inherited; Style := csOwnerDrawFixed; Color := RhythmInput; ParentFont := True; end;
 
 procedure TRhythmComboBox.CreateWnd;
-var H: Integer;
 begin
   inherited;
-  H := Max(MulDiv(20,Abs(Font.Height),13),Abs(Font.Height)+MulDiv(6,Abs(Font.Height),13));
+  UpdateItemMetrics;
+  SetWindowTheme(Handle,'DarkMode_CFD',nil);
+end;
+
+procedure TRhythmComboBox.UpdateItemMetrics;
+var H:Integer;
+begin
+  if not HandleAllocated then Exit;
+  Canvas.Font.Assign(Font);
+  H:=Max(MulDiv(20,CurrentPPI,96),Canvas.TextHeight('Agあ')+MulDiv(6,CurrentPPI,96));
   // ItemHeightのsetterはRecreateWndを呼ぶため、生成中はネイティブへ直接反映する。
   SendMessage(Handle,CB_SETITEMHEIGHT,0,H);
   SendMessage(Handle,CB_SETITEMHEIGHT,WPARAM(-1),H);
-  SetWindowTheme(Handle,'DarkMode_CFD',nil);
+end;
+
+procedure TRhythmComboBox.CMFontChanged(var Message:TMessage);
+begin
+  inherited;UpdateItemMetrics;
+end;
+
+procedure TRhythmComboBox.ChangeScale(M,D:Integer;isDpiChange:Boolean);
+begin
+  inherited;UpdateItemMetrics;
 end;
 
 procedure TRhythmComboBox.DrawItem(Index: Integer; Rect: TRect; State: TOwnerDrawState);

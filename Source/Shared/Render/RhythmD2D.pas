@@ -18,6 +18,7 @@ type
     procedure Ring(X,Y,Radius:Single);
     procedure Circle(X,Y,Radius:Single;Color:TColor;Filled:Boolean;Stroke:Single=1);
     procedure Line(X1,Y1,X2,Y2:Single;Color:TColor;Stroke:Single=1);
+    procedure FillRect(X1,Y1,X2,Y2:Single;Color:TColor);
     procedure Star(X,Y,Radius,Trail:Single;Layer,Direction:Integer);
   end;
 implementation
@@ -103,6 +104,12 @@ var A,B:TD2DPoint2f;C:TD2D1ColorF;V:Longint;
 begin
   V:=ColorToRGB(Color);C.r:=(V and 255)/255;C.g:=((V shr 8) and 255)/255;C.b:=((V shr 16) and 255)/255;C.a:=1;FBrush.SetColor(C);
   A.x:=X1;A.y:=Y1;B.x:=X2;B.y:=Y2;FTarget.DrawLine(A,B,FBrush,Stroke);
+end;
+procedure TRhythmD2D.FillRect(X1,Y1,X2,Y2:Single;Color:TColor);
+var Bounds:TD2D1RectF;C:TD2D1ColorF;V:Longint;
+begin
+  V:=ColorToRGB(Color);C.r:=(V and 255)/255;C.g:=((V shr 8) and 255)/255;C.b:=((V shr 16) and 255)/255;C.a:=1;FBrush.SetColor(C);
+  Bounds.left:=X1;Bounds.top:=Y1;Bounds.right:=X2;Bounds.bottom:=Y2;FTarget.FillRectangle(Bounds,FBrush);
 end;
 procedure TRhythmD2D.Star(X,Y,Radius,Trail:Single;Layer,Direction:Integer);
 var Shape:TD2D1Ellipse;Bounds:TD2D1RectF;

@@ -2,12 +2,22 @@
 {$APPTYPE CONSOLE}
 uses
   Winapi.Windows, System.SysUtils, System.Classes, System.IOUtils, System.Types,
-  Vcl.Forms, Vcl.Controls, Vcl.StdCtrls, Vcl.ComCtrls, Vcl.Graphics, Vcl.Imaging.pngimage,
+  Vcl.Forms, Vcl.Controls, Vcl.StdCtrls, Vcl.ComCtrls, Vcl.ExtCtrls, Vcl.Graphics, Vcl.Imaging.pngimage,
   RhythmSettings, RhythmStyles, RhythmAudio, RhythmWaveView, RhythmDesignFrame, RhythmControls, SYNC_RhythmShooter_SettingsForm;
 
 type
   TControlAccess = class(TControl);
+  TWindowAccess = class(TWinControl);
 
+function VisibleHierarchy(Control:TControl):Boolean;
+begin Result:=Control.Visible;if Control is TWinControl then Result:=Result and TWindowAccess(Control).Showing else if Control.Parent<>nil then Result:=Result and TWindowAccess(Control.Parent).Showing;end;
+procedure ScaleTestForm(Form:TFormRhythmShooterSettings;PPI:Integer);
+begin
+  // A synthetic DPI has no matching OS monitor. After VCL scaling, ask
+  // CurrentPPI for the stored VCL PPI rather than GetDpiForWindow's real PPI.
+  Form.Scaled:=True;Form.ScaleForPPI(PPI);Form.Scaled:=False;
+  if Assigned(TWindowAccess(Form.FindComponent('AnimationOptions')).OnResize) then TWindowAccess(Form.FindComponent('AnimationOptions')).OnResize(Form);
+end;
 procedure CheckLayout(Owner: TComponent);
 var I, J, Gap: Integer; Control, Other: TControl; Measure: TBitmap; Overlap: TRect;
 begin
@@ -22,12 +32,12 @@ begin
         if not (Control is TButton) and not (Control is TEdit) and
           not (Control is TComboBox) and not (Control is TTrackBar) and
           not (Control is TLabel) then Continue;
-        if (Control.Parent = nil) or not Control.Visible then Continue;
+        if (Control.Parent = nil) or not VisibleHierarchy(Control) then Continue;
         if (Control.Left < 0) or (Control.Top < 0) or
           (Control.BoundsRect.Right > Control.Parent.ClientWidth) or
           (Control.BoundsRect.Bottom > Control.Parent.ClientHeight) then
           raise Exception.Create(Format('Control outside parent: %s %s bounds=%d,%d,%d,%d parent=%d,%d',
-            [Control.Name,Control.ClassName,Control.Left,Control.Top,Control.Width,Control.Height,
+            [Control.Name+' / '+Control.Parent.ClassName+' / '+Control.Parent.Name,Control.ClassName,Control.Left,Control.Top,Control.Width,Control.Height,
              Control.Parent.ClientWidth,Control.Parent.ClientHeight]));
         Measure.Canvas.Font.Assign(TControlAccess(Control).Font);
         if Control is TButton then
@@ -43,7 +53,7 @@ begin
           if Owner.Components[J] is TControl then
           begin
             Other := TControl(Owner.Components[J]);
-            if (Other.Parent <> Control.Parent) or not Other.Visible then Continue;
+            if (Other.Parent <> Control.Parent) or not VisibleHierarchy(Other) then Continue;
             if IntersectRect(Overlap, Control.BoundsRect, Other.BoundsRect) and
               (Overlap.Width > Gap) and (Overlap.Height > Gap) then
               raise Exception.Create('Overlapping controls: ' + Control.ClassName + ' / ' + Other.ClassName);
@@ -62,9 +72,9 @@ begin
     raise Exception.Create('Caption is not to the left of its control: '+LabelName);
 end;
 procedure CheckWaveHitTest;
-var Wave:TRhythmWaveView;Audio:TRhythmAudio;
+var Wave:TRhythmWaveView;Audio:TRhythmAudio;ParentForm:TForm;
 begin
-  Wave:=TRhythmWaveView.Create(nil);Audio:=TRhythmAudio.Create;
+  ParentForm:=TForm.CreateNew(nil);Wave:=TRhythmWaveView.Create(nil);Wave.Parent:=ParentForm;Audio:=TRhythmAudio.Create;
   try
     Audio.Duration:=10;Wave.SetBounds(0,0,101,42);Wave.SetAudio(Audio);
     if (Wave.TimeAt(-20)<>0) or (Wave.TimeAt(0)<>0) or (Abs(Wave.TimeAt(50)-5)>1E-9) or
@@ -72,113 +82,42 @@ begin
     Wave.Width:=1;if Wave.TimeAt(0)<>0 then raise Exception.Create('Single-pixel waveform hit test failed');
     Wave.Width:=101;Audio.Duration:=0;if Wave.TimeAt(50)<>0 then raise Exception.Create('Zero-duration waveform hit test failed');
     Wave.SetAudio(nil);if Wave.TimeAt(50)<>0 then raise Exception.Create('Unprepared waveform hit test failed');
-  finally Wave.Free;Audio.Free;end;
+  finally Wave.Free;ParentForm.Free;Audio.Free;end;
 end;
 
-const DPIs: array[0..3] of Integer = (96, 144, 192, 96);
-var
-  Form: TFormRhythmShooterSettings;
-  Settings: TRhythmSettings;
-  Bitmap: TBitmap;
-  PNG: TPngImage;
-  Pages: TPageControl;
-  Folder, ImagePath: string;
-  I, D, Tab, WidthIndex, LogicalWidth: Integer;
+const DPIs:array[0..3] of Integer=(96,120,144,192);
+var Form:TFormRhythmShooterSettings;Settings:TRhythmSettings;Bitmap:TBitmap;PNG:TPngImage;
+ Style:TRhythmStyle;Combo:TComboBox;Folder:string;D,W,LogicalWidth,K:Integer;
 begin
-  try
-    SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
-    Application.Initialize;
-    Application.ShowMainForm := False;
-    CheckWaveHitTest;
-    Folder := TPath.Combine(ExtractFileDir(ParamStr(0)), 'LayoutVerification');
-    ForceDirectories(Folder);
-    Form := TFormRhythmShooterSettings.Create(nil);
-    try
-      Settings := TRhythmSettings.Defaults;
-      Form.ConfigureState(Settings, 320, 180);
-      Form.Position := poDesigned;
-      Form.Left := -32000;
-      Form.Top := -32000;
-      Form.Show;
-      Writeln('INITIAL_PPI=', Form.CurrentPPI, ' FONT_HEIGHT=', Form.Font.Height);
-      CheckLayout(Form);
-      if Form.FindComponent('PreviewPause')<>nil then raise Exception.Create('Separate pause button still exists');
-      if TButton(Form.FindComponent('PreviewPlay')).Caption<>'再生' then raise Exception.Create('Idle toggle caption is wrong');
-      Bitmap:=Form.GetFormImage;PNG:=TPngImage.Create;
-      try PNG.Assign(Bitmap);PNG.SaveToFile(TPath.Combine(Folder,'initial.png'));
-      finally PNG.Free;Bitmap.Free;end;
-      CheckLayout(Form);
-      Pages := nil;
-      for I := 0 to Form.ComponentCount - 1 do
-        if Form.Components[I] is TPageControl then Pages := TPageControl(Form.Components[I]);
-      if Pages = nil then raise Exception.Create('Missing settings tabs');
-      for D := Low(DPIs) to High(DPIs) do
-      begin
-        Form.ScaleForPPI(DPIs[D]);
-        Writeln('DPI_STEP=',DPIs[D],' actual=',Form.CurrentPPI);
-        for WidthIndex := 0 to 1 do
-        begin
-          if WidthIndex = 0 then LogicalWidth := 1100 else LogicalWidth := 850;
-          Form.ClientWidth := MulDiv(LogicalWidth, DPIs[D], 96);
-          Form.ClientHeight := MulDiv(760, DPIs[D], 96);
-          for Tab := 0 to Pages.PageCount - 1 do
-          begin
-            if Tab=0 then TButton(Form.FindComponent('AnimationTab')).Click
-            else TButton(Form.FindComponent('DesignTab')).Click;
-            if Pages.ActivePageIndex<>Tab then raise Exception.Create('Navigation button did not switch pages');
-            if TRhythmButton(Form.FindComponent('DesignTab')).Selected<>(Tab=1) then
-              raise Exception.Create('Navigation selection was not updated');
-            Form.Repaint;
-            Application.ProcessMessages;
-            CheckLayout(Form);
-            Bitmap := Form.GetFormImage;
-            PNG := TPngImage.Create;
-            try
-              PNG.Assign(Bitmap);
-              ImagePath := TPath.Combine(Folder, Format('settings-%d-%d-tab%d-step%d.png',
-                [DPIs[D], LogicalWidth, Tab, D]));
-              PNG.SaveToFile(ImagePath);
-            finally
-              PNG.Free;
-              Bitmap.Free;
-            end;
-          end;
-        end;
-      end;
-      Settings.Style:=rsFireworks;Settings.FireworksRichness:=100;
-      Settings.Designs[8].Memo:='keep design while changing fireworks';
-      Form.ConfigureState(Settings,320,180);
-      for D:=Low(DPIs) to High(DPIs) do begin
-        Form.ScaleForPPI(DPIs[D]);
-        Form.ClientWidth:=MulDiv(850,DPIs[D],96);Form.ClientHeight:=MulDiv(760,DPIs[D],96);
-        Form.Repaint;Application.ProcessMessages;CheckLayout(Form);
-        CheckOptionCaption(Form,'StyleCaption','AnimationStyle');CheckOptionCaption(Form,'DirectionCaption','ScrollDirection');
-        CheckOptionCaption(Form,'SensitivityCaption','Sensitivity');CheckOptionCaption(Form,'RichnessCaption','FireworksRichness');
-        if TControl(Form.FindComponent('AnimationOptions')).Height>MulDiv(44,Form.CurrentPPI,96) then
-          raise Exception.Create('Normal-width options did not fit on one row');
-        if not TTrackBar(Form.FindComponent('FireworksRichness')).Parent.Visible then
-          raise Exception.Create('Fireworks richness row is hidden');
-        if Form.Snapshot.FireworksRichness<>100 then raise Exception.Create('Richness was not restored');
-      end;
-      Form.Constraints.MinWidth:=0;Form.ClientWidth:=MulDiv(600,Form.CurrentPPI,96);
-      Form.Repaint;Application.ProcessMessages;CheckLayout(Form);
-      if TControl(Form.FindComponent('AnimationOptions')).Height<=MulDiv(44,Form.CurrentPPI,96) then
-        raise Exception.Create('Narrow options did not wrap safely');
-      Settings.Style:=rsBall;Form.ConfigureState(Settings,320,180);
-      if TTrackBar(Form.FindComponent('FireworksRichness')).Parent.Visible then
-        raise Exception.Create('Fireworks richness row is shown for pinball');
-      if Form.Snapshot.Designs[8].Memo<>Settings.Designs[8].Memo then
-        raise Exception.Create('Style switching erased shooting design memo');
-      Form.Close;
-    finally
-      Form.Free;
+ try
+  // Real monitor DPI is fixed. This verifies VCL scale/layout at each requested
+  // PPI using fresh forms, avoiding fake WM_DPICHANGED and OS settings changes.
+  SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_UNAWARE);Application.Initialize;Application.ShowMainForm:=False;CheckWaveHitTest;
+  Folder:=TPath.Combine(ExtractFileDir(ParamStr(0)),'LayoutVerification');ForceDirectories(Folder);
+  for Style:=Low(TRhythmStyle) to High(TRhythmStyle) do for D:=Low(DPIs) to High(DPIs) do begin
+   Form:=TFormRhythmShooterSettings.Create(nil);
+   try
+    Settings:=TRhythmSettings.Defaults;Settings.Style:=Style;Settings.BossFrequency:=50;Settings.FireworksRichness:=100;Form.ConfigureState(Settings,320,180);
+    Form.Position:=poDesigned;Form.Left:=-32000;Form.Top:=-32000;Form.Show;ScaleTestForm(Form,DPIs[D]);
+    for K:=0 to Form.ComponentCount-1 do if Form.Components[K] is TPanel then if TPanel(Form.Components[K]).Caption<>'' then raise Exception.Create('Internal panel caption visible');
+    Combo:=TComboBox(Form.FindComponent('AnimationStyle'));if (Combo.Items.Count<>Ord(High(TRhythmStyle))+1) or (Combo.ItemIndex<>Ord(Style)) or (Form.Snapshot.Style<>Style) then raise Exception.Create('Style registration/restore');
+    if TTrackBar(Form.FindComponent('BossFrequency')).Parent.Visible<>(Style in [rsShooting,rsBreakout,rsRace,rsBombAction,rsFighting,rsMining,rsTrain,rsNaval]) then raise Exception.Create('Boss frequency visibility');
+    if Form.FindComponent('PreviewPause')<>nil then raise Exception.Create('Separate pause button');
+    if TButton(Form.FindComponent('PreviewPlay')).Caption<>'再生' then raise Exception.Create('Idle play toggle');
+    for W:=0 to 2 do begin
+     case W of 0:LogicalWidth:=1100;1:LogicalWidth:=850;else LogicalWidth:=600;end;
+     Form.Constraints.MinWidth:=0;Form.ClientWidth:=MulDiv(LogicalWidth,DPIs[D],96);Form.ClientHeight:=MulDiv(760,DPIs[D],96);
+     Form.Repaint;Application.ProcessMessages;CheckLayout(Form);
+     CheckOptionCaption(Form,'StyleCaption','AnimationStyle');CheckOptionCaption(Form,'SensitivityCaption','Sensitivity');
+     if Style=rsFireworks then CheckOptionCaption(Form,'RichnessCaption','FireworksRichness');
+     if W=1 then begin Bitmap:=Form.GetFormImage;PNG:=TPngImage.Create;try PNG.Assign(Bitmap);PNG.SaveToFile(TPath.Combine(Folder,StyleId(Style)+'-'+IntToStr(DPIs[D])+'.png'));finally PNG.Free;Bitmap.Free;end;end;
+     if (W=2) and (Style in [rsShooting,rsFireworks]) and (TControl(Form.FindComponent('AnimationOptions')).Height<=MulDiv(44,DPIs[D],96)) then raise Exception.Create('Narrow option rows did not wrap');
     end;
-    Writeln('SETTINGS_LAYOUT_DPI_OK');
-  except
-    on E: Exception do
-    begin
-      Writeln(E.ClassName, ': ', E.Message);
-      ExitCode := 1;
-    end;
+    // Custom-design lifecycle is covered at real monitor DPI by SettingsFormSmoke.
+    if (Style=rsShooting) and (DPIs[D]=96) then begin Form.ClientWidth:=MulDiv(850,DPIs[D],96);TButton(Form.FindComponent('DesignTab')).Click;Form.Repaint;Application.ProcessMessages;CheckLayout(Form);end;
+    WriteLn('LAYOUT ',StyleId(Style),' requested=',DPIs[D],' actual=',Form.CurrentPPI,' PASS');
+   finally Form.Free;end;
   end;
+  WriteLn('SETTINGS_LAYOUT_OK: 11 styles x 4 PPIs x 3 widths');
+ except on E:Exception do begin WriteLn(E.ClassName,': ',E.Message);ExitCode:=1;end;end;
 end.

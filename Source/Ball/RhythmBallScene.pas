@@ -13,7 +13,7 @@ type TBallAnimation=class(TAnimationScene)
     function Notice:string;override;
   end;
 implementation
-uses System.SysUtils,System.Math,Winapi.Windows,Vcl.Graphics,RhythmBallGeometry;
+uses System.SysUtils,System.Math,Winapi.Windows,Vcl.Graphics,RhythmBallGeometry,RhythmBallCircuitScene;
 destructor TBallAnimation.Destroy;begin FPlan.Free;inherited;end;
 procedure TBallAnimation.SetReference(const Ref:TRhythmPlanRef);begin FRef:=Ref;end;
 function TBallAnimation.Notice:string;begin Result:=FError;end;
@@ -27,8 +27,8 @@ begin
   try FPlan:=TRhythmBallPlan.Load(FRef,FAudio,Frame.Direction);except on E:Exception do FError:=E.Message;end;
 end;
 procedure TBallAnimation.Draw(Surface:TAnimationRenderSurface;const Frame:TAnimationFrame);
-var Scale,Left,Top,W,H,Fade,Radius,Age,Power,Amount,Angle,Distance:Double;
-  I,J,First,Last:Integer;P,Q,Center,Impact,A,B:TBallPoint;O:TBallObstacle;Pulse:TBallPulse;
+var Scale,Left,Top,W,H,Fade,Radius,Age,Power,Amount,Angle,Distance,Compression:Double;
+  I,J,First,Last,BreakBudget:Integer;P,Q,Center,Impact,A,B,Core:TBallPoint;O:TBallObstacle;Pulse:TBallPulse;
   function Color(R,G,B:Integer;Opacity:Double=1):TColor;
   begin Opacity:=EnsureRange(Opacity,0.0,1.0);Result:=RGB(Round(7+(R-7)*Opacity),Round(13+(G-13)*Opacity),Round(29+(B-29)*Opacity));end;
   procedure Map(const V:TBallPoint;out X,Y:Double);
@@ -73,6 +73,7 @@ var Scale,Left,Top,W,H,Fade,Radius,Age,Power,Amount,Angle,Distance:Double;
     Segment(0.18,1.33,0.40,1.33,Color(155,112,60),0.006);Segment(0.60,1.33,0.82,1.33,Color(155,112,60),0.006);
   end;
 begin
+  if (FPlan<>nil) and (FPlan.Circuit<>nil) then begin DrawBallCircuit(FPlan.Circuit,Surface,Frame);Exit;end;
   if Frame.Direction=0 then begin W:=BALL_BOARD_WIDTH;H:=BALL_BOARD_HEIGHT;end else begin W:=BALL_BOARD_HEIGHT;H:=BALL_BOARD_WIDTH;end;
   Scale:=Min(Frame.Width/(W+0.10),Frame.Height/(H+0.10));Left:=(Frame.Width-W*Scale)/2;Top:=(Frame.Height-H*Scale)/2;
   Board;
@@ -86,13 +87,16 @@ begin
     if (O.Kind=boBumper) or (Age<0) then begin
       if Age>=0 then Amount:=Amount*EnsureRange((O.Retire-Frame.Time)/0.28,0.0,1.0);
       if O.Kind=boBumper then begin
+        Compression:=0;if (Age>=0) and (Age<0.30) then Compression:=Radius*0.24*(0.5+0.5*O.Strength)*Sin(Pi*Age/0.30);
+        Core:=BallSub(Center,BallScale(O.Normal,Compression));
         Circle(Center,Radius*1.26,Color(29,84,112,Amount*0.5),False,0.004);
         Circle(Center,Radius,Color(40,92,122,Amount),True);
         Circle(Center,Radius,Color(110,213,231,Amount),False,0.005);
-        Circle(Center,Radius*0.68,Color(15,44,69,Amount),True);
+        Circle(Core,Radius*0.68,Color(15,44,69,Amount),True);
+        Line(BallAdd(Center,BallScale(O.Normal,-Radius*0.88)),Core,Color(164,221,235,Amount),0.006);
         RingPart(Center,Radius*0.81,Pi,Pi*0.8,Color(184,239,247,Amount),0.004);
-        Circle(Center,Radius*0.38,Color(57,171,201,Amount),True);
-        Circle(BallAdd(Center,BallPoint(-Radius*0.12,-Radius*0.12)),Radius*0.14,Color(221,254,255,Amount),True);
+        Circle(Core,Radius*0.38,Color(57,171,201,Amount),True);
+        Circle(BallAdd(Core,BallPoint(-Radius*0.12,-Radius*0.12)),Radius*0.14,Color(221,254,255,Amount),True);
       end else begin
         Circle(Center,Radius,Color(102,58,47,Amount),True);
         Circle(Center,Radius,Color(250,157,86,Amount),False,0.004);
@@ -113,6 +117,7 @@ begin
   end;
   // Every source accent remains visible. Dense accents resonate from a shared
   // physical collision; they do not pretend the moving ball hits empty space.
+  BreakBudget:=96;
   First:=Max(0,FPlan.PulseBefore(Frame.Time-0.65));Last:=FPlan.PulseBefore(Frame.Time);
   for I:=First to Last do begin
     Pulse:=FPlan.Pulse[I];O:=FPlan.Obstacle[Pulse.ContactIndex-1];Age:=Frame.Time-Pulse.Time;Radius:=O.Radius;
@@ -121,13 +126,15 @@ begin
       Impact:=BallAdd(O.Center,BallScale(O.Normal,O.Radius));
       Circle(Impact,0.014+Age*(0.13+Pulse.Strength*0.12),Color(255,213,132,Power),False,0.004);
       if Age<0.12 then Circle(Impact,0.016+(0.12-Age)*0.20,Color(252,252,225,Power),True);
-      if (O.Kind=boBreakable) and (Pulse.Time=O.Hit) then begin
+      if (O.Kind=boBreakable) and (Pulse.Time=O.Hit) and (BreakBudget>0) then begin
+        Dec(BreakBudget);
         Circle(O.Center,Radius+Age*(0.22+Pulse.Strength*0.16),Color(255,147,82,Power*0.65),False,0.003);
-        for J:=0 to 7+Round(Pulse.Strength*6) do begin
-          Angle:=J*2.399963+I*0.73;Distance:=Age*(0.20+Pulse.Strength*0.24)*(0.7+(J mod 3)*0.18);
-          A:=BallAdd(O.Center,BallPoint(Cos(Angle)*(Radius*0.6+Distance),Sin(Angle)*(Radius*0.6+Distance)+Age*Age*0.15));
-          B:=BallAdd(A,BallPoint(Cos(Angle+Age*4)*0.012,Sin(Angle+Age*4)*0.012));
-          Line(A,B,Color(255,170+(J mod 3)*20,94,Power),0.004);
+        // Six recognizable casing sectors receive the contact impulse.
+        for J:=0 to 5 do begin
+          Angle:=J*Pi/3+Pi/6;Distance:=Age*(0.30+Pulse.Strength*0.38);
+          A:=BallAdd(O.Center,BallAdd(BallScale(O.Normal,-Distance),BallPoint(Cos(Angle)*(Radius*0.65+Age*0.16),Sin(Angle)*(Radius*0.65+Age*0.16)+Age*Age*0.15)));
+          B:=BallAdd(A,BallPoint(Cos(Angle+Age*7)*Radius*0.40*(1-Age/0.65),Sin(Angle+Age*7)*Radius*0.40*(1-Age/0.65)));
+          Line(A,B,Color(255,170+(J mod 3)*20,94,Power),Radius*0.28*(1-Age/0.65));
         end;
       end else if O.Kind=boBumper then Circle(O.Center,Radius*0.62+Age*0.11,Color(174,248,255,Power),False,0.005);
     end;

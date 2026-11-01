@@ -1,6 +1,10 @@
 ﻿program PreviewRenderSmoke;
 {$APPTYPE CONSOLE}
 uses
+  RhythmBombPlan in '..\Source\BombAction\RhythmBombPlan.pas',
+  RhythmBombScene in '..\Source\BombAction\RhythmBombScene.pas',
+  RhythmRacePlan in '..\Source\Race\RhythmRacePlan.pas',
+  RhythmRaceScene in '..\Source\Race\RhythmRaceScene.pas',
   Winapi.Windows, Winapi.Messages, System.SysUtils, System.Types, System.Classes,
   Vcl.Forms, Vcl.Graphics, Vcl.Controls,
   RhythmAudio, RhythmScene, RhythmControls;

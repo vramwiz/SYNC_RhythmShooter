@@ -1,0 +1,180 @@
+﻿unit RhythmFightingScene;
+interface
+uses RhythmAnimation,RhythmRenderSurface,RhythmAudio,RhythmPlanRef,RhythmFightingPlan;
+type TFightingAnimation=class(TAnimationScene)
+  private
+    FAudio:TRhythmAudio;FRef:TRhythmPlanRef;FPlan:TFightingPlan;FAttempt,FError:string;
+  public
+    destructor Destroy;override;
+    property Audio:TRhythmAudio read FAudio write FAudio;
+    procedure SetReference(const Ref:TRhythmPlanRef);
+    procedure Prepare(const Frame:TAnimationFrame);override;
+    procedure Draw(Surface:TAnimationRenderSurface;const Frame:TAnimationFrame);override;
+    function Notice:string;override;
+  end;
+implementation
+uses System.SysUtils,System.Math,Winapi.Windows,Vcl.Graphics;
+function Mix(A,B:TColor;U:Double):TColor;
+begin U:=EnsureRange(U,0.0,1.0);Result:=RGB(Round(GetRValue(A)*(1-U)+GetRValue(B)*U),Round(GetGValue(A)*(1-U)+GetGValue(B)*U),Round(GetBValue(A)*(1-U)+GetBValue(B)*U));end;
+destructor TFightingAnimation.Destroy;begin FPlan.Free;inherited;end;
+procedure TFightingAnimation.SetReference(const Ref:TRhythmPlanRef);begin FRef:=Ref;end;
+function TFightingAnimation.Notice:string;begin Result:=FError;end;
+procedure TFightingAnimation.Prepare(const Frame:TAnimationFrame);
+var Key:string;
+begin Key:=FRef.Key+'|'+FRef.Digest+'|'+IntToStr(Frame.Direction);if FAudio<>nil then Key:=Key+'|'+FAudio.Key+'|'+IntToStr(FAudio.Sensitivity) else Key:=Key+'|none';
+  if Key=FAttempt then Exit;FAttempt:=Key;FreeAndNil(FPlan);FError:='';if FAudio=nil then Exit;
+  try FPlan:=TFightingPlan.Load(FRef,FAudio,Frame.Direction);except on E:Exception do FError:=E.Message;end;
+end;
+procedure TFightingAnimation.Draw(Surface:TAnimationRenderSurface;const Frame:TAnimationFrame);
+var Scale,Left,Top,Clock,CamX,CamY,Zoom,Age,U,X,Y,Angle,Strength,Alpha:Double;
+  I,J,A,B,N,Theme,PreviousTheme:Integer;P,Q:TFightPoint;E:TFightEnemy;V:TFightVolley;Hit:TFightHit;Pose:TFightPose;Tint,StageTint,PreviousTint:TColor;
+  function PX(X:Double):Double;begin Result:=Left+((X-CamX)*Zoom+0.80)*Scale;end;
+  function PY(Y:Double):Double;begin Result:=Top+((Y-CamY)*Zoom+0.66)*Scale;end;
+  procedure Line(X1,Y1,X2,Y2:Double;C:TColor;Width:Double);
+  begin Surface.Line(PX(X1),PY(Y1),PX(X2),PY(Y2),C,Max(1,Width*Scale*Zoom));end;
+  procedure Circle(X,Y,R:Double;C:TColor;Filled:Boolean=True);
+  begin Surface.Circle(PX(X),PY(Y),R*Scale*Zoom,C,Filled,Max(1,0.002*Scale*Zoom));end;
+  procedure Box(X1,Y1,X2,Y2:Double;C:TColor);
+  begin Surface.FillRect(PX(X1),PY(Y1),PX(X2),PY(Y2),C);end;
+  procedure FixedBox(X1,Y1,X2,Y2:Double;C:TColor);
+  begin Surface.FillRect(Left+X1*Scale,Top+Y1*Scale,Left+X2*Scale,Top+Y2*Scale,C);end;
+  procedure Word(const Text:string;X,Y,Size:Double;C:TColor);
+  var N,R,K:Integer;Bits:string;Ch:Char;
+  begin
+    for N:=1 to Length(Text) do begin Ch:=Text[N];Bits:='';
+      case Ch of
+        '0','O':Bits:='111101101101111';'1':Bits:='010110010010111';'2':Bits:='111001111100111';'3':Bits:='111001111001111';'4':Bits:='101101111001001';'5','S':Bits:='111100111001111';'6':Bits:='111100111101111';'7':Bits:='111001010010010';'8','B':Bits:='110101110101110';'9':Bits:='111101111001111';
+        'A':Bits:='010101111101101';'C':Bits:='111100100100111';'D':Bits:='110101101101110';'E':Bits:='111100110100111';'G':Bits:='111100101101111';'K':Bits:='101101110101101';'L':Bits:='100100100100111';'R':Bits:='110101110101101';'Y':Bits:='101101010010010';
+      end;
+      if Bits<>'' then for R:=0 to 4 do for K:=0 to 2 do if Bits[R*3+K+1]='1' then FixedBox(X+(N-1)*Size*4+K*Size,Y+R*Size,X+(N-1)*Size*4+(K+0.85)*Size,Y+(R+0.85)*Size,C);
+    end;
+  end;
+  function ThemeColor(Index:Integer):TColor;
+  begin case Index mod 4 of 0:Result:=RGB(20,31,55);1:Result:=RGB(67,37,44);2:Result:=RGB(17,48,54);else Result:=RGB(43,29,66);end;end;
+  procedure Background;
+  var I,J:Integer;X,Y,W,Height,Shift:Double;C:TColor;
+  begin
+    for I:=0 to 31 do Surface.FillRect(0,I*Frame.Height/32,Frame.Width,(I+1)*Frame.Height/32+1,Mix(StageTint,RGB(56,75,88),I/42));
+    Shift:=CamX*0.08;
+    for I:=-1 to 15 do begin X:=I*0.13-Shift;Height:=0.10+0.12*(0.5+0.5*Sin(I*1.71+Theme));W:=0.085+0.025*(I mod 3);C:=Mix(StageTint,RGB(86,110,127),0.23);
+      Box(X,0.49-Height,X+W,0.62,C);
+      for J:=0 to 3 do Line(X+0.016,0.48-Height+J*0.025,X+W-0.016,0.48-Height+J*0.025,Mix(C,RGB(217,173,102),0.45),0.003);
+    end;
+    Box(-1,0.78,3,1.4,RGB(36,49,64));Line(-1,0.79,3,0.79,RGB(120,151,162),0.006);
+    for I:=-2 to 18 do begin X:=I*0.12;Line(X,0.79,0.8+(X-0.8)*1.5,1.10,RGB(61,80,97),0.002);end;
+    for I:=0 to 6 do begin Y:=0.80+Sqr(I/6)*0.24;Line(-0.5,Y,2.1,Y,RGB(57,74,90),0.002);end;
+    for I:=0 to 6 do begin X:=I*0.26;Line(X,0.54,X+0.10,0.54,RGB(103,158,170),0.005);Line(X+0.05,0.54,X+0.05,0.59,RGB(69,99,117),0.004);end;
+  end;
+  procedure Fighter(CX,FootY,S,Turn:Double;Side:Integer;C:TColor;Robot:Boolean;PoseKind:Integer=0);
+  var C0,S0:Double;
+    procedure L(AX,AY,BX,BY:Double;Tint:TColor;Width:Double);
+    begin Line(CX+(AX*C0-AY*S0)*S,FootY-0.09*S+(AX*S0+AY*C0)*S,CX+(BX*C0-BY*S0)*S,FootY-0.09*S+(BX*S0+BY*C0)*S,Tint,Width*S);end;
+    procedure O(AX,AY,R:Double;Tint:TColor);
+    begin Circle(CX+(AX*C0-AY*S0)*S,FootY-0.09*S+(AX*S0+AY*C0)*S,R*S,Tint);end;
+  begin C0:=Cos(Turn);S0:=Sin(Turn);
+    L(-0.026,0.085,-0.010,0.040,RGB(46,60,79),0.014);L(0.026,0.085,0.010,0.040,RGB(46,60,79),0.014);
+    L(-0.036,0.088,-0.014,0.088,RGB(116,133,143),0.012);L(0.014,0.088,0.036,0.088,RGB(116,133,143),0.012);
+    L(0,0.045,0,-0.013,C,0.072);O(0,-0.062,0.035,RGB(99,108,131));
+    if Robot then begin L(-0.027,-0.062,0.027,-0.062,RGB(244,152,94),0.012);O(Side*0.011,-0.064,0.005,RGB(255,231,140));L(-0.016,-0.042,0.016,-0.042,RGB(28,41,58),0.006);end
+    else begin O(0,-0.060,0.029,RGB(237,195,159));O(Side*0.010,-0.062,0.004,RGB(46,49,68));end;
+    L(-0.020,-0.003,-0.025,0.025,C,0.014);L(0.020,-0.003,0.025,0.025,C,0.014);
+    O(-0.024,0.027,0.009,RGB(166,92,77));O(0.024,0.027,0.009,RGB(166,92,77));
+    if PoseKind=2 then begin L(-0.021,0.007,0.021,0.007,RGB(232,180,103),0.008);L(-0.021,0.026,0.021,0.026,RGB(232,180,103),0.005);end;
+  end;
+  procedure Joint(AX,AY,BX,BY,Upper,Lower:Double;C:TColor;Width:Double;Forward:Double);
+  var DX,DY,D,A,H,KX,KY:Double;
+  begin DX:=BX-AX;DY:=BY-AY;D:=Max(1E-8,Hypot(DX,DY));A:=(Upper*Upper-Lower*Lower+D*D)/(2*D);H:=Sqrt(Max(0.0,Upper*Upper-A*A));KX:=AX+(DX*A-Forward*DY*H)/D;KY:=AY+(DY*A+Forward*DX*H)/D;
+    Line(AX,AY,KX,KY,C,Width);Circle(KX,KY,Width*0.48,C);Line(KX,KY,BX,BY,C,Width);
+  end;
+  procedure Hero;
+  var HX,HY,CX,CY,HeadX,HeadY,DX,DY,TX,TY,FootX,FootY,Blend,Side,Guard,Upper,Lower:Double;N:Integer;C:TColor;
+  begin
+    HX:=Pose.X;HY:=Pose.Y-0.046+Pose.Duck;CX:=HX+Pose.Lean*0.035+Pose.Side*Pose.Attack*0.006;CY:=Pose.Y-0.100+Pose.Duck;
+    HeadX:=CX+Pose.Lean*0.018;HeadY:=CY-0.048;
+    Line(HX-0.045,Pose.Y+0.003,HX+0.045,Pose.Y+0.003,RGB(16,26,41),0.014);
+    for N:=-1 to 1 do if N<>0 then begin Side:=N;FootX:=HX+Side*0.029;FootY:=Pose.Y-0.006;
+      Upper:=0.027;Lower:=0.030;
+      if (Pose.Kind=1) and (N=Pose.Side) then begin Upper:=Upper+0.058*Pose.Attack;Lower:=Lower+0.056*Pose.Attack;FootX:=FootX+(Pose.ContactX-Pose.Side*0.017-FootX)*Pose.Attack;FootY:=FootY+(Pose.ContactY-FootY)*Pose.Attack;end;
+      Joint(HX+Side*0.009,HY,FootX,FootY,Upper,Lower,RGB(62,96,126),0.018,-Side);
+      Blend:=0;if (Pose.Kind=1) and (N=Pose.Side) then Blend:=Pose.Attack;
+      Line(FootX-Side*0.010,FootY,FootX+Side*(0.015-0.010*Blend),FootY,RGB(245,180,124),0.024);
+    end;
+    Line(HX,HY,CX,CY,RGB(39,108,116),0.052);Line(HX,HY-0.005,CX,CY,RGB(71,180,165),0.044);Line(HX-0.022,HY-0.004,HX+0.022,HY-0.004,RGB(231,195,116),0.008);
+    for N:=-1 to 1 do if N<>0 then begin Side:=N;TX:=CX+Side*0.055;TY:=CY+0.020;
+      if Pose.Guard>0 then begin Guard:=Pose.Guard;TX:=TX+(HX+Side*0.055-TX)*Guard;TY:=TY+(0.690-TY)*Guard;end;
+      Blend:=0;if (Pose.Kind<>1) and (N=Pose.Side) then Blend:=Pose.Attack;
+      TX:=TX+(Pose.ContactX-Pose.Side*0.014-TX)*Blend;TY:=TY+(Pose.ContactY-TY)*Blend;
+      C:=RGB(58,154,149);if Pose.Graze>0.1 then C:=Mix(C,RGB(241,139,92),Pose.Graze*0.45);
+      Joint(CX+Side*0.022,CY,TX,TY,0.028+0.047*Blend,0.032+0.048*Blend,C,0.017,Side);Circle(TX,TY,0.014,RGB(237,200,143));Circle(TX+Side*0.004,TY-0.003,0.006,RGB(255,235,192));
+    end;
+    Circle(HeadX,HeadY,0.046,RGB(65,67,83));Circle(HeadX+0.003,HeadY+0.005,0.042,RGB(252,216,176));
+    Circle(HeadX-0.021,HeadY-0.022,0.025,RGB(78,79,97));Circle(HeadX+0.010,HeadY-0.026,0.023,RGB(78,79,97));
+    Circle(HeadX+Pose.Side*0.019,HeadY+0.001,0.006,RGB(46,50,69));Circle(HeadX+Pose.Side*0.021,HeadY-0.001,0.002,RGB(255,249,222));
+    Line(HeadX+Pose.Side*0.010,HeadY+0.022,HeadX+Pose.Side*0.024,HeadY+0.019,RGB(137,83,75),0.003);
+    Line(HeadX-0.028,HeadY-0.014,HeadX+0.032,HeadY-0.014,RGB(99,194,172),0.007);
+    if Pose.Graze>0.05 then for N:=0 to 3 do begin DX:=HX+Pose.Side*0.045;DY:=0.705;Angle:=N*1.6+Clock*15;
+      Line(DX,DY,DX+Cos(Angle)*0.025*Pose.Graze,DY+Sin(Angle)*0.020*Pose.Graze,RGB(255,191,107),0.002);
+    end;
+  end;
+  procedure BossActor(Index:Integer);
+  var B:TFightBoss;C:TFightPoint;Health,Age,U,X,Y,Turn,Side:Double;J:Integer;Color:TColor;
+  begin B:=FPlan.Boss[Index];if (Clock<B.Start) or (Clock>=B.Finish) then Exit;C:=FPlan.BossCenter(Index,Min(Clock,B.Kill));Side:=B.Side;Color:=RGB(116,86,171);Health:=FPlan.BossHealth(Index,Clock);
+    if Clock<B.Kill then begin
+      Box(C.X-0.20,0.592,C.X+0.20,0.758,RGB(45,43,76));Box(C.X-0.18,0.602,C.X+0.18,0.745,Color);
+      Line(C.X-0.13,0.744,C.X-0.16,0.785,RGB(48,50,76),0.065);Line(C.X+0.13,0.744,C.X+0.16,0.785,RGB(48,50,76),0.065);
+      Circle(C.X,0.558,0.072,RGB(63,55,99));Line(C.X-0.058,0.562,C.X+0.058,0.562,RGB(221,180,111),0.020);Circle(C.X-Side*0.026,0.561,0.009,RGB(255,235,148));
+      for J:=0 to 2 do if Clock<B.Purge[J] then begin X:=C.X+(J-1)*0.11;Box(X-0.050,0.61,X+0.050,0.678,RGB(175,138,196));Line(X-0.035,0.623,X+0.035,0.623,RGB(247,220,139),0.006);end;
+      FixedBox(0.48,0.055,1.12,0.090,RGB(8,13,26));FixedBox(0.485,0.060,0.485+0.63*Health,0.085,RGB(211,151,234));Word('BOSS',0.73,0.024,0.009,RGB(243,222,160));
+    end;
+    for J:=0 to 2 do begin Age:=Clock-B.Purge[J];if (Age<0) or (Age>=0.75) then Continue;U:=Age/0.75;P:=FPlan.BossCenter(Index,B.Purge[J]);X:=P.X+(J-1)*0.11+(J-1.2)*Age*0.50;Y:=0.644-Age*0.32+Age*Age*0.45;Turn:=(J-1.3)*Age*5;
+      Line(X-Cos(Turn)*0.047*(1-U),Y-Sin(Turn)*0.047*(1-U),X+Cos(Turn)*0.047*(1-U),Y+Sin(Turn)*0.047*(1-U),RGB(175,138,196),0.060*(1-U));
+    end;
+    Age:=Clock-B.Kill;if (Age>=0) and (Age<0.80) then begin U:=Age/0.80;
+      for J:=0 to 7 do begin Angle:=J*Pi/4;X:=C.X+Cos(Angle)*Age*(0.32+0.05*(J mod 3));Y:=0.64+Sin(Angle)*Age*0.24+Age*Age*0.30;
+        Line(X-0.018*(1-U),Y,X+0.018*(1-U),Y,RGB(155,111,183),0.040*(1-U));
+      end;
+      Circle(C.X,0.64,0.04+Age*0.40,Mix(RGB(255,221,125),StageTint,U),False);
+      for J:=0 to 2 do begin Age:=Clock-B.Kill-J*0.08;if (Age>=0) and (Age<0.22) then Circle(C.X+(J-1)*0.10,0.62+(J mod 2)*0.05,0.015+Age*0.20,Mix(RGB(255,241,174),Color,Age/0.22),False);end;
+      Word('KO',0.71,0.19,0.025,Mix(RGB(255,223,133),StageTint,U));
+    end;
+  end;
+begin
+  Scale:=Min(Frame.Width/1.6,Frame.Height);Left:=(Frame.Width-1.6*Scale)/2;Top:=(Frame.Height-Scale)/2;Clock:=0;CamX:=0.8;CamY:=0.66;Zoom:=1;Theme:=0;PreviousTheme:=0;U:=1;
+  if FPlan<>nil then begin Clock:=EnsureRange(Frame.Time,0.0,FPlan.EndTime);FPlan.CameraAt(Clock,CamX,CamY,Zoom);Theme:=FPlan.ThemeAt(Clock);
+    for I:=1 to FPlan.StageCount-1 do if (Clock>=FPlan.Stage[I].Time) and (Clock<FPlan.Stage[I].Time+0.65) then begin PreviousTheme:=FPlan.Stage[I-1].Theme;U:=(Clock-FPlan.Stage[I].Time)/0.65;Break;end;
+  end;
+  StageTint:=ThemeColor(Theme);PreviousTint:=ThemeColor(PreviousTheme);if U<1 then StageTint:=Mix(PreviousTint,StageTint,U);Background;
+  if (FPlan<>nil) and (FPlan.GoalTime>0) then begin
+    // A saved volley expands into a bounded number of analytic moving shots.
+    A:=Max(0,FPlan.VolleyBefore(Clock-0.80)+1);B:=Min(FPlan.VolleyBefore(Clock),A+127);N:=0;
+    for I:=A to B do begin V:=FPlan.Volley[I];for J:=0 to V.Count-1 do begin if N>=768 then Break;
+        if not FPlan.ShotAt(I,J,Clock,P,Alpha) then Continue;Inc(N);
+        if J=(V.Count-1) div 2 then begin E:=FPlan.Enemy[V.Enemy];Q:=FPlan.EnemyAt(V.Enemy,Clock);Q.Y:=0.68;if E.Boss>=0 then begin Q:=FPlan.BossCenter(E.Boss,Clock);Q.X:=Q.X-E.Side*0.17;Q.Y:=0.62;end;Line(Q.X,Q.Y,P.X,P.Y,Mix(RGB(39,55,74),RGB(135,145,154),Alpha),0.003);Circle(P.X,P.Y,0.013*Alpha,Mix(StageTint,RGB(255,157,101),Alpha));end
+        else begin FPlan.ShotAt(I,J,Max(V.Launch,Clock-0.025),Q,Strength);Line(Q.X,Q.Y,P.X,P.Y,Mix(StageTint,RGB(249,124,104),Alpha),0.004*Alpha);Circle(P.X,P.Y,0.005*Alpha,RGB(255,215,138));end;
+      end;
+      if (V.Mode=1) and (Clock>=V.Near) and (Clock<V.Near+0.07) then for J:=0 to 3 do begin U:=(Clock-V.Near)/0.07;Angle:=J*Pi/2;Line(V.Target.X,V.Target.Y,V.Target.X+Cos(Angle)*0.025*U,V.Target.Y+Sin(Angle)*0.025*U,RGB(218,245,222),0.003*(1-U));end;
+    end;
+    for I:=0 to FPlan.BossCount-1 do BossActor(I);
+    A:=Max(0,FPlan.EnemyBefore(Clock-0.90)+1);B:=Min(FPlan.EnemyBefore(Clock+2.0),A+95);
+    for I:=B downto A do begin E:=FPlan.Enemy[I];if (E.Boss>=0) or (Clock<E.Spawn) or (Clock>=E.Kill+0.75) then Continue;P:=FPlan.EnemyAt(I,Clock);if (P.X<CamX-0.95) or (P.X>CamX+0.95) then Continue;
+      Tint:=RGB(181,85,82);if I mod 3=1 then Tint:=RGB(151,122,86) else if I mod 3=2 then Tint:=RGB(111,114,158);Age:=Clock-E.Kill;U:=1;Angle:=0;
+      if Age>=0 then begin U:=1-Sqr(Age/0.75);Angle:=(I mod 2*2-1)*Age*7;Tint:=Mix(Tint,StageTint,Age/0.75*0.65);end;
+      Fighter(P.X,P.Y,U,Angle,-E.Side,Tint,True,E.Kind);
+    end;
+    Pose:=FPlan.HeroAt(Clock);if Clock<FPlan.EndTime then Hero;
+    B:=FPlan.HitBefore(Clock);A:=Max(FPlan.HitBefore(Clock-0.14)+1,B-63);
+    for I:=A to B do begin Hit:=FPlan.Hit[I];Age:=Clock-Hit.Time;U:=Age/0.14;Strength:=0.6+Hit.Strength*0.4;
+      for J:=0 to 4 do begin Angle:=J*Pi*0.4+Hit.Source*0.71;X:=Hit.Contact.X+Cos(Angle)*Age*0.42*Strength;Y:=Hit.Contact.Y+Sin(Angle)*Age*0.28*Strength;
+        Line(Hit.Contact.X,Hit.Contact.Y,X,Y,Mix(RGB(255,229,139),StageTint,U),0.003*(1-U));
+      end;
+      if Hit.Strength>=0.80 then Line(Hit.Contact.X-Hit.Side*0.035,Hit.Contact.Y,Hit.Contact.X+Hit.Side*Age*0.8,Hit.Contact.Y-0.010,RGB(240,169,98),0.008*(1-U));
+    end;
+    if (FPlan.Count>0) and (Clock<Min(0.55,FPlan.Hit[0].Time-0.03)) then Word('READY',0.62,0.25,0.018,RGB(239,225,175));
+    if Clock>=FPlan.GoalTime then begin Age:=Clock-FPlan.GoalTime;if Age<0.90 then Word('CLEAR',0.62,0.25,0.018,Mix(RGB(239,225,175),StageTint,Age/0.90));end;
+    Word(IntToStr(FPlan.HitBefore(Clock)+1),0.07,0.055,0.013,RGB(223,226,204));
+  end;
+  // Full arena remains visible in either frame orientation; no cropped feet/fists.
+  if Left>0 then begin Surface.FillRect(0,0,Left,Frame.Height,RGB(9,16,29));Surface.FillRect(Frame.Width-Left,0,Frame.Width,Frame.Height,RGB(9,16,29));end;
+  if Top>0 then begin Surface.FillRect(0,0,Frame.Width,Top,RGB(9,16,29));Surface.FillRect(0,Frame.Height-Top,Frame.Width,Frame.Height,RGB(9,16,29));end;
+end;
+end.

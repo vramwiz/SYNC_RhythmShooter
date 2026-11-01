@@ -1,6 +1,6 @@
 ﻿unit RhythmBallPlan;
 interface
-uses System.SysUtils,RhythmAudio,RhythmPlanRef,RhythmBallGeometry;
+uses System.SysUtils,RhythmAudio,RhythmPlanRef,RhythmBallGeometry,RhythmBallCircuitPlan;
 type
   TBallContactKind=(bcStart,bcBumper,bcBreakable);
   TBallContact=record
@@ -11,6 +11,7 @@ type
   TBallPulse=record Time,Strength:Double;ContactIndex:Integer;end;
   TRhythmBallPlan=class
   private
+    FCircuit:TBallCircuitPlan;
     FContacts:TArray<TBallContact>;
     FObstacles:TArray<TBallObstacle>;
     FPulses:TArray<TBallPulse>;
@@ -26,6 +27,9 @@ type
     function GetObstacle(Index:Integer):TBallObstacle;
     function GetFlight(Index:Integer):TBallFlight;
   public
+    destructor Destroy;override;
+    property Circuit:TBallCircuitPlan read FCircuit;
+    class function BuildLegacy(Audio:TRhythmAudio;const Cancel:TFunc<Boolean> = nil):TRhythmBallPlan;static;
     class function Build(Audio:TRhythmAudio;const Cancel:TFunc<Boolean> = nil):TRhythmBallPlan;static;
     procedure Save(var Ref:TRhythmPlanRef;const Cancel:TFunc<Boolean> = nil);
     class function Load(const Ref:TRhythmPlanRef;Audio:TRhythmAudio;Direction:Integer):TRhythmBallPlan;static;
@@ -37,6 +41,7 @@ type
     function PositionAt(Time:Double):TBallPoint;
     procedure VisibleObstacles(Time:Double;out First,Last:Integer);
     property Count:Integer read GetCount;
+    // Legacy v4/v5 geometry. Version 6 exposes explicit mechanisms via Circuit.
     property Contact[Index:Integer]:TBallContact read GetContact;
     property PulseCount:Integer read GetPulseCount;
     property Pulse[Index:Integer]:TBallPulse read GetPulse;
@@ -51,6 +56,14 @@ type
 implementation
 uses System.Math,System.Classes,System.Generics.Collections,System.JSON,System.IOUtils,System.Hash,
   Winapi.Windows,RhythmStyles,RhythmPaths;
+destructor TRhythmBallPlan.Destroy;begin FCircuit.Free;inherited;end;
+class function TRhythmBallPlan.Build(Audio:TRhythmAudio;const Cancel:TFunc<Boolean>):TRhythmBallPlan;
+begin
+  Result:=TRhythmBallPlan.Create;
+  try Result.FCircuit:=TBallCircuitPlan.Build(Audio,Cancel);Result.FEndTime:=Result.FCircuit.EndTime;Result.FExcludedCount:=Result.FCircuit.ExcludedCount;Result.FAudioDuration:=Audio.Duration;Result.FSoundEnd:=Audio.SoundEnd;Result.FAudioEvents:=Length(Audio.Hits);
+  except Result.Free;raise;end;
+end;
+
 procedure CheckCancel(const Cancel:TFunc<Boolean>);
 begin if Assigned(Cancel) and Cancel() then Abort;end;
 function PlanPath(const Key:string):string;
@@ -61,7 +74,7 @@ function Inside(const P:TBallPoint;Margin:Double):Boolean;
 begin Result:=(P.X>=Margin) and (P.X<=BALL_BOARD_WIDTH-Margin) and (P.Y>=Margin) and (P.Y<=BALL_BOARD_HEIGHT-Margin);end;
 function MakeFlight(const A,B:TBallContact):TBallFlight;
 begin Result.StartTime:=A.Time;Result.EndTime:=B.Time;Result.A:=A.Position;Result.B:=B.Control1;Result.C:=B.Control2;Result.D:=B.Position;end;
-class function TRhythmBallPlan.Build(Audio:TRhythmAudio;const Cancel:TFunc<Boolean>):TRhythmBallPlan;
+class function TRhythmBallPlan.BuildLegacy(Audio:TRhythmAudio;const Cancel:TFunc<Boolean>):TRhythmBallPlan;
 type TAccent=record Time,Strength:Double;SourceIndex:Integer;end;
   TGroup=record Time,LastTime,Strength:Double;SourceIndex,FirstEvent,LastEvent:Integer;end;
 var Contacts:TList<TBallContact>;Obstacles:TList<TBallObstacle>;Events:TList<TGroup>;Raw:TList<TAccent>;Accent:TAccent;Group:TGroup;Pulse:TBallPulse;
@@ -228,25 +241,27 @@ begin
   except Result.Free;Contacts.Free;Obstacles.Free;Events.Free;Raw.Free;raise;end;
   Contacts.Free;Obstacles.Free;Events.Free;Raw.Free;
 end;
-function TRhythmBallPlan.GetCount:Integer;begin Result:=Length(FContacts);end;
-function TRhythmBallPlan.GetObstacleCount:Integer;begin Result:=Length(FObstacles);end;
-function TRhythmBallPlan.GetPulseCount:Integer;begin Result:=Length(FPulses);end;
-function TRhythmBallPlan.GetPulse(Index:Integer):TBallPulse;begin Result:=FPulses[Index];end;
-function TRhythmBallPlan.GetContact(Index:Integer):TBallContact;begin Result:=FContacts[Index];end;
-function TRhythmBallPlan.GetObstacle(Index:Integer):TBallObstacle;begin Result:=FObstacles[Index];end;
-function TRhythmBallPlan.GetFlight(Index:Integer):TBallFlight;begin Result:=MakeFlight(FContacts[Index-1],FContacts[Index]);end;
+function TRhythmBallPlan.GetCount:Integer;begin if FCircuit<>nil then Exit(FCircuit.NodeCount);Result:=Length(FContacts);end;
+function TRhythmBallPlan.GetObstacleCount:Integer;begin if FCircuit<>nil then Exit(FCircuit.ObjectCount);Result:=Length(FObstacles);end;
+function TRhythmBallPlan.GetPulseCount:Integer;begin if FCircuit<>nil then Exit(FCircuit.PulseCount);Result:=Length(FPulses);end;
+function TRhythmBallPlan.GetPulse(Index:Integer):TBallPulse;
+var P:TCircuitPulse;begin if FCircuit<>nil then begin P:=FCircuit.Pulse[Index];Result.Time:=P.Time;Result.Strength:=P.Strength;Result.ContactIndex:=FCircuit.NodeBefore(P.Time);Exit;end;Result:=FPulses[Index];end;
+function TRhythmBallPlan.GetContact(Index:Integer):TBallContact;begin if FCircuit<>nil then raise EInvalidOperation.Create('Ball6 uses Circuit.Node geometry');Result:=FContacts[Index];end;
+function TRhythmBallPlan.GetObstacle(Index:Integer):TBallObstacle;begin if FCircuit<>nil then raise EInvalidOperation.Create('Ball6 uses Circuit.Obj surfaces');Result:=FObstacles[Index];end;
+function TRhythmBallPlan.GetFlight(Index:Integer):TBallFlight;begin if FCircuit<>nil then raise EInvalidOperation.Create('Ball6 uses Circuit.Segment routes');Result:=MakeFlight(FContacts[Index-1],FContacts[Index]);end;
 function TRhythmBallPlan.ContactBefore(Time:Double):Integer;
 var A,B,M:Integer;
-begin A:=0;B:=Length(FContacts);while A<B do begin M:=(A+B) div 2;if FContacts[M].Time<=Time then A:=M+1 else B:=M;end;Result:=Max(0,A-1);end;
+begin if FCircuit<>nil then Exit(FCircuit.NodeBefore(Time));A:=0;B:=Length(FContacts);while A<B do begin M:=(A+B) div 2;if FContacts[M].Time<=Time then A:=M+1 else B:=M;end;Result:=Max(0,A-1);end;
 function TRhythmBallPlan.PositionAt(Time:Double):TBallPoint;
 var I:Integer;
 begin
+  if FCircuit<>nil then Exit(FCircuit.PositionAt(Time));
   Time:=EnsureRange(Time,0.0,FEndTime);I:=ContactBefore(Time);
   if I<High(FContacts) then Result:=FlightPoint(GetFlight(I+1),Time) else Result:=FlightPoint(FTail,Time);
 end;
 function TRhythmBallPlan.PulseBefore(Time:Double):Integer;
 var A,B,M:Integer;
-begin A:=0;B:=Length(FPulses);while A<B do begin M:=(A+B) div 2;if FPulses[M].Time<=Time then A:=M+1 else B:=M;end;Result:=A-1;end;
+begin if FCircuit<>nil then Exit(FCircuit.PulseBefore(Time));A:=0;B:=Length(FPulses);while A<B do begin M:=(A+B) div 2;if FPulses[M].Time<=Time then A:=M+1 else B:=M;end;Result:=A-1;end;
 procedure TRhythmBallPlan.VisibleObstacles(Time:Double;out First,Last:Integer);
 begin First:=Max(0,ContactBefore(Time-1.40)-1);Last:=Min(High(FObstacles),ContactBefore(Time+2.45));end;
 procedure AddPoint(J:TJSONObject;const Name:string;const P:TBallPoint);
@@ -264,7 +279,8 @@ begin Result:=not IsNan(Value) and not IsInfinite(Value);end;
 procedure TRhythmBallPlan.Save(var Ref:TRhythmPlanRef;const Cancel:TFunc<Boolean>);
 var Root,Item:TJSONObject;Items:TJSONArray;P:TBallContact;O:TBallObstacle;Pulse:TBallPulse;Path,Temp:string;Id:TGUID;
 begin
-  if (Ref.Style<>rsBall) or (Ref.Version<>StylePlanVersion(rsBall)) then raise Exception.Create('Invalid pinball plan reference.');
+  if FCircuit<>nil then begin CheckCancel(Cancel);FCircuit.Save(Ref);Exit;end;
+  if (Ref.Style<>rsBall) or (Ref.Version<>5) then raise Exception.Create('Invalid pinball plan reference.');
   Root:=TJSONObject.Create;Temp:='';
   try
     Root.AddPair('schema',TJSONNumber.Create(3));Root.AddPair('style','ball');Root.AddPair('version',TJSONNumber.Create(Ref.Version));
@@ -302,6 +318,7 @@ end;
 class function TRhythmBallPlan.LoadAudioMetadata(const Ref:TRhythmPlanRef;const Source:string;Direction:Integer):TRhythmAudio;
 var Root,Info:TJSONObject;V:TJSONValue;Path,Failure:string;EventCount:Integer;
 begin
+  if Ref.Version>=6 then Exit(TBallCircuitPlan.LoadAudioMetadata(Ref,Source,Direction));
   Result:=nil;Root:=nil;
   if not Ref.Matches(Ref.SourceKey,Ref.Sensitivity,Direction,rsBall) or
     not ValidDigest(Ref.SourceKey) or not ValidDigest(Ref.Digest) or
@@ -356,6 +373,7 @@ class function TRhythmBallPlan.Load(const Ref:TRhythmPlanRef;Audio:TRhythmAudio;
 var Root,Item,Info:TJSONObject;V:TJSONValue;Items:TJSONArray;I,Kind:Integer;Path:string;P:TBallContact;O:TBallObstacle;Reflected:TBallPoint;Pulse:TBallPulse;LastPulse,MaxStrength:TArray<Double>;PulseCounts:TArray<Integer>;PreviousIndex:Integer;
 begin
   Result:=nil;Root:=nil;
+  if Ref.Version>=6 then begin Result:=TRhythmBallPlan.Create;try Result.FCircuit:=TBallCircuitPlan.Load(Ref,Audio,Direction);Result.FEndTime:=Result.FCircuit.EndTime;Result.FExcludedCount:=Result.FCircuit.ExcludedCount;except Result.Free;Result:=nil;raise;end;Exit;end;
   if Audio=nil then raise Exception.Create('音声キャッシュが未準備です。設定画面で音楽を準備してください。');
   if Ref.Key='' then raise Exception.Create('動作計画が未準備です（旧計画は無効）。設定画面の準備ボタンで完了を待ち、適用してください。');
   if not CompatiblePlanVersion(rsBall,Ref.Version) then raise Exception.Create('旧版のボール計画です。設定画面で再準備し、適用してください。');

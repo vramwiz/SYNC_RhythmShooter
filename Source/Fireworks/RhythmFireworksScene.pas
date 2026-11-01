@@ -44,8 +44,8 @@ begin
 end;
 procedure TFireworksAnimation.Draw(Surface:TAnimationRenderSurface;const Frame:TAnimationFrame);
 const MaxClouds=128;
-var W,H,S,Clock,Age,Opacity,Width,StepAge:Double;
-  I,J,K,First,Last,Stride,Slots,Remaining,Rays,FlashBudget,RocketBudget:Integer;B:TFireworkBurst;
+var W,H,S,Clock,Age,Opacity,Width,StepAge,Split,Theta,BranchX,BranchY,PreviousSplit,BranchPX,BranchPY:Double;
+  I,J,K,First,Last,Stride,Slots,Remaining,Rays,FlashBudget,RocketBudget,BranchBudget:Integer;B:TFireworkBurst;
   P,Q:TFireworkPoint;Tint:TColor;Selected:Boolean;
   procedure Background;
   var N,M:Integer;U,V,Size,Brightness,BX,BW,BY:Double;
@@ -74,9 +74,11 @@ var W,H,S,Clock,Age,Opacity,Width,StepAge:Double;
     end;
   end;
   function Particle(Index:Integer;T:Double):TFireworkPoint;
-  var Offset:TFireworkPoint;
+  var Offset:TFireworkPoint;SparkTime:Double;
   begin
-    Offset:=FireworkSparkOffset(B,Index,T);
+    // Strong shells open with a fast impulse, then visibly decelerate.
+    SparkTime:=T+0.30*B.Strength*(1-Exp(-8*T))*Exp(-1.6*T);
+    Offset:=FireworkSparkOffset(B,Index,SparkTime);
     Result.X:=B.X*W+Offset.X*S;Result.Y:=B.Y*H+Offset.Y*S;
   end;
 begin
@@ -84,7 +86,7 @@ begin
   if FPlan<>nil then Clock:=Min(Frame.Time,FPlan.EndTime);
   Background;
   if (FPlan=nil) or (Frame.Time>=FPlan.EndTime) then Exit;
-  FPlan.VisibleRange(Frame.Time,First,Last);Remaining:=800+FPlan.Richness*24;FlashBudget:=256;RocketBudget:=128;
+  FPlan.VisibleRange(Frame.Time,First,Last);Remaining:=800+FPlan.Richness*24;FlashBudget:=256;RocketBudget:=128;BranchBudget:=256;
   Stride:=Max(1,Ceil((Last-First+1)/MaxClouds));Slots:=Max(1,(Last-First+Stride) div Stride);
   for I:=First to Last do begin
     B:=FPlan.Burst[I];Age:=Frame.Time-B.Time;Selected:=((I-First) mod Stride)=0;
@@ -103,19 +105,30 @@ begin
     if Age>B.Lifetime then Continue;
     if (Age<0.14) and (FlashBudget>0) then begin
       Dec(FlashBudget);Opacity:=(1-Age/0.14)*(0.55+B.Strength*0.45);
-      Surface.Circle(B.X*W,B.Y*H,S*(0.006+Age*0.10),FadeColor(RGB(255,247,216),Opacity),True);
+      Surface.Line(B.X*W-S*0.012,B.Y*H,B.X*W+S*0.012,B.Y*H,FadeColor(RGB(255,247,216),Opacity),Max(1,S*0.002));
+      Surface.Line(B.X*W,B.Y*H-S*0.012,B.X*W,B.Y*H+S*0.012,FadeColor(RGB(255,247,216),Opacity),Max(1,S*0.002));
       Surface.Circle(B.X*W,B.Y*H,S*(0.012+Age*0.33),FadeColor(Palette(B.Hue),Opacity*0.65),False,Max(1,S*0.002));
     end;
     if Rays<=0 then Continue;Dec(Remaining,Rays);Tint:=Palette(B.Hue);
-    Opacity:=Power(EnsureRange(1-Age/B.Lifetime,0.0,1.0),0.85);
+    Opacity:=Power(EnsureRange(1-Age/B.Lifetime,0.0,1.0),0.55);
     for J:=0 to Rays-1 do begin
-      P:=Particle(J,Age);Width:=Max(0.7,S*(0.0011+B.Strength*0.0008));
+      P:=Particle(J,Age);Width:=Max(0.7,S*(0.0017+B.Strength*0.0012));
       for K:=1 to 3 do begin
         StepAge:=Max(0.0,Age-K*0.035);Q:=Particle(J,StepAge);
         Surface.Line(P.X,P.Y,Q.X,Q.Y,FadeColor(Tint,Opacity*(1-K/4)*0.78),Width);P:=Q;
       end;
-      P:=Particle(J,Age);Surface.Circle(P.X,P.Y,Width,FadeColor(Tint,Opacity*(0.83+0.17*Sin(Age*11+J))),True);
-      if (J mod 7=0) and (Age<0.8) then Surface.Circle(P.X,P.Y,Width*0.45,FadeColor(RGB(249,252,230),Opacity),True);
+      if (B.Strength>=0.70) and (J mod 11=0) and (Age>=0.32) and (Age<Min(1.20,B.Lifetime)) and (BranchBudget>0) then begin
+        Dec(BranchBudget);Split:=Age-0.32;Q:=Particle(J,0.32);
+        // A few bright heads split from their exact earlier shell positions.
+        for K:=-1 to 1 do if K<>0 then begin
+          Theta:=J*2.39996+K*0.65;BranchX:=Q.X+Cos(Theta)*S*Split*(0.08+B.Strength*0.10);BranchY:=Q.Y+Sin(Theta)*S*Split*(0.08+B.Strength*0.10)+S*0.035*Split*Split;
+          PreviousSplit:=Max(0.0,Split-0.035);BranchPX:=Q.X+Cos(Theta)*S*PreviousSplit*(0.08+B.Strength*0.10);BranchPY:=Q.Y+Sin(Theta)*S*PreviousSplit*(0.08+B.Strength*0.10)+S*0.035*PreviousSplit*PreviousSplit;
+          Surface.Line(BranchPX,BranchPY,BranchX,BranchY,FadeColor(Palette(B.Hue+K+8),Opacity*(1-Split/0.88)*0.70),Max(0.7,Width*0.75));
+        end;
+      end;
+      P:=Particle(J,Age);if (J mod 3=0) and (Age<0.85) then Surface.Circle(P.X,P.Y,Width*1.8,FadeColor(Tint,Opacity*0.28),True);
+      Surface.Circle(P.X,P.Y,Width,FadeColor(Tint,Opacity*(0.83+0.17*Sin(Age*11+J))),True);
+      if (J mod 3=0) and (Age<0.85) then Surface.Circle(P.X,P.Y,Width*0.45,FadeColor(RGB(249,252,230),Opacity),True);
     end;
   end;
 end;

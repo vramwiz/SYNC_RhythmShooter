@@ -1,6 +1,11 @@
 ﻿program Revision3Smoke;
 {$APPTYPE CONSOLE}
-uses System.SysUtils,System.Math,System.Classes,System.IOUtils,System.JSON,System.Hash,System.Diagnostics,
+uses
+  RhythmBombPlan in '..\Source\BombAction\RhythmBombPlan.pas',
+  RhythmBombScene in '..\Source\BombAction\RhythmBombScene.pas',
+  RhythmRacePlan in '..\Source\Race\RhythmRacePlan.pas',
+  RhythmRaceScene in '..\Source\Race\RhythmRaceScene.pas',
+  System.SysUtils,System.Math,System.Classes,System.IOUtils,System.JSON,System.Hash,System.Diagnostics,
   Vcl.Graphics,RhythmAudio,RhythmMotion,RhythmScene,RhythmBarrage,RhythmPaths,RhythmSettings,RhythmStage;
 var Audio:TRhythmAudio;Renderer:TRhythmRenderer;Bitmap:TBitmap;Root:TJSONObject;Plan:TArray<TRhythmEnemyBullet>;
   H:TRhythmHit;B:TRhythmEnemyBullet;P,Q,Origin:TRhythmPoint;I,J,Direction,Boss,Live,MaxLive,Emissions:Integer;

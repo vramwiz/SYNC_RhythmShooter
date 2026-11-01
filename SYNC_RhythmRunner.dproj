@@ -42,7 +42,7 @@
         <GenDll>true</GenDll>
         <DCC_DcuOutput>.\$(Platform)\RhythmRunner\$(Config)\DCU</DCC_DcuOutput>
         <DCC_ExeOutput>.\$(Platform)\RhythmRunner\$(Config)</DCC_ExeOutput>
-        <DCC_UnitSearchPath>Source\Runner;Source\Shared\Audio;Source\Shared\Render;Source\Shared\Settings;Source\Shared\Common;Source\Shared\Assets;Source\Shared\UI;Source\Shared\Host;Source\Shared\Integrations;Source\Composition;Source\Shooting;Source\Ball;Source\Fireworks;Source\Lib;Source\Lib\Process;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
+        <DCC_UnitSearchPath>Source\Fighting;Source\Mining;Source\Train;Source\Naval;Source\BombAction;Source\Race;Source\Runner;Source\Breakout;Source\Shared\Audio;Source\Shared\Render;Source\Shared\Settings;Source\Shared\Common;Source\Shared\Assets;Source\Shared\UI;Source\Shared\Host;Source\Shared\Integrations;Source\Composition;Source\Shooting;Source\Ball;Source\Fireworks;Source\Lib;Source\Lib\Process;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
         <DCC_Namespace>System;Xml;Data;Datasnap;Web;Soap;Winapi;Vcl;$(DCC_Namespace)</DCC_Namespace>
         <SanitizedProjectName>SYNC_RhythmRunner</SanitizedProjectName>
     </PropertyGroup>
@@ -90,10 +90,30 @@
         <AppDPIAwarenessMode>none</AppDPIAwarenessMode>
     </PropertyGroup>
     <ItemGroup>
+        <DCCReference Include="Source\Ball\RhythmBallCircuitPlan.pas"/>
+        <DCCReference Include="Source\Ball\RhythmBallCircuitScene.pas"/>
+        <DCCReference Include="Source\Breakout\RhythmBreakoutAction.pas"/>
+        <DCCReference Include="Source\Fighting\RhythmFightingPlan.pas"/>
+        <DCCReference Include="Source\Fighting\RhythmFightingScene.pas"/>
+        <DCCReference Include="Source\Mining\RhythmMiningPlan.pas"/>
+        <DCCReference Include="Source\Mining\RhythmMiningScene.pas"/>
+        <DCCReference Include="Source\Train\RhythmTrainPlan.pas"/>
+        <DCCReference Include="Source\Train\RhythmTrainScene.pas"/>
+        <DCCReference Include="Source\Naval\RhythmNavalPlan.pas"/>
+        <DCCReference Include="Source\Naval\RhythmNavalScene.pas"/>
         <DelphiCompile Include="$(MainSource)">
             <MainSource>MainSource</MainSource>
         </DelphiCompile>
+        <DCCReference Include="Source\BombAction\RhythmBombPlan.pas"/>
+        <DCCReference Include="Source\BombAction\RhythmBombScene.pas"/>
+        <DCCReference Include="Source\Race\RhythmRacePlan.pas"/>
+        <DCCReference Include="Source\Race\RhythmRaceScene.pas"/>
         <DCCReference Include="Source\Shared\Settings\RhythmPreparedData.pas"/>
+        <DCCReference Include="Source\Breakout\RhythmBreakoutCampaign.pas"/>
+        <DCCReference Include="Source\Breakout\RhythmBreakoutScore.pas"/>
+        <DCCReference Include="Source\Breakout\RhythmBreakoutGeometry.pas"/>
+        <DCCReference Include="Source\Breakout\RhythmBreakoutPlan.pas"/>
+        <DCCReference Include="Source\Breakout\RhythmBreakoutScene.pas"/>
         <DCCReference Include="Source\Runner\RhythmRunnerPlan.pas"/>
         <DCCReference Include="Source\Runner\RhythmRunnerScene.pas"/>
         <DCCReference Include="Source\Shared\Settings\RhythmStyles.pas"/>

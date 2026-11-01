@@ -17,6 +17,7 @@ type
     FBossCuesReady: Boolean;
     FEnvelopePeak: Double;
     FTimelineRevision: Cardinal;
+    FBossFrequency:Integer;
   public
     Source, Key, PcmPath, SourceRevision: string;
     PCM: TBytes;
@@ -25,6 +26,9 @@ type
     Duration,SoundEnd: Double;
     Sensitivity: Integer;
     CacheReused: Boolean;
+    constructor Create;
+    procedure SetBossFrequency(Value:Integer);
+    property BossFrequency:Integer read FBossFrequency;
     property TimelineRevision: Cardinal read FTimelineRevision;
     procedure Detect;
     procedure UpdateSoundBounds;
@@ -64,6 +68,10 @@ uses Winapi.Windows, System.IOUtils, System.Hash, System.Math,
 function Cancelled(const Cancel: TFunc<Boolean>): Boolean;
 begin Result := Assigned(Cancel) and Cancel(); end;
 
+constructor TRhythmAudio.Create;
+begin inherited Create;FBossFrequency:=100;end;
+procedure TRhythmAudio.SetBossFrequency(Value:Integer);
+begin Value:=EnsureRange(Value,0,100);if Value=FBossFrequency then Exit;FBossFrequency:=Value;FBossCuesReady:=False;FBossCues:=nil;Inc(FTimelineRevision);end;
 procedure TRhythmAudio.UpdateSoundBounds;
 var Peak:Double;I:Integer;
 begin
@@ -81,7 +89,7 @@ begin
   if not FBossCuesReady then
   begin
     SetLength(Times,Length(Hits));for I:=0 to High(Hits) do Times[I]:=Hits[I].Time;
-    FBossCues:=BuildBossCues(Envelope,Duration,SoundEnd,Times);FBossCuesReady:=True;
+    FBossCues:=BuildBossCues(Envelope,Duration,SoundEnd,Times,FBossFrequency);FBossCuesReady:=True;
   end;
   Result:=Default(TRhythmBossCue);Result.KillTime:=-1;
   if (Index>=0) and (Index<Length(FBossCues)) then Result:=FBossCues[Index];

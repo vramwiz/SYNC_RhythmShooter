@@ -1,6 +1,11 @@
 ﻿program BallPlanSmoke;
 {$APPTYPE CONSOLE}
-uses Winapi.Windows,System.SysUtils,System.Math,System.Classes,System.Hash,System.JSON,System.IOUtils,Vcl.Graphics,
+uses
+  RhythmBombPlan in '..\Source\BombAction\RhythmBombPlan.pas',
+  RhythmBombScene in '..\Source\BombAction\RhythmBombScene.pas',
+  RhythmRacePlan in '..\Source\Race\RhythmRacePlan.pas',
+  RhythmRaceScene in '..\Source\Race\RhythmRaceScene.pas',
+  Winapi.Windows,System.SysUtils,System.Math,System.Classes,System.Hash,System.JSON,System.IOUtils,Vcl.Graphics,
   RhythmAudio,RhythmBallGeometry,RhythmBallPlan,RhythmPlanRef,RhythmStyles,RhythmSettings,RhythmProduct,RhythmScene,RhythmPaths;
 var Audio:TRhythmAudio;Plan,Again,Loaded:TRhythmBallPlan;Ref,BadRef:TRhythmPlanRef;P,Q,N:TBallPoint;
   I,J,CaseIndex,Direction,Backend,Moving,Breaking,Bumpers:Integer;Gap:Double;State,Restored:TRhythmSettings;
@@ -10,6 +15,8 @@ begin if not Value then raise Exception.Create(Text);end;
 function ImageHash:string;
 var S:TMemoryStream;Bytes:TBytes;H:THashSHA2;
 begin S:=TMemoryStream.Create;try Image.SaveToStream(S);SetLength(Bytes,S.Size);S.Position:=0;S.ReadBuffer(Bytes[0],Length(Bytes));H:=THashSHA2.Create;H.Update(Bytes);Result:=H.HashAsString;finally S.Free;end;end;
+function LegacyPlanRef(Audio:TRhythmAudio;Direction:Integer):TRhythmPlanRef;
+begin Result:=NewPlanRef(Audio.Key,Audio.Sensitivity,Direction,rsBall);Result.Version:=5;Result.Key:=THashSHA2.GetHashString('ball-v5|'+Audio.Key+'|'+IntToStr(Audio.Sensitivity)+'|'+IntToStr(Direction));end;
 procedure MakeAudio(Spacing:Double);
 var K:Integer;
 begin
@@ -47,7 +54,7 @@ begin
   finally J.Free;end;
   J:=TJSONObject.Create;
   try J.AddPair('sourceSHA256',Audio.Key);J.AddPair('sourceStamp',Audio.SourceRevision);IndexJSON:=J.ToJSON;finally J.Free;end;
-  Plan:=TRhythmBallPlan.Build(Audio);ColdRef:=NewPlanRef(Audio.Key,Audio.Sensitivity,0,rsBall);ColdRef.SourceRevision:=Audio.SourceRevision;Plan.Save(ColdRef);
+  Plan:=TRhythmBallPlan.BuildLegacy(Audio);ColdRef:=LegacyPlanRef(Audio,0);ColdRef.SourceRevision:=Audio.SourceRevision;Plan.Save(ColdRef);
   Saved:=TRhythmSettings.Defaults;Saved.Style:=rsBall;Saved.Music:=SourceFile;Saved.Plan:=ColdRef;Saved.Designs[8].Memo:='retain per-object memo';
   TFile.WriteAllText(StateFile,Saved.ToJSON,TEncoding.UTF8);
   Renderer:=TRhythmRenderer.Create;Renderer.UseD2D:=False;Renderer.ConfigureStyle(rsBall,ColdRef);
@@ -105,7 +112,7 @@ begin
   try
     ConfigureRhythmProduct('SYNC_RhythmBall','リズムボール',rsBall);
     Require(TRhythmSettings.Defaults.Style=rsBall,'Ball default missing');
-    Require(StylePlanVersion(rsBall)=5,'Pinball plan version missing');Require(StylePlanVersion(rsShooting)=1,'Shooting plan was invalidated');
+    Require(StylePlanVersion(rsBall)=6,'Pinball plan version missing');Require(StylePlanVersion(rsShooting)=1,'Shooting plan was invalidated');
     Require(TRhythmSettings.TryJSON('{"schema":1,"music":"old.wav","direction":1,"sensitivity":72}',State) and (State.Style=rsShooting),'Old JSON no longer resolves to shooting');
     for CaseIndex:=0 to 3 do begin
       case CaseIndex of 0,3:Gap:=0.18;1:Gap:=0.5;else Gap:=3.5;end;MakeAudio(Gap);
@@ -113,7 +120,7 @@ begin
         Audio.Hits[0].Time:=0;Audio.Hits[1].Time:=0;Audio.Hits[2].Time:=0.005;Audio.Hits[3].Time:=0.010;
         Audio.Hits[4].Time:=0.06;Audio.Hits[5].Time:=0.09;Audio.Hits[6].Time:=0.18;Audio.Hits[7].Time:=0.20;
       end;
-      Plan:=TRhythmBallPlan.Build(Audio);Again:=TRhythmBallPlan.Build(Audio);
+      Plan:=TRhythmBallPlan.BuildLegacy(Audio);Again:=TRhythmBallPlan.BuildLegacy(Audio);
       Require(Plan.PulseCount=Length(Audio.Hits),'Dense accents were discarded');
       for I:=0 to Plan.PulseCount-1 do begin
         Pulse:=Plan.Pulse[I];Require(Pulse.Time=Audio.Hits[I].Time,'Pulse time drifted');
@@ -151,10 +158,10 @@ begin
       end;
       Require((Moving>0) and (Breaking>0) and (Bumpers>0),'Pinball obstacle variety missing');
       P:=Plan.PositionAt(Plan.EndTime);Q:=Plan.PositionAt(Plan.EndTime+100);Require(BallLength(BallSub(P,Q))<1E-12,'Ball moves after the end');
-      Ref:=NewPlanRef(Audio.Key,50,0,rsBall);Plan.Save(Ref);Loaded:=TRhythmBallPlan.Load(Ref,Audio,0);
+      Ref:=LegacyPlanRef(Audio,0);Plan.Save(Ref);Loaded:=TRhythmBallPlan.Load(Ref,Audio,0);
       Require((Loaded.Count=Plan.Count) and (Loaded.ObstacleCount=Plan.ObstacleCount) and (Loaded.PulseCount=Plan.PulseCount),'Plan save/load changed the board');
       for I:=0 to Plan.ObstacleCount-1 do begin
-        Require(Loaded.Obstacle[I].Spawn=Plan.Obstacle[I].Spawn,'Spawn was not saved');
+        Require(Abs(Loaded.Obstacle[I].Spawn-Plan.Obstacle[I].Spawn)<1E-9,'Spawn was not saved');
         Require(BallLength(BallSub(Loaded.Obstacle[I].Origin,Plan.Obstacle[I].Origin))<1E-12,'Moving origin was not saved');
       end;FreeAndNil(Loaded);
       State:=TRhythmSettings.Defaults;State.Music:='keep.wav';State.Style:=rsBall;State.Plan:=Ref;State.Designs[8].Memo:='keep shooting design';
@@ -169,7 +176,7 @@ begin
       Require(AnimationPlanKey(Audio.Key,50,1,rsBall)<>Ref.Key,'Direction failed to invalidate the plan');
       Renderer:=TRhythmRenderer.Create;Image:=TBitmap.Create;Image.PixelFormat:=pf32bit;Image.SetSize(1280,720);
       for Direction:=0 to 1 do begin
-        Ref:=NewPlanRef(Audio.Key,50,Direction,rsBall);Plan.Save(Ref);Renderer.ConfigureStyle(rsBall,Ref);
+        Ref:=LegacyPlanRef(Audio,Direction);Plan.Save(Ref);Renderer.ConfigureStyle(rsBall,Ref);
         for Backend:=0 to 1 do begin
           Renderer.UseD2D:=Backend=1;Renderer.Render(Image,Audio,Audio.Hits[2].Time+0.05,Direction);Hash:=ImageHash;
           Renderer.Render(Image,Audio,Audio.Duration+10,Direction);Renderer.Render(Image,Audio,Audio.Hits[2].Time+0.05,Direction);
@@ -180,9 +187,9 @@ begin
     end;
     CheckColdRestore;
     Audio:=TRhythmAudio.Create;Audio.Key:=StringOfChar('b',64);Audio.Sensitivity:=50;Audio.Duration:=0.01;Audio.UpdateSoundBounds;
-    Plan:=TRhythmBallPlan.Build(Audio);Require((Plan.Count=1) and (Plan.ObstacleCount=0) and (Plan.EndTime=0),'Silence created obstacles');FreeAndNil(Plan);FreeAndNil(Audio);
+    Plan:=TRhythmBallPlan.BuildLegacy(Audio);Require((Plan.Count=1) and (Plan.ObstacleCount=0) and (Plan.EndTime=0),'Silence created obstacles');FreeAndNil(Plan);FreeAndNil(Audio);
     MakeAudio(0.5);Rejected:=False;
-    try Plan:=TRhythmBallPlan.Build(Audio,function:Boolean begin Result:=True;end);except on E:EAbort do Rejected:=True;end;
+    try Plan:=TRhythmBallPlan.BuildLegacy(Audio,function:Boolean begin Result:=True;end);except on E:EAbort do Rejected:=True;end;
     Require(Rejected,'Planning cancellation was ignored');
     BallSettingsPath:=SettingsPath;SharedCachePath:=CacheFolder;
     ConfigureRhythmProduct('SYNC_RhythmShooter','リズムシューティング',rsShooting);

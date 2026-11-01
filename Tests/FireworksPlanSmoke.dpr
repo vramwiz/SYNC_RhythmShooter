@@ -1,6 +1,11 @@
 ﻿program FireworksPlanSmoke;
 {$APPTYPE CONSOLE}
-uses System.SysUtils,System.Math,System.Classes,System.Hash,Vcl.Graphics,
+uses
+  RhythmBombPlan in '..\Source\BombAction\RhythmBombPlan.pas',
+  RhythmBombScene in '..\Source\BombAction\RhythmBombScene.pas',
+  RhythmRacePlan in '..\Source\Race\RhythmRacePlan.pas',
+  RhythmRaceScene in '..\Source\Race\RhythmRaceScene.pas',
+  System.SysUtils,System.Math,System.Classes,System.Hash,Vcl.Graphics,
   RhythmAudio,RhythmFireworksPlan,RhythmStyles,RhythmProduct,RhythmPlanRef,RhythmSettings,RhythmScene,RhythmPaths,RhythmPlayback;
 var Audio:TRhythmAudio;Plan,Again,Loaded:TFireworksPlan;Ref,BadRef:TRhythmPlanRef;
   Renderer:TRhythmRenderer;Image:TBitmap;B:TFireworkBurst;P,Q:TFireworkPoint;
@@ -30,7 +35,7 @@ begin
   try
     ConfigureRhythmProduct('SYNC_RhythmFireworks','リズム花火',rsFireworks);
     Require(TRhythmSettings.Defaults.Style=rsFireworks,'Fireworks default missing');
-    Require((Ord(rsShooting)=0) and (Ord(rsBall)=1) and (StylePlanVersion(rsBall)=5),'Existing styles changed');
+    Require((Ord(rsShooting)=0) and (Ord(rsBall)=1) and (StylePlanVersion(rsBall)=6),'Existing styles changed');
     Require(TRhythmSettings.TryJSON('{"schema":1,"music":"old.wav"}',State) and (State.Style=rsShooting),'Legacy JSON changed style');
     FireworksSettings:=SettingsPath;CommonCache:=CacheFolder;
     for CaseIndex:=0 to 3 do begin
@@ -51,14 +56,14 @@ begin
           if B.LaunchTime<B.Time then begin P:=FireworkRocketAt(B,B.LaunchTime);Require(Abs(P.Y-0.88)<1E-10,'Rocket does not start at the horizon');end;
           Require((B.Rays>=16) and (B.Rays<=128),'Particle count is unbounded');
           Require((B.AccentIndex=I div Volley) and (B.Member=I mod Volley),'Audio-to-volley mapping changed');
-          Require(B.GroundX=B.X,'Launch is not vertical');
+          Require((B.GroundX>=0.08) and (B.GroundX<=0.92),'Launch origin out of range');
           for J:=1 to 9 do begin
             P:=FireworkRocketAt(B,B.LaunchTime+(B.Time-B.LaunchTime)*J/10);
-            Require(Abs(P.X-B.X)<1E-10,'Rocket curves horizontally');
+            Require((P.X>=Min(B.X,B.GroundX)-1E-8) and (P.X<=Max(B.X,B.GroundX)+1E-8),'Fan rocket leaves its launch line');
             Q:=FireworkSparkOffset(B,J,0.5);P:=FireworkSparkOffset(B,J,0.5);
             Require((Q.X=P.X) and (Q.Y=P.Y),'Spark shape is not deterministic');
           end;
-          if I>=Volley then Require(B.LaunchTime>=Plan.Burst[I-Volley].LaunchTime,'Consecutive launches changed order');
+          Require(B.Time=Audio.Hits[B.AccentIndex].Time,'Sequence changes bloom clocks');
           Require(Plan.EndTime>=B.Time+B.Lifetime,'Afterglow is cut off by the plan');
         end;
         Require(Seen[fwPeony] and Seen[fwWillow] and Seen[fwRings] and Seen[fwStar] and Seen[fwHeart] and Seen[fwPalm],'Firework shapes missing');

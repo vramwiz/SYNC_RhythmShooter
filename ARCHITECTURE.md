@@ -1,4 +1,20 @@
-﻿新規追加は [RUNNER_STYLE.md](RUNNER_STYLE.md)。現在HEAD基準6df4731、4製品/4スタイル。Source/Runnerに計画/描画、Shared/Settings/RhythmPreparedDataに準備済みJSON/メタデータ保存・復元を追加。既存Ball5/旧4・Fireworks2・Shooting1と公開SDKを維持。今回ソースと静的確認のみ。
+﻿## 2026-11-01 現行の接続
+
+全11スタイル。Source/Composition の factory / prepare から Source/Fighting / Mining / Train / Naval の独立Plan/Sceneも接続する。既存の解析・設定・Host・Surfaceは共用。新規4製品も専用DPR/DPROJを持つが共通ソースは複製しない。計画の保存直後にcold metadataと実計画を読み直して確認する。詳細は ONLINE_PASS_20261101.md。
+
+最新構成（2026-10-31、未ビルド）: 7スタイル/7製品。BombActionを列挙末尾6へ追加し、Source/BombAction/RhythmBombPlan.pas と RhythmBombScene.pasへ計画・描画を分離。共有解析/準備/保存/host/時間管理/ボス頻度を使用する。専用SYNC_RhythmBombAction/Previewは共通ソースを参照する薄い入口。詳細は [BOMB_ACTION_STYLE.md](BOMB_ACTION_STYLE.md)。既存6製品とRaceの受入済み実装を保持。以下は従来の構成記録を含む。
+
+最新追加: [BOSS_FREQUENCY_20261031.md](BOSS_FREQUENCY_20261031.md) と [RACE_STYLE.md](RACE_STYLE.md)。共通頻度スライダー（Shooter/Breakoutのみ）と第6スタイルrace。Source/Raceに専用Plan/Scene、共通UI/解析/PreparedData/ホスト/描画を再利用し、6製品へ参照を追加。既存の製品ID/旧計画/素材/SDKを保持。ソース・静的/数式確認まで、未ビルド。以下は過去の実装記録。
+
+最新修正: [BREAKOUT_CADENCE_20261031.md](BREAKOUT_CADENCE_20261031.md)。計画7で使用曲の実採用2→4戦、約43.56秒間隔、シールド状の線を削除して船体接触へ、HP強調、パドル全幅0.160へ。旧1～6読込を保持。ソース/静的確認のみ、未ビルド。以下は過去の実装記録。
+
+最新調整: [BREAKOUT_TUNING_20261031.md](BREAKOUT_TUNING_20261031.md)。Breakout計画6でパドル幅とボス頻度/戦闘長を調整。旧1～5は元の幅で復元する。未ビルド。以下は過去の実装記録。
+
+最新作業: [BREAKOUT_BOSS_20261031.md](BREAKOUT_BOSS_20261031.md)。新規Campaignが版5の通常群/ボス/多球/弾幕/次群降下を一つの計画へ保存・復元・前向き検証する。通常群は既存Scoreの逆算/衝突検証を共用し、旧item見せ場を無効化する。旧1～4はPlanの互換経路で保持。Sceneのチェック印を削除し、登退場/虹配色、UI/DPI、他スタイル/素材/SDKを保護。各製品は新ユニット参照のみ追加。今回未ビルド・未実表示。
+
+最新追加: [BREAKOUT_STYLE.md](BREAKOUT_STYLE.md)。5製品/5スタイル。Source/BreakoutのScoreが最後の元音時刻から通常のブロック・壁・パドル反射を逆算し、10列の整列群を共通下降する。独立した前向き連続衝突検証と版2JSON/PCMなし復元を持つ。Planは旧版1の読込/検証も保持、Geometryは共通型/旧幾何、Sceneは絶対時刻描画。疎区間は本人指定の補助反射優先・捕球待機次点。共通Renderの矩形塗りプリミティブを追加。既存Shooting1、Ball5/旧4、Fireworks2、Runner2/旧1と設定schema1/列挙/素材/DPI/SDK境界を維持。ピンボールは保留。SYNC_RhythmBreakoutは個別GUID/出力/設定/配備先で共通コードを参照。5製品のWin64 Debug/Release全再ビルド成功（各エラー0・W警告0・Hヒント9）。実表示/試験実行/配備は未実施。詳細はBUILD_FIX_BREAKOUT_20261030.md。
+
+新規追加は [RUNNER_STYLE.md](RUNNER_STYLE.md)。現在HEAD基準6df4731、4製品/4スタイル。Source/Runnerに計画/描画、Shared/Settings/RhythmPreparedDataに準備済みJSON/メタデータ保存・復元を追加。既存Ball5/旧4・Fireworks2・Shooting1と公開SDKを維持。今回ソースと静的確認のみ。
 
 最新: [BALL_PERSISTENCE.md](BALL_PERSISTENCE.md)。Ballの新規計画版5、旧v4互換。計画本文に描画復元メタデータ、オブジェクト参照にsourceStampを保存。ホストは軽量な復元データ→既存計画検証を使い、PCMを必須にしない。Shooting=1、Fireworks=2を維持。今回未ビルド・未実行。
 

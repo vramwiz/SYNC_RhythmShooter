@@ -10,14 +10,14 @@ type
   TRhythmBossCues = TArray<TRhythmBossCue>;
 
 function BuildBossCues(const Envelope: TArray<Single>; Duration, SoundEnd: Double;
-  const HitTimes: TArray<Double>): TRhythmBossCues;
+  const HitTimes: TArray<Double>; BossFrequency:Integer=100): TRhythmBossCues;
 
 implementation
 
-uses System.Math;
+uses System.Math,RhythmStyles;
 
 function BuildBossCues(const Envelope: TArray<Single>; Duration, SoundEnd: Double;
-  const HitTimes: TArray<Double>): TRhythmBossCues;
+  const HitTimes: TArray<Double>; BossFrequency:Integer): TRhythmBossCues;
 var
   Prefix: TArray<Double>;
   Peak, Mean, EndTime, PreviousKill, Span, Spacing, LowTime, HighTime, Target: Double;
@@ -68,14 +68,14 @@ var
   end;
 begin
   Result:=nil;
-  if (Duration<=8) or (Length(HitTimes)=0) then Exit;
+  if (Duration<=8) or (Length(HitTimes)=0) or (BossFrequency<=0) then Exit;
   SetLength(Prefix,Length(Envelope)+1);Peak:=0;
   for I:=0 to High(Envelope) do
   begin Prefix[I+1]:=Prefix[I]+Envelope[I];Peak:=Max(Peak,Envelope[I]);end;
   Mean:=Prefix[High(Prefix)]/Max(1,Length(Envelope));
   EndTime:=Min(Duration,Max(SoundEnd,HitTimes[High(HitTimes)]));
   if EndTime<=8 then Exit;
-  Count:=Max(1,Floor(EndTime/45+0.5));SetLength(Result,Count);
+  Count:=Max(1,Floor(EndTime/BossPeriod(BossFrequency)+0.5));SetLength(Result,Count);
   Spacing:=EndTime/Count;Span:=EnsureRange(Spacing*0.46,8.0,23.0);PreviousKill:=-1;
   for I:=0 to Count-1 do
   begin
