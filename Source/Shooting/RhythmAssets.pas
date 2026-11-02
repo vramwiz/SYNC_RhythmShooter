@@ -1,4 +1,5 @@
 ﻿unit RhythmAssets;
+// 標準素材を生成する。外部音源やユーザー設定を変更しない。
 
 interface
 

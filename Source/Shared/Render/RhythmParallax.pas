@@ -1,4 +1,5 @@
 ﻿unit RhythmParallax;
+// 背景の奥行き層を絶対時刻で描画し、前後シークでも同じ結果を返す。
 interface
 uses Vcl.Graphics,RhythmImageBank,RhythmD2D;
 procedure DrawParallax(Canvas:TCanvas;Images:TAnimationImageBank;FD2D:TRhythmD2D;FD2DActive:Boolean;

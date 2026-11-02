@@ -92,6 +92,26 @@
         <AppDPIAwarenessMode>none</AppDPIAwarenessMode>
     </PropertyGroup>
     <ItemGroup>
+        <DCCReference Include="Source\Race\RhythmRaceTrafficPlan.pas"/>
+        <DCCReference Include="Source\Race\RhythmRaceImpact.pas"/>
+        <DCCReference Include="Source\Shared\Audio\RhythmAudioData.pas"/>
+        <DCCReference Include="Source\Shared\Audio\RhythmAudioCache.pas"/>
+        <DCCReference Include="Source\Shared\Audio\RhythmAudioDecode.pas"/>
+        <DCCReference Include="Source\Ball\RhythmBallLegacyScene.pas"/>
+        <DCCReference Include="Source\Runner\RhythmRunnerAction.pas"/>
+        <DCCReference Include="Source\Runner\RhythmRunnerPixels.pas"/>
+        <DCCReference Include="Source\Runner\RhythmRunnerLegacyScene.pas"/>
+        <DCCReference Include="Source\Fighting\RhythmFightingDuel.pas"/>
+        <DCCReference Include="Source\Fighting\RhythmFightingDuelScene.pas"/>
+        <DCCReference Include="Source\Fighting\RhythmFightingLegacyScene.pas"/>
+        <DCCReference Include="Source\Breakout\RhythmBreakoutScoreTypes.pas"/>
+        <DCCReference Include="Source\Breakout\RhythmBreakoutScoreGeometry.pas"/>
+        <DCCReference Include="Source\Race\RhythmRaceCrashMotion.pas"/>
+        <DCCReference Include="Source\Race\RhythmRaceTrafficContacts.pas"/>
+        <DCCReference Include="Source\Race\RhythmRaceCrashCodec.pas"/>
+        <DCCReference Include="Source\Race\RhythmRaceCrashBuild.pas"/>
+        <DCCReference Include="Source\Race\RhythmRaceCrash.pas"/>
+        <DCCReference Include="Source\Race\RhythmRaceCrashScene.pas"/>
         <DCCReference Include="Source\Ball\RhythmBallCircuitPlan.pas"/>
         <DCCReference Include="Source\Ball\RhythmBallCircuitScene.pas"/>
         <DCCReference Include="Source\Breakout\RhythmBreakoutAction.pas"/>

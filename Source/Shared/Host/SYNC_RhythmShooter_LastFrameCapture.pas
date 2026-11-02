@@ -1,4 +1,5 @@
 ﻿unit SYNC_RhythmShooter_LastFrameCapture;
+// 最終プレビューフレームの取得と画像保存を担当する。
 
 {$WARN IMPLICIT_STRING_CAST OFF}
 

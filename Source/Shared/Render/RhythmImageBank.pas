@@ -1,4 +1,5 @@
 ﻿unit RhythmImageBank;
+// スタイル共通の画像所有権・準備・透過資材。計画や音時刻には触れない。
 interface
 uses Vcl.Graphics,RhythmDesignTypes;
 type
@@ -12,6 +13,10 @@ type
     FDesignKey,FDesignWarning:string;
     FAssetCount:Integer;
     FPrepared:Boolean;
+  protected
+    FImages,FAlphaImages:TArray<TBitmap>;
+    FCustom,FColorKeys:TArray<Boolean>;
+  private
     procedure LoadDefault(Index:Integer);
     procedure PrepareAlphaAssets;
     function ChoiceKey(const Choices:array of TRhythmDesign):string;
@@ -19,8 +24,6 @@ type
     function GetAlphaImage(Index:Integer):TBitmap;
     function GetCustom(Index:Integer):Boolean;
   protected
-    FImages,FAlphaImages:TArray<TBitmap>;
-    FCustom,FColorKeys:TArray<Boolean>;
     procedure PrepareImages;virtual;
     function UsesAlpha(Index:Integer):Boolean;virtual;
     procedure RotateImage(SourceIndex,TargetIndex,QuarterTurns:Integer);

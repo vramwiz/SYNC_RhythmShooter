@@ -1,4 +1,5 @@
 ﻿unit RhythmBarrage;
+// ボス弾幕と敵の飛来を事前計画し、任意時刻の位置を評価する。
 interface
 uses RhythmAudio, RhythmMotion;
 type

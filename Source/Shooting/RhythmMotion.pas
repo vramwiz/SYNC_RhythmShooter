@@ -1,4 +1,5 @@
 ﻿unit RhythmMotion;
+// シューティングの絶対時刻軌道と着弾までの逆算を定義する。
 interface
 type TRhythmPoint=record X,Y:Double;end;
 type TPlayerShotPattern=(psForward);

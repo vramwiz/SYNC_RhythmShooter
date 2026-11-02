@@ -2,7 +2,7 @@
 {$APPTYPE CONSOLE}
 uses Winapi.Windows,System.SysUtils,System.Math,System.Classes,System.IOUtils,System.Hash,System.JSON,
   Vcl.Graphics,Vcl.Imaging.pngimage,RhythmAudio,RhythmStyles,RhythmProduct,RhythmPlanRef,RhythmPaths,
-  RhythmRunnerPlan,RhythmRunnerScene,RhythmFireworksPlan,RhythmFireworksScene,
+  RhythmRunnerAction,RhythmRunnerPlan,RhythmRunnerScene,RhythmFireworksPlan,RhythmFireworksScene,
   RhythmAnimation,RhythmImageBank;
 var Audio,Cold:TRhythmAudio;Runner:TRunnerPlan;Fire:TFireworksPlan;Ref:TRhythmPlanRef;
   Scene:TRunnerAnimation;FireScene:TFireworksAnimation;Render:TAnimationRenderer;Image:TBitmap;
@@ -30,16 +30,14 @@ begin
     OutDir:=TPath.Combine(ExtractFileDir(ParamStr(0)),'Frames');ForceDirectories(OutDir);Source:=TPath.Combine(OutDir,'native-source.identity');TFile.WriteAllText(Source,'synthetic fixed accent fixture; no audio playback',TEncoding.UTF8);
     MakeAudio;Image:=TBitmap.Create;Image.PixelFormat:=pf32bit;Image.SetSize(1280,720);Report:=TJSONObject.Create;Entries:=TJSONArray.Create;Report.AddPair('frames',Entries);Calls:=0;
     ConfigureRhythmProduct('SYNC_RhythmRunner','Native runner check',rsRunner);Runner:=TRunnerPlan.Build(Audio);Ref:=NewPlanRef(Audio.Key,50,0,rsRunner);Ref.SourceRevision:=Audio.SourceRevision;Runner.Save(Ref,Audio);
-    Need((Runner.StrikeCount>0) and (Runner.CutCount>Runner.StrikeCount),'Rapid groups missing');
+    Need((Runner.Action<>nil) and (Runner.Action.ModeCount(rmSword)>0),'ABC sword section missing');
     Cold:=TRunnerPlan.LoadAudioMetadata(Ref,Source,0);Need(Length(Cold.PCM)=0,'Runner cold read has PCM');
     Scene:=TRunnerAnimation.Create;Scene.Audio:=Cold;Scene.SetReference(Ref);Render:=TAnimationRenderer.Create(Scene,TAnimationImageBank.Create([],0));Render.UseD2D:=False;
-    for J:=0 to Min(3,Runner.StrikeCount-1) do begin
-      Time:=Runner.Cut[Runner.Strike[J].LastCut].Time;
-      Snapshot('runner-'+IntToStr(J)+'-windup',Max(0.0,Runner.Cut[Runner.Strike[J].FirstCut].Time-0.025));Snapshot('runner-'+IntToStr(J)+'-contact',Time);Snapshot('runner-'+IntToStr(J)+'-follow',Time+0.035);
+    N:=0;for J:=0 to High(Runner.Action.Hits) do if Runner.Action.Hits[J].Kind in [rhSword,rhBossCut,rhParry,rhDodge,rhFinish] then begin
+      Time:=Runner.Action.Hits[J].Time;Snapshot('runner-'+IntToStr(N)+'-windup',Max(0.0,Time-0.025));Snapshot('runner-'+IntToStr(N)+'-contact',Time);Snapshot('runner-'+IntToStr(N)+'-follow',Time+0.035);Inc(N);if N=4 then Break;
     end;
-    for J:=0 to Runner.StrikeCount-1 do if Runner.Strike[J].LastCut>Runner.Strike[J].FirstCut then begin Time:=Runner.Cut[Runner.Strike[J].LastCut].Time;Snapshot('runner-combo-contact',Time);Snapshot('runner-combo-follow',Time+0.035);Break;end;
     for J:=0 to 31 do begin Time:=Runner.EndTime*((J*17) mod 37)/37;Render.Render(Image,Time,0);FrameHash:=BitmapHash;Render.Render(Image,Runner.EndTime-Time,0);Render.Render(Image,Time,0);Need(BitmapHash=FrameHash,'Runner seek image drift');Inc(Calls);end;
-    Entry:=TJSONObject.Create;Entries.AddElement(Entry);Entry.AddPair('style','runner');Entry.AddPair('version',TJSONNumber.Create(Ref.Version));Entry.AddPair('contacts',TJSONNumber.Create(Runner.CutCount));Entry.AddPair('actors',TJSONNumber.Create(Runner.StrikeCount));
+    Entry:=TJSONObject.Create;Entries.AddElement(Entry);Entry.AddPair('style','runner');Entry.AddPair('version',TJSONNumber.Create(Ref.Version));Entry.AddPair('contacts',TJSONNumber.Create(Length(Runner.Action.Hits)));Entry.AddPair('actors',TJSONNumber.Create(Runner.Action.EnemyCount));
     FreeAndNil(Render);FreeAndNil(Cold);FreeAndNil(Runner);
     ConfigureRhythmProduct('SYNC_RhythmFireworks','Native firework check',rsFireworks);Fire:=TFireworksPlan.Build(Audio,0,70);Ref:=NewPlanRef(Audio.Key,50,0,rsFireworks,70);Ref.SourceRevision:=Audio.SourceRevision;Fire.Save(Ref);
     Cold:=TFireworksPlan.LoadAudioMetadata(Ref,Source,0);Need((Length(Cold.PCM)=0) and (Length(Cold.Hits)=Length(Audio.Hits)),'Firework cold descriptor');

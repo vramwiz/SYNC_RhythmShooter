@@ -1,4 +1,5 @@
 ﻿unit RhythmD2D;
+// Direct2D描画バックエンド。計画・音解析・時刻更新は扱わない。
 interface
 uses System.Types, Vcl.Graphics, Winapi.D2D1;
 type
@@ -16,9 +17,9 @@ type
     function EndFrame:Boolean;
     procedure DrawAsset(Index:Integer;const Bounds:TRect;Opacity:Single=1);
     procedure Ring(X,Y,Radius:Single);
-    procedure Circle(X,Y,Radius:Single;Color:TColor;Filled:Boolean;Stroke:Single=1);
-    procedure Line(X1,Y1,X2,Y2:Single;Color:TColor;Stroke:Single=1);
-    procedure FillRect(X1,Y1,X2,Y2:Single;Color:TColor);
+    procedure Circle(X,Y,Radius:Single;Color:TColor;Filled:Boolean;Stroke:Single=1;Opacity:Single=1);
+    procedure Line(X1,Y1,X2,Y2:Single;Color:TColor;Stroke:Single=1;Opacity:Single=1);
+    procedure FillRect(X1,Y1,X2,Y2:Single;Color:TColor;Opacity:Single=1);
     procedure Star(X,Y,Radius,Trail:Single;Layer,Direction:Integer);
   end;
 implementation
@@ -92,23 +93,23 @@ end;
 procedure TRhythmD2D.Ring(X,Y,Radius:Single);
 var Shape:TD2D1Ellipse;
 begin Shape.point.x:=X;Shape.point.y:=Y;Shape.radiusX:=Radius;Shape.radiusY:=Radius;FTarget.DrawEllipse(Shape,FBrush,1);end;
-procedure TRhythmD2D.Circle(X,Y,Radius:Single;Color:TColor;Filled:Boolean;Stroke:Single);
+procedure TRhythmD2D.Circle(X,Y,Radius:Single;Color:TColor;Filled:Boolean;Stroke,Opacity:Single);
 var Shape:TD2D1Ellipse;C:TD2D1ColorF;V:Longint;
 begin
-  V:=ColorToRGB(Color);C.r:=(V and 255)/255;C.g:=((V shr 8) and 255)/255;C.b:=((V shr 16) and 255)/255;C.a:=1;FBrush.SetColor(C);
+  V:=ColorToRGB(Color);C.r:=(V and 255)/255;C.g:=((V shr 8) and 255)/255;C.b:=((V shr 16) and 255)/255;C.a:=Opacity;FBrush.SetColor(C);
   Shape.point.x:=X;Shape.point.y:=Y;Shape.radiusX:=Radius;Shape.radiusY:=Radius;
   if Filled then FTarget.FillEllipse(Shape,FBrush) else FTarget.DrawEllipse(Shape,FBrush,Stroke);
 end;
-procedure TRhythmD2D.Line(X1,Y1,X2,Y2:Single;Color:TColor;Stroke:Single);
+procedure TRhythmD2D.Line(X1,Y1,X2,Y2:Single;Color:TColor;Stroke,Opacity:Single);
 var A,B:TD2DPoint2f;C:TD2D1ColorF;V:Longint;
 begin
-  V:=ColorToRGB(Color);C.r:=(V and 255)/255;C.g:=((V shr 8) and 255)/255;C.b:=((V shr 16) and 255)/255;C.a:=1;FBrush.SetColor(C);
+  V:=ColorToRGB(Color);C.r:=(V and 255)/255;C.g:=((V shr 8) and 255)/255;C.b:=((V shr 16) and 255)/255;C.a:=Opacity;FBrush.SetColor(C);
   A.x:=X1;A.y:=Y1;B.x:=X2;B.y:=Y2;FTarget.DrawLine(A,B,FBrush,Stroke);
 end;
-procedure TRhythmD2D.FillRect(X1,Y1,X2,Y2:Single;Color:TColor);
+procedure TRhythmD2D.FillRect(X1,Y1,X2,Y2:Single;Color:TColor;Opacity:Single);
 var Bounds:TD2D1RectF;C:TD2D1ColorF;V:Longint;
 begin
-  V:=ColorToRGB(Color);C.r:=(V and 255)/255;C.g:=((V shr 8) and 255)/255;C.b:=((V shr 16) and 255)/255;C.a:=1;FBrush.SetColor(C);
+  V:=ColorToRGB(Color);C.r:=(V and 255)/255;C.g:=((V shr 8) and 255)/255;C.b:=((V shr 16) and 255)/255;C.a:=Opacity;FBrush.SetColor(C);
   Bounds.left:=X1;Bounds.top:=Y1;Bounds.right:=X2;Bounds.bottom:=Y2;FTarget.FillRectangle(Bounds,FBrush);
 end;
 procedure TRhythmD2D.Star(X,Y,Radius,Trail:Single;Layer,Direction:Integer);

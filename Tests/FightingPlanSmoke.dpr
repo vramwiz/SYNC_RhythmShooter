@@ -1,81 +1,64 @@
 ﻿program FightingPlanSmoke;
 {$APPTYPE CONSOLE}
-uses
-  System.SysUtils,System.Math,System.Classes,System.IOUtils,System.Hash,Winapi.Windows,Vcl.Graphics,Vcl.Imaging.pngimage,
-  RhythmFightingPlan in '..\Source\Fighting\RhythmFightingPlan.pas',
-  RhythmFightingScene in '..\Source\Fighting\RhythmFightingScene.pas',
-  RhythmAudio,RhythmStyles,RhythmPlanRef,RhythmProduct,RhythmPaths,RhythmAnimation,RhythmImageBank;
-var Audio,Meta:TRhythmAudio;Plan,Cold,RejectedPlan:TFightingPlan;Ref,Bad:TRhythmPlanRef;
-  Scene:TFightingAnimation;Renderer:TAnimationRenderer;Image:TBitmap;PNG:TPngImage;
-  I,J,K,C,N,Frequency,MaxBodies,MaxShots,Bodies,Shots:Integer;D,Gap,T,BeforeSpeed,NearSpeed,MaxReach,Error,MaxError,Zoom,CX,CY,ColdZoom,ColdCX,ColdCY:Double;
-  H:TFightHit;E:TFightEnemy;P,Q:TFightPose;Pos,Other:TFightPoint;A:Double;
-  Info:TWin32FileAttributeData;Identity,OutDir,Hash,Terminal:string;Rejected:Boolean;Id:TGUID;
-procedure Need(Value:Boolean;const Msg:string);begin if not Value then raise Exception.Create(Msg);end;
-function ImageHash:string;
-var Stream:TMemoryStream;Bytes:TBytes;Hasher:THashSHA2;
-begin Stream:=TMemoryStream.Create;try Image.SaveToStream(Stream);SetLength(Bytes,Stream.Size);Stream.Position:=0;if Length(Bytes)>0 then Stream.ReadBuffer(Bytes[0],Length(Bytes));Hasher:=THashSHA2.Create;Hasher.Update(Bytes);Result:=Hasher.HashAsString;finally Stream.Free;end;end;
-procedure SaveFrame(const Name:string;Time:Double;Width:Integer=1280;Height:Integer=720);
-begin Image.SetSize(Width,Height);Renderer.Render(Image,Time,0);PNG.Assign(Image);PNG.SaveToFile(TPath.Combine(OutDir,Name+'.png'));end;
+uses Winapi.Windows,System.SysUtils,System.Math,System.Classes,System.JSON,System.Hash,System.IOUtils,
+  Vcl.Graphics,RhythmAudio,RhythmStyles,RhythmPlanRef,RhythmPreparedData,RhythmProduct,RhythmPaths,RhythmSettings,
+  RhythmFightingPlan,RhythmFightingDuel,RhythmFightingScene,RhythmAnimation,RhythmImageBank;
+var Audio,Meta:TRhythmAudio;Plan,Cold,BadPlan:TFightingPlan;D:TFightingDuel;Ref,Bad:TRhythmPlanRef;
+  Image:TBitmap;Renderer:TAnimationRenderer;Scene:TFightingAnimation;Root,Other:TJSONObject;
+  Source,Revision,Serialized,Expected,Folder:string;Stamp:TWin32FileAttributeData;
+  C,I,J,N,Frequency,Rear,HeroHits,EnemyHits,Finishes,SeekChecks,CameraChecks:Integer;
+  Duration,Gap,T,CX,CY,Zoom,PreviousHP,ScreenX,ScreenY:Double;
+  H:TDuelHit;E:TDuelEnemy;S:TDuelSection;P,Q:TDuelPose;W:TDuelStrike;Rejected:Boolean;
+  Styles:set of 0..2;State,Loaded:TRhythmSettings;
+procedure Need(V:Boolean;const M:string);begin if not V then raise Exception.Create(M);end;
+function BitmapHash:string;
+var M:TMemoryStream;Bytes:TBytes;Hash:THashSHA2;
+begin M:=TMemoryStream.Create;try Image.SaveToStream(M);SetLength(Bytes,M.Size);M.Position:=0;if Length(Bytes)>0 then M.ReadBuffer(Bytes[0],Length(Bytes));Hash:=THashSHA2.Create;Hash.Update(Bytes);Result:=Hash.HashAsString;finally M.Free;end;end;
+procedure InFrame(X,Y:Double);
+begin ScreenX:=(X-CX)*Zoom+0.8;ScreenY:=(Y-CY)*Zoom+0.66;Need((ScreenX>=0) and (ScreenX<=1.6) and (ScreenY>=0) and (ScreenY<=1),'Camera cuts a body/weapon/contact');Inc(CameraChecks);end;
+procedure LegacyV1;
+var R:TRhythmPlanRef;A:TJSONArray;J:TJSONObject;
 begin
-  Audio:=nil;Meta:=nil;Plan:=nil;Cold:=nil;RejectedPlan:=nil;Renderer:=nil;Image:=nil;PNG:=nil;MaxBodies:=0;MaxShots:=0;MaxReach:=0;MaxError:=0;
+  Audio:=TRhythmAudio.Create;Audio.Source:=Source;Audio.SourceRevision:=Revision;Audio.Key:=THashSHA2.GetHashString('legacy-fighting');Audio.Duration:=1;Audio.Sensitivity:=50;Audio.SetBossFrequency(0);
+  R:=NewPlanRef(Audio.Key,50,0,rsFighting,1);R.Version:=1;R.SourceRevision:=Revision;R.Key:=THashSHA2.GetHashString('fighting-v1|'+Audio.Key+'|50|0|variant=1');
+  Root:=TJSONObject.Create;
+  try Root.AddPair('schema',TJSONNumber.Create(1));Root.AddPair('style','fighting');Root.AddPair('version',TJSONNumber.Create(1));Root.AddPair('key',R.Key);Root.AddPair('source',R.SourceKey);Root.AddPair('sensitivity',TJSONNumber.Create(50));Root.AddPair('direction',TJSONNumber.Create(0));AddPreparedAudio(Root,Audio);
+    Root.AddPair('policy','contact-crowd-v1');Root.AddPair('goal',TJSONNumber.Create(0));Root.AddPair('end',TJSONNumber.Create(0));Root.AddPair('entry',TJSONNumber.Create(0));Root.AddPair('frequency',TJSONNumber.Create(0));Root.AddPair('excluded',TJSONNumber.Create(0));
+    Root.AddPair('events',TJSONArray.Create);Root.AddPair('hits',TJSONArray.Create);Root.AddPair('enemies',TJSONArray.Create);Root.AddPair('bosses',TJSONArray.Create);Root.AddPair('volleys',TJSONArray.Create);Root.AddPair('focus',TJSONArray.Create);
+    A:=TJSONArray.Create;Root.AddPair('stages',A);J:=TJSONObject.Create;A.AddElement(J);J.AddPair('t',TJSONNumber.Create(0));J.AddPair('theme',TJSONNumber.Create(0));WritePreparedData(Root,R);
+  finally Root.Free;Root:=nil;end;
+  Meta:=TFightingPlan.LoadAudioMetadata(R,Source,0);Cold:=TFightingPlan.Load(R,Meta,0);Need((Cold.RecipeVersion=1) and (Cold.Action=nil) and (Length(Meta.PCM)=0),'Legacy v1 reader');FreeAndNil(Cold);FreeAndNil(Meta);FreeAndNil(Audio);
+end;
+begin
   try
-    ConfigureRhythmProduct('SYNC_RhythmFighting','音楽同期格闘',rsFighting);
-    OutDir:=ExtractFilePath(ParamStr(0));ForceDirectories(OutDir);
-    Need((Ord(rsFighting)=7) and (StylePlanVersion(rsFighting)=1),'Style identity');
-    for C:=0 to 8 do begin
-      D:=32;Gap:=0.18;Frequency:=50;
-      case C of 1:begin D:=16;Gap:=0.008;end;2:begin D:=3000;Gap:=0.16;end;3:begin D:=0.10;Gap:=0.01;end;4:begin D:=1;Gap:=1;end;5:D:=180;6:begin D:=180;Frequency:=0;end;7:begin D:=180;Gap:=1.1;end;8:begin D:=16;Gap:=0.09;end;end;
-      Audio:=TRhythmAudio.Create;Audio.Duration:=D;Audio.SoundEnd:=D;Audio.Sensitivity:=50;Audio.SetBossFrequency(Frequency);
-      SetLength(Audio.Envelope,Ceil(D*100));for I:=0 to High(Audio.Envelope) do Audio.Envelope[I]:=0.75;
-      if D>=90 then for I:=0 to High(Audio.Envelope) do if ((I div 100>=45) and (I div 100<50)) or ((I div 100>=100) and (I div 100<108)) then Audio.Envelope[I]:=0.01;
-      N:=Floor((D-0.005)/Gap)+1;if C=4 then N:=0;SetLength(Audio.Hits,N);
-      for I:=0 to High(Audio.Hits) do begin Audio.Hits[I].Time:=0.005+I*Gap;Audio.Hits[I].Strength:=0.25+(I mod 6)*0.15;end;
-      if C=8 then begin Audio.Hits[0].Time:=0;Audio.Hits[1].Time:=0;end;
-      Audio.UpdateSoundBounds;if C=4 then Audio.SoundEnd:=0;
-      CreateGUID(Id);Identity:=TPath.Combine(CacheFolder,GUIDToString(Id)+'.fighting-identity');TFile.WriteAllText(Identity,'fighting-native-'+GUIDToString(Id),TEncoding.UTF8);
-      Audio.Source:=Identity;Audio.Key:=THashSHA2.GetHashString(Identity);
-      if not GetFileAttributesEx(PChar(Identity),GetFileExInfoStandard,@Info) then RaiseLastOSError;
-      Audio.SourceRevision:=IntToHex(Info.nFileSizeHigh,8)+IntToHex(Info.nFileSizeLow,8)+'-'+IntToHex(Info.ftLastWriteTime.dwHighDateTime,8)+IntToHex(Info.ftLastWriteTime.dwLowDateTime,8);
-      Plan:=TFightingPlan.Build(Audio);Need(Plan.Count=N,'Valid impact count');Need(Plan.PulseCount=N,'Pulse count');if Frequency=0 then Need(Plan.BossCount=0,'Boss frequency zero');if C=5 then Need(Plan.BossCount>0,'Long song lacks boss');
-      for I:=0 to Plan.Count-1 do begin H:=Plan.Hit[I];Need(H.Time=Audio.Hits[H.Source].Time,'Impact clock shifted');P:=Plan.HeroAt(H.Time);Error:=Abs(P.Attack-1);MaxError:=Max(MaxError,Error);Need(Error<1E-7,'Impact pose not extended');E:=Plan.Enemy[H.Enemy];
-        Error:=Abs(P.ContactX-H.Contact.X)+Abs(P.ContactY-H.Contact.Y);MaxError:=Max(MaxError,Error);Need(Error<1E-7,'Weapon contact mismatch');
-        if E.Boss<0 then Need(Abs(H.Contact.X-(E.X-H.Side*0.036))<1E-7,'Enemy surface mismatch') else begin Pos:=Plan.BossCenter(E.Boss,H.Time);Need(Abs(H.Contact.X-(Pos.X-H.Side*0.20))<1E-7,'Boss surface mismatch');end;
-        if H.Kind=1 then A:=Hypot(H.Contact.X-H.Side*0.017-P.X,H.Contact.Y-(P.Y-0.046)) else A:=Hypot(H.Contact.X-H.Side*0.014-(P.X+H.Side*0.022),H.Contact.Y-(P.Y-0.100));
-        MaxReach:=Max(MaxReach,A);if H.Kind=1 then Need(A<0.171,'Kick cannot reach enemy') else Need(A<0.155,'Punch cannot reach enemy');
-        if (I=E.FirstHit) and (H.Time>0.001) then begin P:=Plan.HeroAt(H.Time-0.001);if E.Boss<0 then Other:=Plan.EnemyAt(H.Enemy,H.Time-0.001) else begin Other:=Plan.BossCenter(E.Boss,H.Time-0.001);Other.X:=Other.X-H.Side*0.164;end;
-          if H.Kind=1 then A:=P.X+H.Side*0.029+(P.ContactX-H.Side*0.017-(P.X+H.Side*0.029))*P.Attack+H.Side*(0.027-0.010*P.Attack)
-          else begin A:=P.X+P.Lean*0.035+P.Side*P.Attack*0.006+H.Side*0.055;A:=A+(P.ContactX-H.Side*0.014-A)*P.Attack+H.Side*0.014;end;
-          Need(H.Side*(Other.X-H.Side*0.036-A)>-0.00005,'Premature first contact');
-        end;
+    ConfigureRhythmProduct('SYNC_RhythmFighting','Fighting v2 native',rsFighting);Need((StylePlanVersion(rsFighting)=2) and CompatiblePlanVersion(rsFighting,1),'Version compatibility');Need(StylePlanVersion(rsRunner)=6,'Runner changed');
+    Folder:=TPath.Combine(ExtractFileDir(ParamStr(0)),'DuelEvidence');ForceDirectories(Folder);Source:=TPath.Combine(Folder,'source.identity');TFile.WriteAllText(Source,'Synthetic native fighting source; no playback',TEncoding.UTF8);
+    Need(GetFileAttributesEx(PChar(Source),GetFileExInfoStandard,@Stamp),'Source stat');Revision:=IntToHex(Stamp.nFileSizeHigh,8)+IntToHex(Stamp.nFileSizeLow,8)+'-'+IntToHex(Stamp.ftLastWriteTime.dwHighDateTime,8)+IntToHex(Stamp.ftLastWriteTime.dwLowDateTime,8);LegacyV1;
+    Image:=TBitmap.Create;Image.PixelFormat:=pf32bit;Image.SetSize(960,600);Styles:=[];
+    for C:=0 to 13 do begin
+      Duration:=96;Gap:=0.18;Frequency:=50;case C of 0:begin Duration:=0.1;Gap:=0.02;end;1:Duration:=1;2:begin Duration:=8;Gap:=0.7;end;3:Duration:=32;5:Duration:=180;6:begin Duration:=180;Frequency:=0;end;7:begin Duration:=3000;Gap:=0.16;end;8:begin Duration:=16;Gap:=0.008;end;9:Gap:=1.1;10:begin Duration:=420;Frequency:=100;Gap:=0.20;end;11:begin Duration:=16;Gap:=0.09;end;12:begin Duration:=96;Frequency:=100;Gap:=0.001;end;end;
+      Audio:=TRhythmAudio.Create;Audio.Source:=Source;Audio.SourceRevision:=Revision;Audio.Key:=THashSHA2.GetHashString('duel-native-'+IntToStr(C));Audio.Duration:=Duration;Audio.Sensitivity:=50;Audio.SetBossFrequency(Frequency);SetLength(Audio.Envelope,Ceil(Duration*100));if C<>1 then for I:=0 to High(Audio.Envelope) do Audio.Envelope[I]:=0.5;
+      SetLength(Audio.Hits,100000);N:=0;T:=0.005;if C<>1 then while (T<Duration-0.005) and (N<100000) do begin Audio.Hits[N].Time:=T;Audio.Hits[N].Strength:=0.25+(N mod 6)*0.15;Inc(N);if (C=13) and (N mod 5=0) then begin Audio.Hits[N]:=Audio.Hits[N-1];Audio.Hits[N].Strength:=1;Inc(N);end;T:=T+Gap;end;SetLength(Audio.Hits,N);Audio.UpdateSoundBounds;
+      Plan:=TFightingPlan.Build(Audio);D:=Plan.Action;Need(D<>nil,'v2 plan missing');D.Validate;Need(Length(D.Hits)=N,'Source events discarded');if Frequency=0 then Need(D.BossCount=0,'Frequency zero');
+      for I:=0 to High(D.Enemies) do begin E:=D.Enemies[I];if E.Side<0 then begin Inc(Rear);Need(E.Speed>DUEL_SPEED,'Rear chaser too slow');T:=Max(E.Spawn,E.Ready-0.5);if E.Ready-T>0.01 then begin P:=D.EnemyAt(I,T);Q:=D.EnemyAt(I,E.Ready);Need(Q.X-D.WorldAt(E.Ready)>P.X-D.WorldAt(T),'Rear chaser never catches');end;end;end;
+      for I:=0 to High(D.Hits) do begin H:=D.Hits[I];Need(H.Time=Audio.Hits[H.Source].Time,'Audio clock changed');
+        if H.Role in [1,5] then begin Need(D.HeroStrike(H.Time,W),'Hero strike absent');Need(Hypot(W.Tip.X-H.X,W.Tip.Y-H.Y)<1E-7,'Hero strike contact');Need(Hypot(W.Tip.X-W.Grip.X,W.Tip.Y-W.Grip.Y)<0.22,'Hero limb reach');Inc(HeroHits);end;
+        if H.Role in [2,3,4] then begin Need(D.EnemyStrike(H.Time,W),'Enemy strike absent');Need(Hypot(W.Tip.X-H.X,W.Tip.Y-H.Y)<1E-7,'Enemy strike contact');
+          if W.StraightArm then begin Need(Hypot(W.Hand.X-W.Grip.X,W.Hand.Y-W.Grip.Y)<0.22,'Boss arm overextends');for J:=0 to 63 do begin T:=H.Time-0.175+J*0.005;if not D.EnemyStrike(T,W) then Continue;if W.Hit<>I then Continue;Q:=D.BossAt(T);Need(Hypot(W.Grip.X-(Q.X+W.Side*0.020*Q.Scale),W.Grip.Y-(Q.Y-0.106*Q.Scale))<1E-7,'Arm detached from shoulder');Need(Hypot(W.Hand.X-W.Grip.X,W.Hand.Y-W.Grip.Y)<0.22,'Swing arm overextends');D.CameraAt(T,CX,CY,Zoom);InFrame(W.Grip.X,W.Grip.Y);InFrame(W.Hand.X,W.Hand.Y);InFrame(W.Tip.X,W.Tip.Y);end;end;
+          if D.Sections[H.Section].Mode=0 then if D.Enemies[H.Enemy].Kill<H.Time+0.1 then begin Need(not D.EnemyStrike(D.Enemies[H.Enemy].Kill+0.0001,W) or (W.Hit<>I),'Normal enemy attacks after KO');end;Inc(EnemyHits);end;
       end;
-      Ref:=NewPlanRef(Audio.Key,50,0,rsFighting,StyleVariant(rsFighting,50,Frequency));Ref.SourceRevision:=Audio.SourceRevision;Plan.Save(Ref,Audio);
-      Meta:=TFightingPlan.LoadAudioMetadata(Ref,Identity,0);Need(Length(Meta.PCM)=0,'PCM restored');Need(Meta.BossFrequency=Frequency,'Frequency not restored');Cold:=TFightingPlan.Load(Ref,Meta,0);
-      Need((Cold.Count=Plan.Count) and (Cold.BossCount=Plan.BossCount) and (Cold.EnemyCount=Plan.EnemyCount),'Cold plan count');
-      for I:=0 to 127 do begin T:=Plan.EndTime*((I*73) mod 131)/131;P:=Plan.HeroAt(T);Q:=Cold.HeroAt(T);Need((Abs(P.X-Q.X)<1E-10) and (Abs(P.Y-Q.Y)<1E-10) and (Abs(P.ContactX-Q.ContactX)<1E-10) and (Abs(P.Attack-Q.Attack)<1E-8),Format('Cold/seek changes pose case%d t%.12f x%.12f/%.12f contact%.12f/%.12f attack%.12f/%.12f',[C,T,P.X,Q.X,P.ContactX,Q.ContactX,P.Attack,Q.Attack]));
-        Plan.CameraAt(T,CX,CY,Zoom);Need((Zoom>=1) and (Zoom<=1.181),'Camera bounds');Cold.CameraAt(T,ColdCX,ColdCY,ColdZoom);Need((Abs(CX-ColdCX)<1E-9) and (Abs(CY-ColdCY)<1E-9) and (Abs(Zoom-ColdZoom)<1E-9) and (Plan.ThemeAt(T)=Cold.ThemeAt(T)),'Cold camera/stage');
-        J:=Plan.EnemyBefore(T);if J>=0 then begin Pos:=Plan.EnemyAt(J,T);Other:=Cold.EnemyAt(J,T);Need(Hypot(Pos.X-Other.X,Pos.Y-Other.Y)<1E-9,'Cold enemy movement');end;
-        if Plan.BossCount>0 then begin J:=I mod Plan.BossCount;Need(Abs(Plan.BossHealth(J,T)-Cold.BossHealth(J,T))<1E-10,'Cold boss HP');end;
-        J:=Plan.VolleyBefore(T);if J>=0 then begin K:=Plan.Volley[J].Count div 2;Rejected:=Plan.ShotAt(J,K,T,Pos,A);Need(Cold.ShotAt(J,K,T,Other,Error)=Rejected,'Cold shot lifetime');if Rejected then Need((Hypot(Pos.X-Other.X,Pos.Y-Other.Y)<1E-9) and (Abs(A-Error)<1E-9),'Cold shot trajectory');end;
-        Bodies:=0;Shots:=0;
-        for J:=Max(0,Plan.EnemyBefore(T-0.90)+1) to Plan.EnemyBefore(T+2) do begin E:=Plan.Enemy[J];if (E.Boss<0) and (T>=E.Spawn) and (T<E.Kill+0.75) then Inc(Bodies);end;
-        for J:=Max(0,Plan.VolleyBefore(T-0.80)+1) to Plan.VolleyBefore(T) do for K:=0 to Plan.Volley[J].Count-1 do if Plan.ShotAt(J,K,T,Pos,A) then Inc(Shots);
-        MaxBodies:=Max(MaxBodies,Bodies);MaxShots:=Max(MaxShots,Shots);
+      for I:=0 to High(D.Sections) do begin S:=D.Sections[I];if S.Mode=0 then begin if S.Finish-S.Start>1 then Need(D.WorldAt(S.Start+1)>D.WorldAt(S.Start)+0.29,'Normal stage does not advance right');Continue;end;Include(Styles,S.Style);Need(Abs(D.WorldAt(S.Ready)-D.WorldAt(S.Kill))<1E-7,'Boss stage scrolls');N:=0;PreviousHP:=S.HP;
+        for J:=0 to High(D.Hits) do if D.Hits[J].Section=I then begin H:=D.Hits[J];Need(H.HP<=PreviousHP,'Boss HP reverses');PreviousHP:=H.HP;if H.Role=5 then begin Inc(N);Inc(Finishes);Need(H.Time=S.Kill,'KO not on source');end;if H.Time>S.Kill then Need(H.Role=0,'Boss attacks after KO');end;Need((N=1) and (PreviousHP=0),'Missing final KO');
+        T:=S.Start;while T<S.Finish do begin D.CameraAt(T,CX,CY,Zoom);P:=D.HeroAt(T);Q:=D.BossAt(T);InFrame(P.X-0.075,P.Y-0.22);InFrame(P.X+0.075,P.Y+0.035);InFrame(Q.X-0.1,Q.Y-0.29);InFrame(Q.X+0.1,Q.Y+0.1);if D.HeroStrike(T,W) then begin InFrame(W.Grip.X,W.Grip.Y);InFrame(W.Tip.X,W.Tip.Y);end;if D.EnemyStrike(T,W) then begin InFrame(W.Grip.X,W.Grip.Y);if W.StraightArm then InFrame(W.Hand.X,W.Hand.Y);InFrame(W.Tip.X,W.Tip.Y);end;T:=T+0.12;end;
       end;
-      Bad:=Ref;Bad.Digest:=StringOfChar('0',64);Rejected:=False;try RejectedPlan:=TFightingPlan.Load(Bad,Meta,0);except Rejected:=True;end;Need(Rejected,'Digest accepted');
-      if C in [0,5,8] then begin
-        Scene:=TFightingAnimation.Create;Scene.Audio:=Meta;Scene.SetReference(Ref);Renderer:=TAnimationRenderer.Create(Scene,TAnimationImageBank.Create([],0));Renderer.UseD2D:=False;
-        Image:=TBitmap.Create;Image.PixelFormat:=pf32bit;Image.SetSize(1280,720);PNG:=TPngImage.Create;
-        T:=Min(8.23,Plan.EndTime*0.5);Renderer.Render(Image,T,0);Hash:=ImageHash;Renderer.Render(Image,Plan.EndTime+2,0);Terminal:=ImageHash;Renderer.Render(Image,Plan.EndTime+20,0);Need(ImageHash=Terminal,'End is not stable');Renderer.Render(Image,T,0);Need(ImageHash=Hash,'Random seek changes bitmap');
-        if C=0 then begin SaveFrame('crowd-impact',Plan.Hit[30].Time);SaveFrame('crowd-defense',Plan.Hit[35].Time-0.13);SaveFrame('crowd-blowout',Plan.Hit[30].Time+0.09);SaveFrame('portrait',Plan.Hit[30].Time,720,1280);end;
-        if (C=5) and (Plan.BossCount>0) then begin SaveFrame('boss-intro',Plan.Boss[0].Start+0.4);SaveFrame('boss-fight',(Plan.Boss[0].Ready+Plan.Boss[0].Kill)/2);SaveFrame('boss-purge',Plan.Boss[0].Purge[1]+0.10);SaveFrame('boss-defeat',Plan.Boss[0].Kill+0.14);end;
-        if C=8 then SaveFrame('fast-combo',Plan.Hit[40].Time);
-        FreeAndNil(Renderer);FreeAndNil(Image);FreeAndNil(PNG);
-      end;
-      if (C=0) and (Plan.EnemyCount>2) then begin E:=Plan.Enemy[2];Pos:=Plan.EnemyAt(2,E.Ready-0.8);Other:=Plan.EnemyAt(2,E.Ready-0.79);BeforeSpeed:=Abs(Other.X-Pos.X)/0.01;Pos:=Plan.EnemyAt(2,E.Ready-0.01);Other:=Plan.EnemyAt(2,E.Ready);NearSpeed:=Abs(Other.X-Pos.X)/0.01;Need(NearSpeed>BeforeSpeed*1.5,'Approach lacks acceleration');end;
-      Writeln(Format('case=%d events=%d enemies=%d bosses=%d volleys=%d stages=%d',[C,Plan.Count,Plan.EnemyCount,Plan.BossCount,Plan.VolleyCount,Plan.StageCount]));
-      FreeAndNil(Plan);FreeAndNil(Cold);FreeAndNil(Meta);FreeAndNil(Audio);
+      Ref:=NewPlanRef(Audio.Key,50,0,rsFighting,Frequency+1);Ref.SourceRevision:=Revision;Plan.Save(Ref,Audio);State:=TRhythmSettings.Defaults;State.Style:=rsFighting;State.Music:=Source;State.Plan:=Ref;State.BossFrequency:=Frequency;Need(TRhythmSettings.TryJSON(State.ToJSON,Loaded) and (Loaded.Plan.Key=Ref.Key),'Settings v2 reference');Root:=D.ToJSON;try Serialized:=Root.ToJSON;finally Root.Free;Root:=nil;end;
+      Meta:=TFightingPlan.LoadAudioMetadata(Ref,Source,0);Need((Length(Meta.PCM)=0) and (Length(Meta.Envelope)=0),'Cold restore needs PCM');Cold:=TFightingPlan.Load(Ref,Meta,0);Other:=Cold.Action.ToJSON;try Need(Other.ToJSON=Serialized,'Cold score changes');finally Other.Free;end;
+      for I:=0 to 63 do begin T:=D.EndTime*((I*37) mod 67)/67;P:=D.HeroAt(T);Q:=Cold.Action.HeroAt(T);Need(Hypot(P.X-Q.X,P.Y-Q.Y)<1E-9,'Random seek changes hero');Need(Abs(Plan.HeroAt(T).X-P.X)<1E-9,'Plan API does not forward v2');Inc(SeekChecks);end;
+      Bad:=Ref;Bad.Digest:=StringOfChar('0',64);Rejected:=False;try BadPlan:=TFightingPlan.Load(Bad,Meta,0);except Rejected:=True;end;FreeAndNil(BadPlan);Need(Rejected,'Bad digest accepted');
+      if C in [3,5,10] then begin Scene:=TFightingAnimation.Create;Scene.Audio:=Meta;Scene.SetReference(Ref);Renderer:=TAnimationRenderer.Create(Scene,TAnimationImageBank.Create([],0));Renderer.UseD2D:=False;Image.SetSize(720,1280);Renderer.Render(Image,D.Goal*0.5,0);Image.SetSize(960,600);T:=D.Goal*0.6;Renderer.Render(Image,T,0);Expected:=BitmapHash;Renderer.Render(Image,D.EndTime,0);Renderer.Render(Image,T,0);Need((Scene.Notice='') and (BitmapHash=Expected),'Preview seek/restore mismatch');FreeAndNil(Renderer);end;
+      FreeAndNil(Cold);FreeAndNil(Meta);FreeAndNil(Plan);FreeAndNil(Audio);
     end;
-    Writeln(Format('FightingPlanSmoke passed: maxBodies=%d maxShots=%d maxReach=%.6f impactError=%.12f approach=%.4f->%.4f',[MaxBodies,MaxShots,MaxReach,MaxError,BeforeSpeed,NearSpeed]));
+    Need((Rear>0) and (HeroHits>0) and (EnemyHits>0) and (Finishes>0) and (Styles=[0,1,2]),'Coverage incomplete');Writeln(Format('Fighting v2 PASS rear=%d heroContacts=%d enemyContacts=%d KO=%d seeks=%d cameraPoints=%d',[Rear,HeroHits,EnemyHits,Finishes,SeekChecks,CameraChecks]));
   except on E:Exception do begin Writeln(E.ClassName+': '+E.Message);ExitCode:=1;end;end;
-  Renderer.Free;Image.Free;PNG.Free;Plan.Free;Cold.Free;RejectedPlan.Free;Meta.Free;Audio.Free;
+  Renderer.Free;Image.Free;BadPlan.Free;Cold.Free;Plan.Free;Meta.Free;Audio.Free;
 end.

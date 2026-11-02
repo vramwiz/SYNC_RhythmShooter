@@ -1,4 +1,5 @@
 ﻿unit RhythmStage;
+// シューティングの場面進行とボス戦の事前スケジュールを管理する。
 interface
 uses RhythmAudio,RhythmMotion;
 type

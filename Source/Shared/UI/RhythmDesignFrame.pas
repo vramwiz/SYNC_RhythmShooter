@@ -1,4 +1,5 @@
 ﻿unit RhythmDesignFrame;
+// カスタム素材の選択・生成要求・採用を扱う設定部品。
 interface
 uses System.Classes,Vcl.Forms,Vcl.Controls,Vcl.ExtCtrls,Vcl.StdCtrls,
   RhythmDesignTypes,RhythmCodexClient,RhythmDesignRequest,RhythmScene,RhythmStyles,RhythmPlanRef;

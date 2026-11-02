@@ -1,4 +1,5 @@
 ﻿unit RhythmRenderSurface;
+// GDIとDirect2Dの描画入口を揃え、シーン側の座標を共通化する。
 interface
 uses System.Types,Vcl.Graphics,RhythmImageBank,RhythmDesignTypes,RhythmD2D;
 type
@@ -9,7 +10,10 @@ type
     FScaled:TArray<TAnimationScaledBuckets>;
     FD2D:TRhythmD2D;
     FTarget:TBitmap;
+    FAlphaLayer,FAlphaMask:TBitmap;
     FD2DActive,FUseD2D,FLastD2D:Boolean;
+    // GDI用の形状被覆マスク。既定Opacity=1の描画経路は変更しない。
+    procedure BlendPrimitive(Kind:Integer;X1,Y1,X2,Y2,Stroke:Double;Color:TColor;Opacity:Double);
     procedure ResetScaled;
     function GetCanvas:TCanvas;
   public
@@ -20,9 +24,9 @@ type
     function EndFrame:Boolean;
     procedure DrawAsset(Index:Integer;const Center:TPoint;W,H:Integer;
       Opacity:Double=1;ForceAlpha:Boolean=False;Bucket:Integer=0);
-    procedure Circle(X,Y,Radius:Double;Color:TColor;Filled:Boolean;Stroke:Double=1);
-    procedure Line(X1,Y1,X2,Y2:Double;Color:TColor;Stroke:Double=1);
-    procedure FillRect(X1,Y1,X2,Y2:Double;Color:TColor);
+    procedure Circle(X,Y,Radius:Double;Color:TColor;Filled:Boolean;Stroke:Double=1;Opacity:Double=1);
+    procedure Line(X1,Y1,X2,Y2:Double;Color:TColor;Stroke:Double=1;Opacity:Double=1);
+    procedure FillRect(X1,Y1,X2,Y2:Double;Color:TColor;Opacity:Double=1);
     procedure ApplyChoices(const Choices:array of TRhythmDesign;Force:Boolean=False);
     property Images:TAnimationImageBank read FImages;
     property Canvas:TCanvas read GetCanvas;
@@ -44,7 +48,7 @@ end;
 destructor TAnimationRenderSurface.Destroy;
 var I,J:Integer;
 begin
-  FD2D.Free;
+  FD2D.Free;FAlphaLayer.Free;FAlphaMask.Free;
   for I:=0 to High(FScaled) do for J:=0 to 2 do FreeAndNil(FScaled[I][J]);
   FImages.Free;inherited;
 end;
@@ -69,26 +73,78 @@ begin
   if not FD2D.EndFrame then begin FUseD2D:=False;Exit(False);end;
   FLastD2D:=True;
 end;
-procedure TAnimationRenderSurface.Circle(X,Y,Radius:Double;Color:TColor;Filled:Boolean;Stroke:Double);
+procedure TAnimationRenderSurface.Circle(X,Y,Radius:Double;Color:TColor;Filled:Boolean;Stroke,Opacity:Double);
 begin
-  if Radius<=0 then Exit;
-  if FD2DActive then begin FD2D.Circle(X,Y,Radius,Color,Filled,Stroke);Exit;end;
+  if (Radius<=0) or (Opacity<=0) then Exit;
+  if FD2DActive then begin FD2D.Circle(X,Y,Radius,Color,Filled,Stroke,Opacity);Exit;end;
+  if Opacity<1 then begin BlendPrimitive(3-Ord(Filled),X,Y,Radius,0,Stroke,Color,Opacity);Exit;end;
   Canvas.Pen.Color:=Color;Canvas.Pen.Width:=Max(1,Round(Stroke));Canvas.Brush.Color:=Color;
   if Filled then begin Canvas.Pen.Style:=psClear;Canvas.Brush.Style:=bsSolid;end else begin Canvas.Pen.Style:=psSolid;Canvas.Brush.Style:=bsClear;end;
   Canvas.Ellipse(Round(X-Radius),Round(Y-Radius),Round(X+Radius),Round(Y+Radius));Canvas.Pen.Width:=1;Canvas.Pen.Style:=psSolid;Canvas.Brush.Style:=bsSolid;
 end;
-procedure TAnimationRenderSurface.Line(X1,Y1,X2,Y2:Double;Color:TColor;Stroke:Double);
+procedure TAnimationRenderSurface.Line(X1,Y1,X2,Y2:Double;Color:TColor;Stroke,Opacity:Double);
 begin
-  if FD2DActive then begin FD2D.Line(X1,Y1,X2,Y2,Color,Stroke);Exit;end;
+  if Opacity<=0 then Exit;
+  if FD2DActive then begin FD2D.Line(X1,Y1,X2,Y2,Color,Stroke,Opacity);Exit;end;
+  if Opacity<1 then begin BlendPrimitive(1,X1,Y1,X2,Y2,Stroke,Color,Opacity);Exit;end;
   Canvas.Pen.Style:=psSolid;Canvas.Pen.Color:=Color;Canvas.Pen.Width:=Max(1,Round(Stroke));
   Canvas.MoveTo(Round(X1),Round(Y1));Canvas.LineTo(Round(X2),Round(Y2));Canvas.Pen.Width:=1;
 end;
-procedure TAnimationRenderSurface.FillRect(X1,Y1,X2,Y2:Double;Color:TColor);
+procedure TAnimationRenderSurface.FillRect(X1,Y1,X2,Y2:Double;Color:TColor;Opacity:Double);
 begin
-  if (X2<=X1) or (Y2<=Y1) then Exit;
-  if FD2DActive then begin FD2D.FillRect(X1,Y1,X2,Y2,Color);Exit;end;
+  if (X2<=X1) or (Y2<=Y1) or (Opacity<=0) then Exit;
+  if FD2DActive then begin FD2D.FillRect(X1,Y1,X2,Y2,Color,Opacity);Exit;end;
+  if Opacity<1 then begin BlendPrimitive(0,X1,Y1,X2,Y2,1,Color,Opacity);Exit;end;
   Canvas.Brush.Style:=bsSolid;Canvas.Brush.Color:=Color;Canvas.FillRect(Rect(Round(X1),Round(Y1),Round(X2),Round(Y2)));
 end;
+procedure TAnimationRenderSurface.BlendPrimitive(Kind:Integer;X1,Y1,X2,Y2,Stroke:Double;Color:TColor;Opacity:Double);
+type PPixel=^TPixel;TPixel=packed record B,G,R,A:Byte;end;
+var L,T,R,B,W,H,X,Y,Pad:Integer;Mask,Pixel:PPixel;C:Longint;Blend:TBlendFunction;Canvas:TCanvas;
+begin
+  if (FTarget=nil) or (Opacity<=0) then Exit;
+  Pad:=Ceil(Max(1.0,Stroke)*0.5)+2;
+  if Kind>=2 then begin
+    L:=Floor(X1-X2)-Pad;R:=Ceil(X1+X2)+Pad;
+    T:=Floor(Y1-X2)-Pad;B:=Ceil(Y1+X2)+Pad;
+  end else begin
+    L:=Floor(Min(X1,X2))-Pad;R:=Ceil(Max(X1,X2))+Pad;
+    T:=Floor(Min(Y1,Y2))-Pad;B:=Ceil(Max(Y1,Y2))+Pad;
+  end;
+  L:=Max(0,L);T:=Max(0,T);R:=Min(FTarget.Width,R);B:=Min(FTarget.Height,B);
+  W:=R-L;H:=B-T;if (W<=0) or (H<=0) then Exit;
+  // 小さい形状領域だけを再利用し、黒背景ではなく被覆マスクで透過する。
+  if FAlphaLayer=nil then begin
+    FAlphaLayer:=Vcl.Graphics.TBitmap.Create;FAlphaLayer.PixelFormat:=pf32bit;
+    FAlphaMask:=Vcl.Graphics.TBitmap.Create;FAlphaMask.PixelFormat:=pf32bit;
+  end;
+  if (FAlphaLayer.Width<W) or (FAlphaLayer.Height<H) then begin
+    FAlphaLayer.SetSize(Max(W,FAlphaLayer.Width),Max(H,FAlphaLayer.Height));
+    FAlphaMask.SetSize(FAlphaLayer.Width,FAlphaLayer.Height);
+  end;
+  Canvas:=FAlphaMask.Canvas;Canvas.Brush.Style:=bsSolid;Canvas.Brush.Color:=clBlack;
+  Canvas.FillRect(Rect(0,0,W,H));Canvas.Pen.Color:=clWhite;Canvas.Pen.Width:=Max(1,Round(Stroke));
+  Canvas.Pen.Style:=psSolid;Canvas.Brush.Color:=clWhite;
+  case Kind of
+    0:Canvas.FillRect(Rect(Round(X1)-L,Round(Y1)-T,Round(X2)-L,Round(Y2)-T));
+    1:begin Canvas.MoveTo(Round(X1)-L,Round(Y1)-T);Canvas.LineTo(Round(X2)-L,Round(Y2)-T);end;
+    2,3:begin
+      if Kind=2 then Canvas.Pen.Style:=psClear else Canvas.Brush.Style:=bsClear;
+      Canvas.Ellipse(Round(X1-X2)-L,Round(Y1-X2)-T,Round(X1+X2)-L,Round(Y1+X2)-T);
+    end;
+  end;
+  GdiFlush;
+  C:=ColorToRGB(Color);
+  for Y:=0 to H-1 do begin Mask:=FAlphaMask.ScanLine[Y];Pixel:=FAlphaLayer.ScanLine[Y];
+    for X:=0 to W-1 do begin
+      Pixel.A:=Mask.B;Pixel.B:=Round(GetBValue(C)*Pixel.A/255);
+      Pixel.G:=Round(GetGValue(C)*Pixel.A/255);Pixel.R:=Round(GetRValue(C)*Pixel.A/255);
+      Inc(Mask);Inc(Pixel);
+    end;
+  end;
+  Blend.BlendOp:=AC_SRC_OVER;Blend.BlendFlags:=0;Blend.SourceConstantAlpha:=Round(EnsureRange(Opacity,0.0,1.0)*255);Blend.AlphaFormat:=AC_SRC_ALPHA;
+  Winapi.Windows.AlphaBlend(FTarget.Canvas.Handle,L,T,W,H,FAlphaLayer.Canvas.Handle,0,0,W,H,Blend);
+end;
+
 procedure TAnimationRenderSurface.ApplyChoices(const Choices:array of TRhythmDesign;Force:Boolean);
 begin
   if not FImages.ApplyChoices(Choices,Force) then Exit;

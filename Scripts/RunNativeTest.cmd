@@ -1,7 +1,7 @@
 @echo off
 setlocal
 set "TEST_NAME=%~1"
-if not "%TEST_NAME%"=="RunnerPlanSmoke" if not "%TEST_NAME%"=="BallPlanSmoke" if not "%TEST_NAME%"=="BallCircuitSmoke" if not "%TEST_NAME%"=="BreakoutPlanSmoke" if not "%TEST_NAME%"=="FireworksPlanSmoke" if not "%TEST_NAME%"=="FightingPlanSmoke" if not "%TEST_NAME%"=="MiningPlanSmoke" if not "%TEST_NAME%"=="TrainPlanSmoke" if not "%TEST_NAME%"=="NavalPlanSmoke" if not "%TEST_NAME%"=="BombActionPlanSmoke" if not "%TEST_NAME%"=="RacePlanSmoke" if not "%TEST_NAME%"=="OnlinePassSmoke" if not "%TEST_NAME%"=="StyleIntegrationSmoke" if not "%TEST_NAME%"=="SettingsLayoutSmoke" if not "%TEST_NAME%"=="SettingsFormSmoke" if not "%TEST_NAME%"=="AnimationArchitectureSmoke" if not "%TEST_NAME%"=="BreakoutActionSmoke" if not "%TEST_NAME%"=="CombatSmoke" exit /b 2
+if not "%TEST_NAME%"=="RaceAlphaSmoke" if not "%TEST_NAME%"=="SettingsRttiSmoke" if not "%TEST_NAME%"=="AudioEdges" if not "%TEST_NAME%"=="RunnerVisualCheck" if not "%TEST_NAME%"=="RunnerPlanSmoke" if not "%TEST_NAME%"=="BallPlanSmoke" if not "%TEST_NAME%"=="BallCircuitSmoke" if not "%TEST_NAME%"=="BreakoutPlanSmoke" if not "%TEST_NAME%"=="FireworksPlanSmoke" if not "%TEST_NAME%"=="FightingPlanSmoke" if not "%TEST_NAME%"=="MiningPlanSmoke" if not "%TEST_NAME%"=="TrainPlanSmoke" if not "%TEST_NAME%"=="NavalPlanSmoke" if not "%TEST_NAME%"=="BombActionPlanSmoke" if not "%TEST_NAME%"=="RacePlanSmoke" if not "%TEST_NAME%"=="OnlinePassSmoke" if not "%TEST_NAME%"=="StyleIntegrationSmoke" if not "%TEST_NAME%"=="SettingsLayoutSmoke" if not "%TEST_NAME%"=="SettingsFormSmoke" if not "%TEST_NAME%"=="AnimationArchitectureSmoke" if not "%TEST_NAME%"=="BreakoutActionSmoke" if not "%TEST_NAME%"=="CombatSmoke" exit /b 2
 for %%I in ("%~dp0..") do set "TEST_ROOT=%%~fI"
 set "TEST_OUTPUT=%TEST_ROOT%\Win64\NativeTests\%TEST_NAME%"
 set "TEST_CHECKS="
@@ -18,6 +18,7 @@ dcc64 -B -Q %TEST_CHECKS% -E"%TEST_OUTPUT%" -NU"%TEST_OUTPUT%\DCU" -U"%BDS%\lib\
 set "TEST_RESULT=%errorlevel%"
 popd
 if not "%TEST_RESULT%"=="0" exit /b %TEST_RESULT%
+if /i "%~3"=="CompileOnly" exit /b 0
 pushd "%TEST_ROOT%"
 "%TEST_OUTPUT%\%TEST_NAME%.exe"
 set "TEST_RESULT=%errorlevel%"

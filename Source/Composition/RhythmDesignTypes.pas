@@ -1,4 +1,5 @@
 ﻿unit RhythmDesignTypes;
+// カスタム素材の識別子・保存参照・整合条件を定義する。
 interface
 const RHYTHM_DESIGN_COUNT=15;
 type

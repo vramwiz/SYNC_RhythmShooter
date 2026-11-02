@@ -1,4 +1,5 @@
 ﻿unit RhythmDesignImages;
+// ユーザー画像の読込・透過形式・素材参照の検証を担当する。
 {$POINTERMATH ON}
 interface
 uses Vcl.Graphics,RhythmDesignTypes;

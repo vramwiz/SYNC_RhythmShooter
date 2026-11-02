@@ -32,7 +32,10 @@ begin
       Plan:=TBreakScorePlan.Build(Audio,nil,False,BREAK_PADDLE_HALF_NEW);
       Writeln('BASE ',C,': ',Plan.Count);Plan.Enhance(Audio,C<2,nil);Data:=Plan.ExportData(Audio);
       Writeln('ACTION ',C,': bricks=',Plan.Count,' rooms=',Data.GetValue<TJSONArray>('rooms').Count,' charges=',Data.GetValue<TJSONArray>('charges').Count,' extras=',Plan.ExtraCount);
-      if C=0 then TFile.WriteAllText('Verification/OnlinePass-20261101/Breakout.action.json',Data.ToJSON,TEncoding.UTF8);
+      if C=0 then begin
+        ForceDirectories(TPath.Combine(ExtractFileDir(ParamStr(0)),'Evidence'));
+        TFile.WriteAllText(TPath.Combine(ExtractFileDir(ParamStr(0)),'Evidence/Breakout.action.json'),Data.ToJSON,TEncoding.UTF8);
+      end;
       Again:=TBreakScorePlan.Load(Data,Audio);
       for I:=0 to 99 do begin T:=Plan.EndTime*((I*37) mod 101)/101;P:=Plan.PositionAt(T);Again.PositionAt(Plan.EndTime-T);Q:=Again.PositionAt(T);Need((Hypot(P.X-Q.X,P.Y-Q.Y)<1E-12) and (Abs(Plan.RadiusAt(T)-Again.RadiusAt(T))<1E-12),'seek roundtrip');
         for J:=0 to Plan.ExtraCount-1 do Need(Abs(Plan.ExtraLaunch(J)-Again.ExtraLaunch(J))<1E-12,'extra roundtrip');

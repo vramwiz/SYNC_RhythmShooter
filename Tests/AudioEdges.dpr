@@ -40,6 +40,8 @@ begin
         for I:=0 to High(Audio.Hits) do Distance:=Min(Distance,Abs(Audio.Hits[I].Time-Onsets[J]));
         Require(Distance<=0.02,'Pulse onset timing outside 20ms');end;
       Root.AddPair('wavPulseHitCount',TJSONNumber.Create(Length(Audio.Hits)));FreeAndNil(Audio);
+      Audio:=LoadCachedRhythmAudio(Path,50,False);Require((Audio<>nil) and (Length(Audio.PCM)=0) and (Length(Audio.Hits)=4),'PCM-free cache restore');FreeAndNil(Audio);
+      Audio:=LoadCachedRhythmAudio(Path,50,True);Require((Audio<>nil) and (Length(Audio.PCM)=44100*4*4),'PCM cache restore');FreeAndNil(Audio);
       Audio:=LoadRhythmAudio(Path,1);LowCount:=Length(Audio.Hits);FreeAndNil(Audio);
       Audio:=LoadRhythmAudio(Path,100);HighCount:=Length(Audio.Hits);FreeAndNil(Audio);
       Require(HighCount>=LowCount,'Higher sensitivity unexpectedly removed pulse hits');

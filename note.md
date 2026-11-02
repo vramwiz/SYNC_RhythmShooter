@@ -1,4 +1,180 @@
-﻿## 2026-11-01 オンライン作業: 8スタイルの実装・全製品ビルド
+﻿## 2026-11-02 Race v9修正後のユニット整理・最終確認完了
+
+Raceの車幅縮小／トラック／一般車排除を先に保存・ビルド・検証した後、挙動を保って整理。旧版描画（Ball／Runner／Fighting）、共通音声データ・ディスク復元・デコード、Race位置・逆算生成・binary64保存／前向き検証、Breakout保存型・幾何検証を分離。全81ユニット、最大1442行、循環参照なし。目的・公開入口の前提・音同期や逆算理由をコメント化し、フィールドをメソッドより前へ配置。公開範囲と記憶順は保持。DFMイベントはpublished名をRTTIで確認。SDK／Lib不変。分行・字下げは実行トークン不変で確認。詳細対応表はUNIT_ORGANIZATION.md。
+
+最終宣言整理後の全11 DLL Debug／Release（22）と代表Shooter／Race Preview両構成（4）成功。各構成の全11実DLL、音源状態176件・描画／PCMなし復元／seek176件を通過。整理前後14 PNG・39保存計画がバイト一致。専用native11件と追加DFM RTTI確認も成功。Raceは音接触30983・交通2272473検査・排除14461・seek1024、Runnerは16入力／旧1～5・接地／剣・歩行、Fightingは双方接触64595／7918・KO52・seek896を確認。実WAVデコードとPCMなし復元も成功。
+
+既存Breakout試験のRunner版期待値5→6と、出力先未作成／過去記録上書きになる保存先を専用出力へ修正。RunnerVisualCheckの既存EXE出力はF2039だったため、別の専用先RefactorCompileでコンパイルのみ成功。既存アプリの操作・停止・EXE上書きは行っていない。GUI／AviUtl2での実操作・音付き連続動画は未実施。配備・commit/pushなし。AUP2とSDKは開始ハッシュを保持。配備先への操作は行わず、ビルドイベント無効・Local出力のみ。
+
+Race v8→9はホスト音楽ファイル→設定で再準備→適用→AUP2保存。v9の構造整理だけなら再準備不要。音楽入力方式はHOST_MUSIC_INPUT.mdのまま。出力Win64/Local/<Product>/{Debug,Release}、証跡Verification/RaceTruck-20261102/{handoff.json,scope-checks.json,unit-structure.json,Final/}。残ブロッカーなし。
+
+---
+
+## 2026-11-02 Race v9 車幅・トラック・交通接触（整理前の一区切り）
+
+本人の方針を維持して一般車とボスの車幅を実判定とともに縮小。採用台数はv8の条件を保持。ボスは進行方向のキャビン・荷台・側板・後輪軸を持つトラック。ボスの一般車への最初の実接触を区間包絡で逆算し、絶対時刻の吹飛び・回転・破片として保存。音無関係の交通接触は自車対ボスの音・HPに加算しない。内部への出現も防止し、撃破後は自車との縦か横の隙間が単調に広がる。再出現／二重接触なし。v9を新規生成、旧1～8読込保持。既存v8から新仕様へは再準備→適用→AUP2保存が必要。
+
+Race DLL／Preview Debug・Releaseの4ビルド成功。RacePlanSmoke Debugは旧1～8と16入力、音接触30983、側面12320、大型14015、ボス115、一般車2272473検査、seek1024、ボスによる交通排除14461を通過。実DLL Debug／Releaseでcold復元・ホスト音楽入力・Preview描画一致・seek成功。共通全11描画／復元176件も通過。native静止画で狭い車体／トラック／吹飛びを確認。GUI・音付き動画・配備・commit/pushなし。続いてユニット整理に進む。比較基準と記録は Verification/RaceTruck-20261102/{race-stage-handoff.json,before-refactor.json,before-refactor/}。
+
+---
+
+## 2026-11-02 Race立体化・ホスト音楽入力: ビルド／コンソール回帰完了
+
+車の量は維持。Race v8の通常車／大型車／ボス／自車へ車体の側面・後面、キャビン、傾斜ガラス、側面窓、屋根、タイヤ、陰影を追加。地上幅・前後長・音時刻・一般車配置・計画を変更していない。車上の予告丸や爆弾予告なし。
+
+全11フィルタの既存SDK file項目「音楽ファイル」をホストに表示し、解析入力の正に変更。設定画面は読取専用音源表示／準備・解析とし参照を非表示。Standalone Previewは参照を維持。未解析・パス変更・同パス上書き・解除時は透明出力、描画から重い解析を起動しない。schema1の任意musicSource=host印で移行を区別。旧AUP2のJSON内だけのパスは設定を開く時に正式編集APIで移行。移行前は透明。既解析の同一ファイルと有効なプラン／キャッシュは復元できる。仕様と利用手順はHOST_MUSIC_INPUT.md。
+
+BuildLocalとBuildPreview ... Localで全11 DLL Debug/Release（22）＋Shooter/Race Preview Debug/Release（4）成功。StyleIntegrationSmokeコンソールはDebug/Release各全11 DLL・音源状態176件・共通GDI/D2D/PCMなし/seek176件を通過。実DLLと共通Preview描画がピクセル一致。RacePlanSmoke Debugは旧JSON1～7＋16入力、接触30,983、一般車検査2,272,473、seek1,024を通過。既存ヒントは残るがエラーなし。
+
+出力Win64/Local/<Product>/{Debug,Release}。GUI／配備／commit/pushなし。実AviUtl2パラメータUI・旧AUP2移行操作・連続動画／実音源再生は未確認。Runner／Fighting演出ソースとユーザーAUP2、配備先は開始時ハッシュを保持。v8の車体描画だけなら再準備不要。音源指定方式の移行後は、ホストで音楽ファイルを指定（旧JSONのみは設定を開くと移行）→設定で準備完了→適用→AUP2保存。旧Race v1～7をv8へ更新する場合は再準備。
+
+変更ソース: Source/Race/RhythmRaceCrashScene.pas、Source/Shared/Host/SYNC_RhythmShooter_FilterPlugin.pas、SYNC_RhythmShooter_SettingsForm.pas、Source/Shared/Settings/RhythmSettings.pas、Source/Composition/RhythmPrepare.pas（Shooting元音源更新情報のみ）、Tests/StyleIntegrationSmoke.dpr。仕様: HOST_MUSIC_INPUT.md、SPEC.md、RACE_STYLE.md。証跡: Verification/HostMusicRace-20261102/{handoff.json,scope-checks.json,builds.json,*.log,native-race-solid.png}。
+
+---
+
+## 2026-11-02 Race v8：Delphiビルドエラー修正・native確認完了
+
+本人の「ビルドエラーが出るのでそっちでもビルドして」により今回のcompile禁止を解除し、Delphi37 Win64で実エラーを再現。RaceCrash.Build／Validateの境界変数Highが組込みHigh(array)を隠してE2066/E2010、長い行が1023文字制限を超えてF2069。境界名をLaneLow/LaneHighへ変更し、文字列を変えず文単位で改行。保存形式・計画時刻・走行仕様の変更なし。
+
+RacePlanSmoke側にも旧JSON fixtureの整数項目を1.0等で書く誤りがあり、製品形式と同じ整数へ修正。これは試験データのみの問題で、製品の旧readerを緩めていない。カウンタ初期化と失敗ケース表示も追加。StyleIntegrationSmokeは既存runner限定引数を任意style-idへ一般化し、Race DLLを個別確認できるようにした。
+
+非配備のScripts/BuildLocal.cmdとBuildPreview.cmd ... LocalでRace DLL／PreviewのDebug・Release計4構成が成功。RacePlanSmoke Debug（範囲／overflow検査あり）・Releaseとも旧JSON1〜7＋16入力を通過し、実接触30,983、側面12,320、大型命中14,015、ボス115、一般車検査2,272,473、seek1,024を確認。FightingPlanSmoke Debugも成功（既存仕様変更なし）。
+
+StyleIntegrationSmoke Debugのコンソール試験で全11スタイルの準備／設定／PCMなしcold復元／GDI・D2D／乱順seek176件が成功。Race Debug DLL・Release DLLそれぞれでプレビュー共通描画とのピクセル一致、DLL cold復元と往復seekも成功。生成したRace合成静止画を確認したが、実曲の連続映像やGUI受入れの代わりにはしない。
+
+最終ソースの独立JS16入力も再実行して成功。Runner・格闘ソースと配備先は開始時ハッシュを保持。本人AUP2は作業中の外部更新を検出し、その最新編集を変更せず保持。GUI起動／操作、配備、commit/pushなし。成果物はWin64/Local/SYNC_RhythmRace/{Debug,Release}。未実施はGUI、実曲連続再生、AviUtl2本体への導入と実プロジェクト出力。コンパイラの既存ヒント等は残るがエラーはない。
+
+今回のビルド修正だけなら準備済みv8は再準備不要。v1〜7から新しい衝突Raceへ移行する場合はビルド後に再準備→適用→AUP2保存が必要。本人編集済みAUP2は更新していない。変更：Source/Race/RhythmRaceCrash.pas、Tests/RacePlanSmoke.dpr、Tests/StyleIntegrationSmoke.dpr、RACE_STYLE.md、note.md。証跡：Verification/RaceBuildFix-20261102/{handoff.json,scope-checks.json,*.log}。
+
+---
+
+## 2026-11-02 Race v8：コイン廃止・体当たり破壊ハイウェイ（本人ビルド待ち）
+
+本人添付「貼り付けたテキスト(3).txt」410行の全文をLibraryで確認し、既存Raceをv8へ改修。別モード／設定を増やさず、新プランのコインを廃止。元アクセントから衝突→敵種／接触地点→自車経路→敵出現速度の逆算→一般車配置の順に準備。通常／大型車の前面・側面の実車体接触、連続体当たり、回転／横転・積荷・破片・煙、共通頻度の段階ボス、強音の最終大型撃破とゴール余白を実装。予告丸は描かない。
+
+既存の疑似3D道路／背景／路肩描画と共通UIを保持。一般車は車幅・前後長を使って配置し、通過時刻だけでなく全寿命の代数的非交差条件（側方が重なる時は前後車体長以上に離す）を検証。最後55msの側面接近で音より先に触れて見えるのを抑えた。操舵・切返し・近接通過・急拡大、接地外形内の上部車体の傾きと衝突後のサスペンション復帰、速度線と加速噴射を追加。18msヒットストップは壊れた敵姿勢のみで道路／音／次イベントの時刻は変えない。
+
+全元音を保存し、通常85ms／ボス500ms窓の強音を採用（時刻変更なし）。開始・極密音・ゴール余白の採用外を明示する。v8の区間・衝突・敵・一般車・経路・道路・ボスをbinary64 hex行で保存し、PCM／Envelopeなし復元で再解析／再計画しない。旧1〜7のreader／旧描画を保持し、プレビュー／DLLとも既存RaceScene入口から新描画へ接続。旧AUP2は自動変更しない。
+
+最終非ビルド検証：独立JSモデル16入力（0.1〜3000秒、密疎／1ms／重複／無音／無音末尾、frequency0/50/100）。実接触30519件、側面12081件（大型983件）、一般車46331台の区間証明条件と補助1528923時刻、ボス115戦、乱順seek1024点、binary64往復1115960値。最大同時候補36車／上限160、最大計画7836961byte／共通32MiB内。実Delphi／共通cue選択／ラスタ描画の成功とは扱わない。
+
+本人用RacePlanSmokeはv8、旧JSON1〜7、実接触／早期接触、一般車区間条件、段階HP／終止、設定JSON、PCMなしcold復元、digest拒否、seek、縦横GDIを準備済みだが未コンパイル・未実行。必要なら本人が Scripts/RunNativeTest.cmd RacePlanSmoke Debug で確認。DLL／Preview実描画・D2D・AviUtl2・実曲の迫力／受入れは未確認。
+
+一時接続断のcell36は復旧時に存在しなかったが、RaceCrashSpec.mdは末尾まで保存済みと確認し、実体を検査してから反映。今回はcompile／EXE／GUI／commit/push／配備なし。Runner完成部分、直前の格闘調整、本人AUP2と素材はRace開始前ハッシュを保持。承認待ち／ブロッカーなし。本人ビルド後にRaceを再準備→適用→AUP2保存してv8へ移行する。旧1〜7は従来表示のまま。
+
+変更：Source/Race/{RhythmRaceCrash.pas,RhythmRaceCrashScene.pas（新規）,RhythmRacePlan.pas,RhythmRaceScene.pas}、Source/Shared/Settings/RhythmStyles.pas（Race版と旧互換のみ）、Source/Composition/RhythmPrepare.pas（Race要約のみ）、Tests/RacePlanSmoke.dpr、Scripts/VerifyRaceCrash.cjs（新規）、RACE_STYLE.md、note.md。仕様と証跡：RACE_STYLE.md、Verification/RaceCrash-20261102/{model-checks.json,scope-checks.json,handoff.json}。
+
+---
+
+## 2026-11-02 Fighting v2：黒目拡大・ボス直腕高速スイング（本人ビルド待ち）
+
+本人の「黒目をもう少し大きく／ボス腕が不自然に曲がる／まっすぐ素早く大きく」に対応。黒目半径0.0028→0.0035、白目と肌色余白、鼻、横顔反転は維持。ボスの拳・棍棒・ナイフは実際の肩→手を直線で描き、手と武器を連動。予備動作→最終55msの大振幅高速打撃→35ms振抜き→140msまでに復帰。武器を持つ構えも手へ接続。棍棒の床反応は跳ね返し、床貫通を防止。腕を長く伸ばすだけ／画面フラッシュでは代替しない。
+
+保存計画Build以降（検証・JSON含む）は前回からバイト一致。通常右進行・自キャラの攻撃・通常敵の軌道と描画を維持。ボスHP・頻度・元音時刻・接触点も変更なし。実行時の直腕動作・ボス腕所有ポーズ・手を含むカメラ範囲のみ調整。既存v2再準備不要、本人によるDLL／Previewの再ビルドで反映。
+
+独立数値モデル14入力・26,487音で確認。ボス直腕918接触、58,280時刻、一定リーチ15,606点、腕長最大0.192004、最小回転角1.05rad。肩接続／実命中／武器手元／カメラ／床／撃破後禁止を検証し、従来の双方接触13,512/7,694件・50ボス終止・896 seekも通過。本人用FightingPlanSmokeへ5ms間隔の肩・手・武器試験を追加（未コンパイル・未実行）。Delphi共通cue実行やラスタ描画／実曲映像の成功とは扱わない。
+
+compile／EXE／GUI／commit/push／配備なし。Runner・他スタイル・本人AUP2は今回開始前ハッシュを保持。変更：RhythmFightingDuel.pas、RhythmFightingDuelScene.pas、VerifyFightingDuel.cjs、FightingPlanSmoke.dpr、FIGHTING_STYLE.md、note.md。引継：Verification/FightingDuel-20261102/{swing-checks.json,swing-handoff.json}。本人再ビルド後に通常倍率の黒目とボス打撃の速さ・大きさ・自然さを確認。
+
+---
+
+## 2026-11-02 Fighting v2：目と前髪の分離（ソース・静的確認のみ）
+
+本人の「鼻は良いが目が髪と一体化している」に対応。受入済みの鼻は座標・線幅・色をそのまま保持。自キャラの目付近だけ肌色で前髪を切り欠き、肌色の余白の内側へ白目と黒い瞳を描画。目は片側1個で、左右ともP.Sideに従って反転する。頭部や髪の他部分、口元、敵／ボス、身体、攻防・音時刻・カメラ・保存計画は変更しない。
+
+静的確認：目ブロック以外のSceneはバイト一致、鼻の行も一致。肌色の余白は半径差0.004単位（field高さ360pxで1.44px、600pxで2.4px）、瞳の周囲に白目を確保し、肌色の切欠きは既存顔面内に収まることを左右で確認。通常倍率での実際の見え方は本人再ビルド後の映像確認待ち。今回の目修正前からRunner・他スタイル・本人AUP2・計画はハッシュ一致。
+
+compile／EXE／GUI／commit/push／配備なし。既存Fighting v2は再準備不要でDLL／Previewの本人再ビルドで反映。旧v1からv2への移行だけは従来どおり再準備→適用→保存。変更：RhythmFightingDuelScene.pas、FIGHTING_STYLE.md、note.md。証跡：Verification/FightingDuel-20261102/eye-handoff.json。
+
+---
+
+## 2026-11-02 Fighting v2：自キャラの横顔を明瞭化（ソースのみ）
+
+本人の「右を向いている感じがしない。目、小さく鼻などを」に対応。新Fighting描画のMain（自キャラ）だけ、進行／攻撃方向側の目1個、小さく張り出す鼻、短い口元を追加。全てP.Sideを使い、通常の右向きと背後敵へ振り向く左向きを一致させた。両目の対称配置はしない。頭部・髪・頭身・体・敵／ボスの顔・攻防・音時刻・カメラは保持。
+
+静的確認：顔ブロック以外のSceneがバイト一致、Main以外は旧目描画を保持、左右の特徴が同じP.Sideで反転することを確認。今回開始前のRunner、他スタイル、計画、本人AUP2もハッシュ一致。compile／EXE／GUI／commit/push／配備なし。最終見た目は本人ビルド後の確認待ち。既に準備済みのFighting v2は再準備不要で、DLL／Previewの本人再ビルドにより反映。旧v1からv2への移行だけは従来どおり再準備→適用→保存が必要。
+
+変更：Source/Fighting/RhythmFightingDuelScene.pas、FIGHTING_STYLE.md、note.md。証跡：Verification/FightingDuel-20261102/face-handoff.json。
+
+---
+
+## 2026-11-02 Fighting v2：右進行通常戦／固定人型ボス戦（本人ビルド待ち）
+
+本人のRunner完成宣言を受け、Runnerは変更せず格闘側へ移行。右進行しながら前方敵／高速の背後追跡敵と戦い、振向打撃→討伐→右進行へ戻る通常戦を実装。ボスは固定ステージで、素手・棍棒・ナイフを戦闘ごとに循環し、間合い・攻撃間隔・動作を変える。双方の踏込／後退／回避／受け／反撃と、拳・足・武器の実体接触を元音時刻へ逆算。最終の連続打→強音の必殺打→大きい回転吹飛びで締める。HP逆戻りと撃破後攻撃を防止。
+
+共通ボス頻度0/50/100と既存BossCueを利用し、追加設定なし。ボス戦は寄りを増やし、武器・接触・回転する体を収める倍率制限と吹飛び時の引きを追加。背景変更は元のQuietBoundaryだけ。人物の顔・髪・色調や命中反応を活かし、ボスは人型を明瞭にした。プレビューと製品DLLは既存FightingScene入口から同じ新描画へ接続する。
+
+新規plan v2／advancing-human-duel-v2。保存した全元イベント・区間・命中・敵・双方位置キー・背景境界をbinary64行で復元し、読込み／描画でPCMやEnvelopeやBossCue再解析を要求しない。v1 reader/旧描画を維持し、自動移行なし。本人がFighting製品／Previewをビルド後、新仕様へは再準備→適用→AUP2保存が必要。AUP2本人編集と素材、完成Runnerは保持。
+
+非ビルド検証は Scripts/VerifyFightingDuel.cjs の独立JSモデル＋ソースガード。14入力・26,487音、背後相対接近2,215件、双方接触13,512/7,694件、ボス50戦の終止、3種武器、カメラ18,637時刻、乱順seek896点、binary64往復425,082値を確認。実Delphi／共通cue選択／ラスタ描画の実行ではない。Tests/FightingPlanSmoke.dprは本人用にv1互換、設定JSON、PCMなしcold復元、密疎短長／重複／頻度0、接触・追跡・HP・境界・縦横GDI seek試験を準備済みだが未コンパイル・未実行。
+
+本人ビルド指示を継続し、今回はcompile／EXE／GUI／配備／commit/pushなし。DLL/Preview実描画、D2D、AviUtl2、実曲の連続映像と受入れは未確認。承認待ちなし。仕様は FIGHTING_STYLE.md、証跡／引継は Verification/FightingDuel-20261102/{model-checks.json,scope-checks.json,handoff.json}。本人試験：Scripts/RunNativeTest.cmd FightingPlanSmoke Debug。
+
+変更：Source/Fighting/RhythmFightingDuel.pas、RhythmFightingDuelScene.pas（新規）、RhythmFightingPlan.pas、RhythmFightingScene.pas、Source/Shared/Settings/RhythmStyles.pas（Fighting版と旧互換のみ）、Tests/FightingPlanSmoke.dpr、Scripts/VerifyFightingDuel.cjs（新規）、FIGHTING_STYLE.md、note.md。今回開始前のRunner差分や本人のAup2/sample.aup2はそのまま残す。
+
+---
+
+## 2026-11-02 Runner6: 歩行の踏み替えとボス双方の移動（ソース・非ビルド検証）
+
+本人の「主人公の足をもう少し歩いている感じに／ボス戦内容はよいので双方とも動きを」に対応。約1.8頭身の頭部・髪・服・剣/ジャンプの良い点と、A/B/Cの音ハメ攻防を保持。今回はコンパイル、既存EXE実行、GUI起動/操作、commit/push/配備なし。
+
+足：時刻だけの2コマ足先切替をやめ、移動距離0.060単位ごとに左右を交代する4段階の踏出/接地/蹴出へ変更。同一接地ストロークでは接地足のワールド位置を保持し、Aの移動床では床の移動分だけ一緒に動く。速度が上がれば歩行テンポも上がる。停止中は足を進めず両足を床へ置く。ジャンプの脚ポーズは従来どおり。脚とブーツだけを足位置に接続し、頭部スプライトはバイト比較で同一。
+
+ボス戦：保存済み音時刻と接触アンカーから、主人公とボスそれぞれの位置キーを読込時/準備時に派生。主人公は踏込・受け後退・回避後退・被撃押戻り、ボスは接近・斬撃の反動・追撃後の引き戻しを持つ。接触時に短い接地保持を挟み、双方が同方向等速のままにならない。主人公の刃先は従来の接触点に正時刻で届き、敵の武器の根元は移動するボス本体へ接続。ボスへの命中時には鎧の前面がその接触点に来る。Cのみ画面内全幅を平地として描画し、Aの移動床・落下床やBの保存地形は統一しない。曲末がCでも走り抜けが止まらないよう保持。
+
+音・HP・撃破・頻度・区間・JSON形式の変更なし。RhythmRunnerActionのBuild以降（行動生成、Validate、ToJSON/FromJSON）は今回開始時のソースと一致する。移動/歩行キャッシュは既存のIndexActionsから派生し、毎フレームの計画再生成や時刻積算は行わない。12ms先行と撃破後の残存攻撃の前回修正も保持。正常なv6の保存計画は再準備不要で、本人によるDLL/プレビュー/確認アプリの再ビルド後に反映できる。前回検出の区間不整合があるv6やv1～5からABCへ移行する場合の再準備→適用→保存は引き続き必要。
+
+非ビルド検証：Scripts/VerifyRunnerSource.cjs と新規 VerifyRunnerMotion.cjs を実行。前回の保存JSON16入力のコピーを使う独立数値モデルで、ボス73区間・62,253フレーム相当の位置、2,361接触、37,232点の逆方向移動、130,364接地ストローク点、停止中5,131点、移動床上2,633点、通常歩行17,428点、左右両足/4段階、298境界を確認。同一接地ストロークの最大ずれは4.55E-13単位。ボスと自機の距離変化、画面/平地内の足位置、被撃後退と斬撃反動、正時刻の武器到達、曲末の走り抜けを確認。既存のA接地/床落下/床貫通・B剣撃・JSON/旧形式・先行禁止のソース検査も成功。これらはDelphi/native/実描画の成功結果ではない。
+
+本人用RunnerPlanSmokeへ接地足の滑り/停止足/双方の移動量と逆方向移動/本体衝突と画面逸脱/鎧接触/被撃押戻り/曲末走り抜けの回帰試験を追加。未コンパイル・未実行。必要に応じて本人が Scripts/RunNativeTest.cmd RunnerPlanSmoke Debug で確認できる。新ソースのDelphiコンパイルと最終的な見え方・音付き連続再生・DLL実描画比較は未確認のまま。
+
+今回の変更：Source/Runner/RhythmRunnerAction.pas、RhythmRunnerPixels.pas、Tests/RunnerPlanSmoke.dpr、Scripts/VerifyRunnerMotion.cjs（新規）、RUNNER_STYLE.md、note.md。証跡：Verification/RunnerABC-20261102/{motion-source-checks.json,motion-checks.json,motion-handoff.json}。
+
+---
+
+## 2026-11-02 Runner6仕上げ: 命中先行とボス境界の修正（本人ビルド待ち）
+
+本人の「テストアプリでなかなかよかった」を受け、好評のキャラ・絵柄・A/B/C構成を維持して再開。今回はコンパイル・既存EXE実行・GUI起動/操作・配備・commit/pushを一切行っていない。
+
+命中先行を修正：HeroAt/BladeAtの接触開始をAge=-0.012から0へ変更。事前55msの剣予備ポーズと振抜きは残し、刃先が敵の接触点へ移る最初の瞬間を音時刻にした。ボスの被撃ポーズも事前55msに出ていたので、接触前は構え、音時刻から被撃へ切り替える。火花・撃破時刻とキャラ画像定義は変更していない。
+
+追加発見したボス境界不具合を修正：3000秒の旧試験計画1件で、区間終端より約1ULP手前の音12件がFirst/Last計算の1E-7減算により範囲外になり、撃破後の剣攻撃として残っていた。各イベントへ割当済みのSection番号を専用Cursorで列挙し、全音を範囲に含める形に修正。時刻・音解析・区間形状は変えない。Validateは範囲から漏れた音を検出し、該当する古いv6計画を再準備が必要な状態として拒否する。旧v1～5の読込み処理は今回変更していない。
+
+実施したのは Scripts/VerifyRunnerSource.cjs によるソース検査と、前回ネイティブ試験の保存JSONからの独立した数値再構成。Delphi実行試験ではない。32タイミング点、16計画（実際にA/Bアクションがある6入力）、binary64値354,463件、着地/離陸1,573組、移動床1,455件、床落下1,573件、床貫通37,440点、区間境界298件、ボス73区間、敵攻撃接点1,130件、出口床モデル1,680点を確認。旧JSONの不整合12音と出口床延長は、保存ファイルを書き換えずコピー上で現在のソース規則を適用して検査した。古い不整合計画が既に修復済みと扱ってはいない。修正前ソースに対して同じ検査が命中先行を検出することも確認。JSON v1～5 fixtureと読込ソースの維持を確認し、旧ネイティブEXEは実行していない。
+
+本人向けにRunnerPlanSmokeの回帰試験を追加：音の20/12/6/1/0.1ms前の刃/被撃ポーズ、正時刻の命中、同じ鎧への既存連打を除外した先行接触判定、撃破後の攻撃禁止、区間終端音を故意に除いた計画の拒否、出口床、PositionAtのv6転送。追加部分は未コンパイル・未実行。本人が必要に応じて Scripts/RunNativeTest.cmd RunnerPlanSmoke Debug でビルド/実行できる。既存の乱順seek・PCMなし復元・旧形式読込・不正digest/上限/無音試験も維持した。
+
+未確認：今回のPascalコンパイル、最新DLLとPreviewの実描画比較、連続実音再生、GUI/実機確認。前回のビルド成功やnative成功は今回ソースの成功結果には流用しない。承認待ちはなく、本人担当のビルドを待つ。
+
+反映：命中ポーズだけの修正は準備済みの正常なv6計画を再利用できる。今回検出する境界不整合のある既存v6、前回の出口床延長前に保存したv6、またはv1～5から新A/B/Cへ移る場合は、本人ビルド後にRunnerを再準備→適用→AUP2保存する必要がある。自動移行や本人AUP2の上書きは行わない。
+
+今回の変更：Source/Runner/RhythmRunnerAction.pas、Tests/RunnerPlanSmoke.dpr、Scripts/VerifyRunnerSource.cjs、RUNNER_STYLE.md、note.md。証跡は Verification/RunnerABC-20261102/{finish-source-checks.json,finish-handoff.json,finish-negative-check.txt}。
+
+---
+
+## 2026-11-02 Runner6: A/B/C 横スクロールアクション
+
+最新の本人指示「キャラはだいぶ改善された／ビルドはこっちで確認する」を受け、こちらの追加ビルド・GUI確認は終了。commit/push/正式配備なし。本人のAUP2・音源・画像・他10スタイルの描画実装は変更していない。
+
+Runner新規計画はv6。Aは疎音の移動床ジャンプ、離れた床の落下。Bは密音の平地走行と短い剣ポーズ、命中後の敵吹飛び・回転落下。Cは共通ボス頻度に従う停止スクロール戦。A/B/C表示と全曲区間帯を追加。主人公は12px頭部＋10px胴脚の約1.8頭身、走行・跳躍・剣予備・接触・振抜・受け・被撃のコマ切替へ作り直した。
+
+A/B判定は間引く前のAudio.Hitsの局所7間隔中央値。B進入0.38秒以下／A復帰0.52秒以上、切替間隔3秒。剣の敵まとめ処理（最大140ms）とは区別。Aの移動床は着地前から周期移動し、元床上の離陸点と移動先床への着地を逆算して保存する。境界では平地へ着地。新規描画は絶対時刻で復元し、フレーム順に依存しない。
+
+Cでは主人公の剣接触、敵剣との受け接触、回避した攻撃の床着弾、被撃を元の音時刻へ配置。HPと鎧反応、最後の撃破・吹飛びを持つ。高密度時は元音を残したまま攻防アクション間隔を0.44秒以上にして、予備動作と回避の重なりを防ぐ。主人公の剣接触ポーズは音の12ms前から出し、撃破と火花は音時刻で発生するため、最初の刃の接触まで完全に同時とする調整は残る。
+
+保存はaction内のsections/pads/jumps/hitsを使用。Delphi JSONの小数変換で1ULP変わる事象をネイティブ試験で検出したため、行の各数値はIEEE754 binary64の16桁hex文字列として完全保存。派生索引のみ読込時に再構築し、行動・床・区間は再生成しない。v1～5読込と旧設定variant=0を保持。Runnerにも共通ボス頻度UI/キーを接続した。
+
+実施済み：正規Delphi37.0 Win64 Runner DLLとPreviewのDebug/Release各ビルドが成功（4構成、正式配備イベントなし）。ネイティブDebug範囲/overflow検査で16入力（0.1秒～3000秒、1ms/8ms密音、閾値付近、ボス0/50/100）、旧形式1～5の実ジャンプ、PCM/Envelopeなし復元、512回のGDI/D2D乱順seek、剣接触21,172件、移動床着地1,455件、床落下1,573件、床貫通37,440点、A/B混在6入力、ボス計73区間が成功。接触/着地誤差0。ネイティブPNGでA/B/C、受け、回避などを目視確認。
+
+未確認：最後の出口床延長・PositionAtのv6転送と、追加した無音/上限/不正digestテストは、その後のDLL/Previewビルドには入っているがネイティブ試験を再実行していない。更新したOnlinePassSmoke/StyleIntegrationSmoke/SettingsLayoutSmokeも今回は未実行。最新DLLのAviUtl2 ABI実描画との比較、実音の連続再生、対話GUIの最終確認は未完。GUI用RunnerVisualCheck.exeの起動要求は物理Escによる停止を返し、以後画面操作を止めた。確認時に同名プロセスは存在しなかった。承認待ちはなし。本人がビルド確認するため追加実行を止めた。
+
+反映：Runnerで再準備→適用→保存が必要。旧AUP2の自動更新・上書きは行わない。既存v1～5のプロジェクトはその版のまま読込む。
+
+証跡：Verification/RunnerABC-20261102/{build-Debug.log,build-Release.log,preview-Debug.log,preview-Release.log,handoff.json}、Win64/NativeTests/RunnerPlanSmoke/Checked/ABCFrames/{results.txt,5-*.png,9-*.png}。新規RunnerVisualCheckは設定保存も音再生もしない独立ウィンドウ。将来の本人確認用コンパイルは Scripts/RunNativeTest.cmd RunnerVisualCheck Debug CompileOnly、そのEXEを手動起動する。
+
+---
+
+## 2026-11-01 オンライン作業: 8スタイルの実装・全製品ビルド
 
 今回の本人指示により、以前のsource-only制限は解除。Runner/Breakout/Ball/Fireworksの強化と、新規Fighting/Mining/Train/Navalを実装した。詳細・各版・反映手順は [ONLINE_PASS_20261101.md](ONLINE_PASS_20261101.md) と各STYLE.md。
 

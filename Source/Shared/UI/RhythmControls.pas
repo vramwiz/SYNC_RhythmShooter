@@ -1,4 +1,5 @@
 ﻿unit RhythmControls;
+// 設定画面の共通色・DPI対応コントロールを提供する。
 
 interface
 

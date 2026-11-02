@@ -1,4 +1,5 @@
 ﻿unit RhythmAnimation;
+// 全スタイル共通のフレーム契約と描画実行を定義する。
 interface
 uses Vcl.Graphics,RhythmRenderSurface,RhythmImageBank,RhythmDesignTypes;
 type

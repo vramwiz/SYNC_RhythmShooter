@@ -1,4 +1,5 @@
 ﻿unit RhythmShootingScene;
+// シューティングの計画を絶対時刻で描く。解析・保存は行わない。
 interface
 uses System.Types,RhythmAnimation,RhythmRenderSurface,RhythmAudio,RhythmMotion,RhythmBarrage,RhythmStage;
 type

@@ -1,4 +1,5 @@
 ﻿unit RhythmDesignRequest;
+// 素材生成要求のデータ契約を定義する。
 interface
 uses RhythmDesignTypes;
 type TRhythmDesignRequest=record

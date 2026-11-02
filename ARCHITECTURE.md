@@ -1,4 +1,10 @@
-﻿## 2026-11-01 現行の接続
+﻿## 2026-11-02 責務別ユニット整理
+
+全81ユニット、最大1442行。Ball／Runner／Fightingの版別描画、共通音声データ／キャッシュ／デコード、Raceの位置／生成／保存検証、Breakoutの保存型／前向き幾何を分離した。各スタイル、Host／UI、計画、音解析、描画の境界を保ち、型エイリアスと薄い窓口で既存参照を維持する。依存循環なし。小さい既存Plan／Sceneは無意味に分けない。対応表・行数・コメント規則・試験結果は [UNIT_ORGANIZATION.md](UNIT_ORGANIZATION.md)。
+
+---
+
+## 2026-11-01 現行の接続
 
 全11スタイル。Source/Composition の factory / prepare から Source/Fighting / Mining / Train / Naval の独立Plan/Sceneも接続する。既存の解析・設定・Host・Surfaceは共用。新規4製品も専用DPR/DPROJを持つが共通ソースは複製しない。計画の保存直後にcold metadataと実計画を読み直して確認する。詳細は ONLINE_PASS_20261101.md。
 

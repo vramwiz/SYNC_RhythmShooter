@@ -1,4 +1,5 @@
 ﻿unit RhythmSections;
+// 音の包絡線とアクセントから共通の区切り・ボス区間を求める。
 
 interface
 

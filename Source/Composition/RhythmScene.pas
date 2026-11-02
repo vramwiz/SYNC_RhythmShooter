@@ -1,4 +1,5 @@
 ﻿unit RhythmScene;
+// 全11スタイルの共通描画窓口。専用シーンへ委譲してPreviewとDLLの描画を揃える。
 interface
 uses Vcl.Graphics,RhythmAudio,RhythmMotion,RhythmDesignTypes,RhythmAnimation,RhythmShootingScene,RhythmBallScene,RhythmFireworksScene,RhythmRunnerScene,RhythmBreakoutScene,RhythmRaceScene,RhythmBombScene,RhythmFightingScene,RhythmMiningScene,RhythmTrainScene,RhythmNavalScene,RhythmStyles,RhythmPlanRef;
 type

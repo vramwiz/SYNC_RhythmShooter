@@ -11,6 +11,10 @@ uses
 var Audio,Meta:TRhythmAudio;Plan,Again:TBreakoutPlan;Ref,Bad:TRhythmPlanRef;Settings:TRhythmSettings;
   Renderer:TRhythmRenderer;Image:TBitmap;I,J,K,C:Integer;Gap,Duration,T:Double;P,Q:TBreakPoint;B:TBreakBlock;BossData:TBreakBoss;
   Id:TGUID;Path,Hash,Serialized:string;Info:TWin32FileAttributeData;Rejected:Boolean;Opacity:Double;
+// 試験成果物は過去の検証記録を上書きせず、当該EXEの専用出力へ保存する。
+function EvidencePath(const Name:string):string;
+var Folder:string;
+begin Folder:=TPath.Combine(ExtractFileDir(ParamStr(0)),'Evidence');ForceDirectories(Folder);Result:=TPath.Combine(Folder,Name);end;
 procedure Need(Value:Boolean;const MessageText:string);begin if not Value then raise Exception.Create(MessageText);end;
 procedure CheckLegacyNine;
 var Root,Board,Score,CopyScore:TJSONObject;Boards:TJSONArray;OldRef:TRhythmPlanRef;OldAudio:TRhythmAudio;OldPlan:TBreakoutPlan;K:Integer;Pair:TJSONPair;
@@ -34,14 +38,14 @@ procedure SaveFrame(const Name:string;Time:Double);
 var PNG:TPngImage;
 begin
   Image.SetSize(1280,720);Renderer.Render(Image,Meta,Time,0);PNG:=TPngImage.Create;
-  try PNG.Assign(Image);PNG.SaveToFile('Verification/OnlinePass-20261101/Breakout.'+Name+'.png');finally PNG.Free;end;
+  try PNG.Assign(Image);PNG.SaveToFile(EvidencePath('Breakout.'+Name+'.png'));finally PNG.Free;end;
 end;
 procedure SaveShowFrames;
 var Root,Score,Room:TJSONObject;Boards,Rooms,Charges:TJSONArray;
 begin
   Root:=ReadPreparedData(Ref,rsBreakout,0);
   try
-    TFile.WriteAllText('Verification/OnlinePass-20261101/Breakout.campaign-'+IntToStr(C)+'.json',Root.ToJSON,TEncoding.UTF8);
+    TFile.WriteAllText(EvidencePath('Breakout.campaign-'+IntToStr(C)+'.json'),Root.ToJSON,TEncoding.UTF8);
     Boards:=Root.GetValue<TJSONArray>('boards');Score:=(Boards.Items[0] as TJSONObject).GetValue<TJSONObject>('score');
     Rooms:=Score.GetValue<TJSONArray>('rooms');Charges:=Score.GetValue<TJSONArray>('charges');
     Writeln('case ',C,': blocks=',Plan.Count,' reflections=',Plan.ReflectionCount,' rooms=',Rooms.Count,' charges=',Charges.Count,' extras=',Plan.ExtraCount,' bosses=',Plan.BossCount);
@@ -78,7 +82,7 @@ begin
   try
     ConfigureRhythmProduct('SYNC_RhythmBreakout','リズムブロック崩し',rsBreakout);
     Need((Ord(rsBreakout)=4) and (Ord(rsRunner)=3) and (StylePlanVersion(rsShooting)=1) and (StylePlanVersion(rsBall)=6) and
-      (StylePlanVersion(rsFireworks)=3) and (StylePlanVersion(rsRunner)=5) and CompatiblePlanVersion(rsBall,4) and CompatiblePlanVersion(rsRunner,1),'Old style contract changed');
+      (StylePlanVersion(rsFireworks)=3) and (StylePlanVersion(rsRunner)=6) and CompatiblePlanVersion(rsBall,4) and CompatiblePlanVersion(rsRunner,1),'Old style contract changed');
     Need((StylePlanVersion(rsBreakout)=10) and CompatiblePlanVersion(rsBreakout,1) and CompatiblePlanVersion(rsBreakout,2) and CompatiblePlanVersion(rsBreakout,3) and CompatiblePlanVersion(rsBreakout,4) and CompatiblePlanVersion(rsBreakout,5) and CompatiblePlanVersion(rsBreakout,6) and CompatiblePlanVersion(rsBreakout,7) and CompatiblePlanVersion(rsBreakout,8) and CompatiblePlanVersion(rsBreakout,9),'Breakout legacy compatibility');
     Need(TRhythmSettings.Defaults.Style=rsBreakout,'New product default');
     Need(TRhythmSettings.TryJSON('{"schema":1,"music":"old.wav"}',Settings) and (Settings.Style=rsShooting),'Old JSON default');

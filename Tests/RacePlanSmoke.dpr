@@ -1,39 +1,112 @@
 ﻿program RacePlanSmoke;
 {$APPTYPE CONSOLE}
-uses
-  System.SysUtils,System.Math,
-  RhythmRacePlan in '..\Source\Race\RhythmRacePlan.pas',
-  RhythmAudio in '..\Source\Composition\RhythmAudio.pas',
-  RhythmSections in '..\Source\Shooting\RhythmSections.pas',
-  RhythmMotion in '..\Source\Shooting\RhythmMotion.pas',
-  RhythmStyles in '..\Source\Shared\Settings\RhythmStyles.pas',
-  RhythmPlanRef in '..\Source\Shared\Settings\RhythmPlanRef.pas',
-  RhythmPreparedData in '..\Source\Shared\Settings\RhythmPreparedData.pas',
-  RhythmPaths in '..\Source\Shared\Common\RhythmPaths.pas',
-  RhythmProduct in '..\Source\Shared\Settings\RhythmProduct.pas',
-  RhythmAudioAnalysis in '..\Source\Shared\Audio\RhythmAudioAnalysis.pas',
-  MimiChildProcess in '..\Source\Lib\Process\MimiChildProcess.pas';
-var Audio:TRhythmAudio;A,B:TRacePlan;P,Q:TRaceProjection;C:TRaceCoin;I,J,K:Integer;D,Gap,T,Previous:Double;Pose:TRacePose;
-procedure Need(Value:Boolean;const Msg:string);begin if not Value then raise Exception.Create(Msg);end;
+uses Winapi.Windows,System.SysUtils,System.Math,System.Classes,System.JSON,System.Hash,System.IOUtils,
+  Vcl.Graphics,RhythmAudio,RhythmStyles,RhythmPlanRef,RhythmPreparedData,RhythmProduct,RhythmPaths,RhythmSettings,
+  RhythmRacePlan,RhythmRaceCrash,RhythmRaceScene,RhythmAnimation,RhythmImageBank;
+var Audio,Meta:TRhythmAudio;Plan,Cold,BadPlan:TRacePlan;D:TRaceCrashPlan;Ref,Bad:TRhythmPlanRef;
+  Image:TBitmap;Renderer:TAnimationRenderer;Scene:TRaceAnimation;Root,Other:TJSONObject;State,Loaded:TRhythmSettings;
+  Source,Revision,Folder,Serialized,Expected:string;Stamp:TWin32FileAttributeData;
+  C,I,J,N,Frequency,Contacts,TrafficChecks,BossChecks,SeekChecks,SideHits,LargeHits,ShuntChecks,StraightCars,TurningCars:Integer;
+  Duration,Audible,Gap,T,Previous,Z,Clearance:Double;H:TCrashHit;E:TCrashEnemy;V:TCrashTraffic;P,Q:TCrashPose;Projected:TCrashProjection;Rejected:Boolean;S:TCrashShunt;SavedKeys:TArray<TCrashKey>;LaneProbe:Double;
+procedure Need(V:Boolean;const Why:string);begin if not V then raise Exception.Create(Why);end;
+function ImageHash:string;
+var M:TMemoryStream;B:TBytes;Hash:THashSHA2;
+begin M:=TMemoryStream.Create;try Image.SaveToStream(M);SetLength(B,M.Size);M.Position:=0;if Length(B)>0 then M.ReadBuffer(B[0],Length(B));Hash:=THashSHA2.Create;Hash.Update(B);Result:=Hash.HashAsString;finally M.Free;end;end;
+// v8の保存済みプランは交通排除を後付けせず、そのまま復元する。
+procedure LegacyCrash8(P:TRaceCrashPlan;A:TRhythmAudio);
+var J,C:TJSONObject;R:TRhythmPlanRef;M:TRhythmAudio;Old:TRacePlan;Version,I:Integer;Bits:UInt64;D:Double;SourceKey:string;
 begin
-  Audio:=nil;A:=nil;B:=nil;
+ for Version:=8 to 9 do begin
+  J:=TJSONObject.ParseJSONValue(TFile.ReadAllText('Tests/Fixtures/Race-v9.json',TEncoding.UTF8)) as TJSONObject;
   try
-    Need((Ord(rsRace)=5) and (Ord(rsBreakout)=4) and (StylePlanVersion(rsRace)=7) and CompatiblePlanVersion(rsRace,1) and CompatiblePlanVersion(rsRace,2) and CompatiblePlanVersion(rsRace,3) and CompatiblePlanVersion(rsRace,4) and CompatiblePlanVersion(rsRace,5) and CompatiblePlanVersion(rsRace,6),'Style contract');
-    Need((TRacePlan.CoinPoints(0.39)=10) and (TRacePlan.CoinPoints(0.40)=50) and (TRacePlan.CoinPoints(0.70)=100),'Score tiers');
-    Need((TRacePlan.CoinMetal(0.39)=0) and (TRacePlan.CoinMetal(0.4)=1) and (TRacePlan.CoinMetal(0.7)=2),'Metal boundaries');
-    for K:=0 to 7 do begin
-      D:=64;Gap:=0.18;case K of 1:begin D:=1800;Gap:=0.43;end;2:begin D:=12;Gap:=0.005;end;3:begin D:=0.1;Gap:=0.01;end;4:D:=2;5:D:=100;end;
-      Audio:=TRhythmAudio.Create;Audio.Duration:=D;Audio.SoundEnd:=D;if K=4 then Audio.SoundEnd:=0;if K=5 then Audio.SoundEnd:=64;
-      if K<>4 then begin SetLength(Audio.Hits,Floor((Audio.SoundEnd-0.005)/Gap)+1);for I:=0 to High(Audio.Hits) do begin Audio.Hits[I].Time:=0.005+I*Gap;Audio.Hits[I].Strength:=0.4+0.1*(I mod 6);end;end;
-      Audio.SetBossFrequency(50);if K=6 then Audio.SetBossFrequency(0);if K=7 then Audio.SetBossFrequency(100);A:=TRacePlan.Build(Audio);B:=TRacePlan.Build(Audio);Need(A.Version=7,'Race v7');Need(A.Focus=40,'Faster perspective');if K=6 then Need(A.TrailerCount=0,'Boss disabled');Need(A.TrafficCount=B.TrafficCount,'Traffic determinism');Need(A.TrailerCount=B.TrailerCount,'Boss determinism');Need(A.GoalTime<A.EndTime,'No finish tail');Need(A.EndTime<=Audio.Duration,'Ends beyond music');
-      Previous:=-1;for I:=0 to 100 do begin T:=A.EndTime*I/100;Need(A.DistanceAt(T)>=Previous,'Reverse driving');Previous:=A.DistanceAt(T);Need(A.SpeedAt(T)>=0,'Negative speed');end;
-      for I:=0 to A.Count-1 do begin C:=A.Coin[I];Need(C.Time=Audio.Hits[C.Source].Time,'Accent time changed');Need(C.Points=TRacePlan.CoinPoints(C.Strength),'Point value');Need(A.ScoreAt(C.Time)>A.ScoreAt(C.Time-1E-6),'Missing award');P:=A.Project(C.Distance,C.Lane,C.Time,RACE_COIN_HEIGHT);Q:=A.Project(A.DistanceAt(C.Time),A.LaneAt(C.Time),C.Time,RACE_COIN_HEIGHT);Need(Hypot(P.X-Q.X,P.Y-Q.Y)<1E-7,'Missed coin');end;
-      for J:=0 to 99 do begin T:=A.EndTime*((J*37) mod 101)/101;B.DistanceAt(A.EndTime-T);Pose:=A.PoseAt(T);Need((Abs(Pose.Steer)<=1) and (Abs(Pose.Load)<=1) and (Abs(Pose.Offset)<=0.04),'Pose bounds');Need((A.DistanceAt(T)=B.DistanceAt(T)) and (A.LaneAt(T)=B.LaneAt(T)),'Seek changed route');end;
-      Need((A.DistanceAt(A.EndTime)=A.DistanceAt(A.EndTime+100)) and (A.SpeedAt(A.EndTime+100)=0),'End does not freeze');
-      Need((A.ScoreAt(A.EndTime)=A.MaxScore) and (A.ScoreAt(-1)=0),'Score endpoints');
-      FreeAndNil(A);FreeAndNil(B);FreeAndNil(Audio);
+   C:=J.GetValue<TJSONObject>('crash');SourceKey:=J.GetValue<string>('source');
+   R:=NewPlanRef(SourceKey,50,0,rsRace);R.Version:=Version;R.SourceRevision:=A.SourceRevision;
+   Need(TryStrToUInt64('$'+C.GetValue<TJSONArray>('meta').Items[0].GetValue<TJSONArray>.Items[7].Value,Bits),'Legacy frequency bits');Move(Bits,D,8);R.Variant:=Round(D)+1;
+   R.Key:=THashSHA2.GetHashString('race-v'+IntToStr(Version)+'|'+SourceKey+'|50|0|variant='+IntToStr(R.Variant));
+   J.RemovePair('version').Free;J.AddPair('version',TJSONNumber.Create(Version));J.RemovePair('key').Free;J.AddPair('key',R.Key);
+   J.RemovePair('layout').Free;J.AddPair('layout','crash-highway-v'+IntToStr(Version));
+   C.RemovePair('policy').Free;C.AddPair('policy','inverse-ram-traffic-v'+IntToStr(Version));
+   if Version=8 then C.RemovePair('shunts').Free;
+   WritePreparedData(J,R);
+  finally J.Free;end;
+  M:=TRacePlan.LoadAudioMetadata(R,A.Source,0);try Old:=TRacePlan.Load(R,M,0);try
+   Need((Old.Version=Version) and (Old.Crash.HeroScale=1),'Legacy dimensions changed');
+   if Version=8 then Need(Length(Old.Crash.Shunts)=0,'Legacy v8 got new shunts');
+  finally Old.Free;end;finally M.Free;end;
+ end;
+end;
+procedure Legacy;
+var Version,Variant:Integer;R:TRhythmPlanRef;A:TJSONArray;J:TJSONObject;Speed,FinalDistance:Double;
+  procedure Num(const Name:string;Value:Double);begin if Frac(Value)=0 then Root.AddPair(Name,TJSONNumber.Create(Trunc(Value))) else Root.AddPair(Name,TJSONNumber.Create(Value));end;
+  procedure Key(Time,Value:Double);begin J:=TJSONObject.Create;A.AddElement(J);J.AddPair('position',TJSONNumber.Create(Time));J.AddPair('value',TJSONNumber.Create(Value));end;
+begin
+  for Version:=1 to 7 do begin
+    Writeln('Legacy v',Version);
+    Audio:=TRhythmAudio.Create;Audio.Source:=Source;Audio.SourceRevision:=Revision;Audio.Duration:=1;Audio.SoundEnd:=0;Audio.Sensitivity:=50;Audio.Key:=THashSHA2.GetHashString('Race legacy '+IntToStr(Version));Variant:=1;if Version=1 then Variant:=0;
+    R:=NewPlanRef(Audio.Key,50,0,rsRace,Variant);R.Version:=Version;R.SourceRevision:=Revision;Serialized:='race-v'+IntToStr(Version)+'|'+Audio.Key+'|50|0';if Variant<>0 then Serialized:=Serialized+'|variant='+IntToStr(Variant);R.Key:=THashSHA2.GetHashString(Serialized);
+    Root:=TJSONObject.Create;try Num('schema',1);Root.AddPair('style','race');Num('version',Version);Root.AddPair('layout','rear-road-v'+IntToStr(Version));Root.AddPair('key',R.Key);Root.AddPair('source',R.SourceKey);Num('sensitivity',50);Num('direction',0);AddPreparedAudio(Root,Audio);Num('launch',0.1);Num('acceleration',0.1);Num('goal',0.85);Num('end',1);Speed:=90;if Version>=3 then Speed:=150;Num('topSpeed',Speed);Num('excluded',0);FinalDistance:=Speed*(0.05+0.65+0.075);Num('distance',FinalDistance);Num('bossFrequency',0);if Version=1 then Num('bossFrequencyLegacy',100);
+      if Version>=3 then begin Num('focus',40);Root.AddPair('scoring','metal-100-50-10-v1');Num('totalScore',0);end;
+      if Version>=4 then begin Root.AddPair('posePolicy','curvature-lag-v1');case Version of 4:Root.AddPair('trafficPolicy','dense-overtake-v1');5:Root.AddPair('trafficPolicy','convoy-overtake-v2');6:Root.AddPair('trafficPolicy','dynamic-contact-v3');7:Root.AddPair('trafficPolicy','fender-contact-v4');end;end;
+      Root.AddPair('events',TJSONArray.Create);Root.AddPair('coins',TJSONArray.Create);Root.AddPair('traffic',TJSONArray.Create);Root.AddPair('trailers',TJSONArray.Create);Root.AddPair('bombs',TJSONArray.Create);
+      A:=TJSONArray.Create;Root.AddPair('lanes',A);Key(0,0);Key(1,0);A:=TJSONArray.Create;Root.AddPair('road',A);Key(0,0);Key(3000,0);WritePreparedData(Root,R);
+    finally Root.Free;Root:=nil;end;
+    Meta:=TRacePlan.LoadAudioMetadata(R,Source,0);Cold:=TRacePlan.Load(R,Meta,0);Need((Cold.Version=Version) and (Cold.Crash=nil) and (Length(Meta.PCM)=0),'Legacy1..7 reader');FreeAndNil(Cold);FreeAndNil(Meta);FreeAndNil(Audio);
+  end;
+end;
+begin
+  try
+    ConfigureRhythmProduct('SYNC_RhythmRace','Race v9 native',rsRace);Need(StylePlanVersion(rsRace)=10,'v10 style');for I:=1 to 9 do Need(CompatiblePlanVersion(rsRace,I),'Legacy version');Need((StylePlanVersion(rsRunner)=6) and (StylePlanVersion(rsFighting)=2),'Other completed styles changed');
+    Folder:=TPath.Combine(ExtractFileDir(ParamStr(0)),'CrashEvidence');ForceDirectories(Folder);Source:=TPath.Combine(Folder,'source.identity');TFile.WriteAllText(Source,'Synthetic Race v9 identity; no audio playback',TEncoding.UTF8);Need(GetFileAttributesEx(PChar(Source),GetFileExInfoStandard,@Stamp),'Source stat');Revision:=IntToHex(Stamp.nFileSizeHigh,8)+IntToHex(Stamp.nFileSizeLow,8)+'-'+IntToHex(Stamp.ftLastWriteTime.dwHighDateTime,8)+IntToHex(Stamp.ftLastWriteTime.dwLowDateTime,8);Legacy;
+    Image:=TBitmap.Create;Image.PixelFormat:=pf32bit;Image.SetSize(960,600);
+    Contacts:=0;TrafficChecks:=0;BossChecks:=0;SeekChecks:=0;SideHits:=0;LargeHits:=0;ShuntChecks:=0;StraightCars:=0;TurningCars:=0;
+    for C:=0 to 15 do begin
+      Writeln('Case ',C);
+      Duration:=96;Gap:=0.18;Frequency:=50;case C of 0:begin Duration:=0.1;Gap:=0.01;end;1:Duration:=2;2:begin Duration:=8;Gap:=0.5;end;3:Duration:=32;4:Duration:=180;5:begin Duration:=180;Frequency:=0;end;6:begin Duration:=3000;Gap:=0.16;end;7:begin Duration:=16;Gap:=0.005;end;8:Gap:=1.1;9:begin Duration:=420;Frequency:=100;Gap:=0.20;end;10:begin Gap:=0.001;Frequency:=100;end;11:begin Duration:=1;Frequency:=0;end;12:Gap:=8;13:Duration:=32;14:begin Duration:=3000;Gap:=0.20;Frequency:=100;end;15:Duration:=150;end;Audible:=Duration;if C=11 then Audible:=0;if C=15 then Audible:=96;
+      Audio:=TRhythmAudio.Create;Audio.Source:=Source;Audio.SourceRevision:=Revision;Audio.Key:=THashSHA2.GetHashString('Race v8 '+IntToStr(C));Audio.Sensitivity:=50;Audio.Duration:=Duration;Audio.SoundEnd:=Audible;Audio.SetBossFrequency(Frequency);SetLength(Audio.Envelope,Ceil(Duration*100));for I:=0 to High(Audio.Envelope) do if I*0.01<Audible then Audio.Envelope[I]:=0.5;
+      SetLength(Audio.Hits,100000);N:=0;T:=0.005;if Audible>0 then while (T<Audible-0.005) and (N<99999) do begin Audio.Hits[N].Time:=T;Audio.Hits[N].Strength:=0.25+(N mod 6)*0.15;Inc(N);if (C=13) and (N mod 5=0) then begin Audio.Hits[N]:=Audio.Hits[N-1];Audio.Hits[N].Strength:=1;Inc(N);end;T:=T+Gap;end;SetLength(Audio.Hits,N);
+      Plan:=TRacePlan.Build(Audio);D:=Plan.Crash;Need((D<>nil) and (Plan.Version=10) and (Plan.Count=0),'v8 must not generate coins');D.Validate;Need(Length(D.Events)=Length(Audio.Hits),'Lost original accents');Need((Plan.GoalTime<Plan.EndTime) and (Plan.EndTime<=Audio.Duration),'Goal reservation');if Frequency=0 then Need(Length(D.Bosses)=0,'Boss frequency zero');
+      Previous:=-1;for I:=0 to 200 do begin T:=D.EndTime*I/200;Need(D.DistanceAt(T)>=Previous,'Reverse driving');Previous:=D.DistanceAt(T);Need(Abs(D.LaneVelocity(T))<=0.975+1E-7,'Teleport lane speed');end;
+      for I:=0 to High(D.Hits) do begin H:=D.Hits[I];E:=D.Enemies[H.Enemy];P:=D.EnemyAt(H.Enemy,H.Time);Q:=D.HeroAt(H.Time);Need(H.Time=Audio.Hits[H.Source].Time,'Original collision clock shifted');if E.Side=0 then Need(Abs(P.Distance-P.Back-Q.Distance-Q.Front)<1E-6,'Actual front bumper misses') else begin Need(Abs(Abs(P.Lane-Q.Lane)-P.Width-Q.Width)<1E-7,'Actual fender misses');Inc(SideHits);end;Need(H.HP=E.Last-I,'HP monotonicity');if E.Kind>0 then Inc(LargeHits);Inc(Contacts);
+        for J:=0 to 3 do begin T:=E.Ready-Power(10,-J-1);if T<E.Spawn then Continue;P:=D.EnemyAt(H.Enemy,T);Q:=D.HeroAt(T);Need((P.Distance-P.Back>Q.Distance+Q.Front) or (Abs(P.Lane-Q.Lane)>P.Width+Q.Width),'Premature first collision');end;
+      end;
+      for I:=0 to High(D.Traffic) do begin V:=D.Traffic[I];Need(D.TrafficCertified(I),'Whole-interval traffic certificate');for J:=0 to 48 do begin T:=V.Spawn+(V.Clear-V.Spawn)*J/48;P:=D.TrafficAt(I,T);Q:=D.HeroAt(T);Z:=P.Distance-Q.Distance;Clearance:=Abs(P.Lane-Q.Lane)-P.Width-Q.Width;Need(not ((Z-P.Back<Q.Front) and (Z+P.Front> -Q.Back) and (Clearance<=0)),'General car collision');Inc(TrafficChecks);end;T:=V.Pass;P:=D.TrafficRoadAt(I,T);Need(Abs(P.Lane-D.LaneAt(T))-P.Width-D.HeroWidth>=V.Gap-1E-8,'Close pass gap');Projected:=D.Project(P.Distance,P.Lane,T,0);Need(Projected.Visible,'Passing car disappeared');end;
+      for I:=0 to High(D.Traffic) do begin
+        V:=D.Traffic[I];if V.TurnFinish>V.TurnStart then begin
+          Inc(TurningCars);Need((V.TurnFinish-V.TurnStart>=0.179) and (V.TurnFinish-V.TurnStart<=0.271),'Late turn span');
+          Need(Abs(D.TrafficLaneVelocity(I,V.TurnStart))<1E-12,'Turn start derivative');
+          Need(Abs(D.TrafficLaneVelocity(I,V.TurnFinish))<1E-12,'Turn end derivative');
+          Need(Abs(D.TrafficLaneAt(I,V.TurnStart-1E-7)-D.TrafficLaneAt(I,V.TurnStart+1E-7))<1E-6,'Turn start jump');
+          Need(Abs(D.TrafficLaneAt(I,V.TurnFinish-1E-7)-D.TrafficLaneAt(I,V.TurnFinish+1E-7))<1E-6,'Turn end jump');
+        end else begin Inc(StraightCars);Need(D.TrafficLaneAt(I,V.Spawn)=D.TrafficLaneAt(I,V.Clear),'Straight traffic follows hero');end;
+      end;
+      if Length(D.Traffic)>0 then begin
+        T:=D.Traffic[0].Pass;LaneProbe:=D.TrafficRoadAt(0,T).Lane;SavedKeys:=Copy(D.Keys);
+        for I:=0 to High(D.Keys) do D.Keys[I].Value:=D.Keys[I].Value+0.10;
+        Need(D.TrafficRoadAt(0,T).Lane=LaneProbe,'Traffic uses current hero lane');D.Keys:=SavedKeys;
+      end;
+      Need(Abs(D.HeroScale-0.90)<1E-12,'Hero scale');
+      for I:=0 to High(D.Shunts) do begin
+        S:=D.Shunts[I];Need(D.Traffic[S.Traffic].Shunt=I,'Unique shunt index');
+        P:=D.TrafficRoadAt(S.Traffic,S.Time);Q:=D.EnemyAt(S.Enemy,S.Time);
+        Z:=Max(Abs(P.Lane-Q.Lane)-P.Width-Q.Width,Max(P.Distance-P.Back-Q.Distance-Q.Front,Q.Distance-Q.Back-P.Distance-P.Front));
+        Need(Abs(Z)<2E-6,'Boss contact does not meet body');
+        for J:=0 to 40 do begin T:=S.Time+0.85*J/40;P:=D.TrafficAt(S.Traffic,T);Q:=D.HeroAt(T);
+          Need(not P.Alive,'Destroyed traffic reappears');
+          Need(not ((P.Distance-P.Back<Q.Distance+Q.Front) and (P.Distance+P.Front>Q.Distance-Q.Back) and (Abs(P.Lane-Q.Lane)<=P.Width+Q.Width)),'Shunt crosses hero');
+        end;
+        P:=D.TrafficAt(S.Traffic,S.Time-1E-7);Need(P.Alive,'Traffic breaks before contact');
+        P:=D.TrafficAt(S.Traffic,S.Time+0.2);Need((Abs(P.Turn)>0) and (P.Lift>0),'Traffic lacks throw/spin');Inc(ShuntChecks);
+      end;
+      for I:=0 to High(D.Bosses) do begin E:=D.Enemies[D.Bosses[I].Enemy];Need((E.Last>E.First) and (D.Hits[E.Last].HP=0) and (D.Hits[E.Last].Time=D.Bosses[I].Kill),'Boss final strike');P:=D.EnemyAt(D.Bosses[I].Enemy,E.Kill+0.20);Need(not P.Alive,'Boss acts after defeat');Need(Abs(P.Turn)>0,'Boss does not roll');Inc(BossChecks);end;
+      if Length(D.Enemies)>0 then Need(D.Enemies[High(D.Enemies)].Kind>=3,'Weak finale');
+      Ref:=NewPlanRef(Audio.Key,50,0,rsRace,Frequency+1);Ref.SourceRevision:=Revision;Plan.Save(Ref,Audio);Root:=D.ToJSON;try Serialized:=Root.ToJSON;finally Root.Free;Root:=nil;end;Meta:=TRacePlan.LoadAudioMetadata(Ref,Source,0);Need((Length(Meta.PCM)=0) and (Length(Meta.Envelope)=0),'PCM-free restore');Cold:=TRacePlan.Load(Ref,Meta,0);Other:=Cold.Crash.ToJSON;try Need(Other.ToJSON=Serialized,'Saved binary64 plan changed');finally Other.Free;end;
+      State:=TRhythmSettings.Defaults;State.Style:=rsRace;State.Music:=Source;State.Plan:=Ref;State.BossFrequency:=Frequency;Need(TRhythmSettings.TryJSON(State.ToJSON,Loaded) and (Loaded.Plan.Key=Ref.Key),'v8 settings reference');
+      for I:=0 to 63 do begin T:=D.EndTime*((I*37) mod 67)/67;P:=D.HeroAt(T);Q:=Cold.Crash.HeroAt(T);Need((P.Distance=Q.Distance) and (P.Lane=Q.Lane),'Seek changes route');Inc(SeekChecks);end;Bad:=Ref;Bad.Digest:=StringOfChar('0',64);Rejected:=False;try BadPlan:=TRacePlan.Load(Bad,Meta,0);except Rejected:=True;end;FreeAndNil(BadPlan);Need(Rejected,'Corrupt digest accepted');
+      if C in [3,4,9] then begin Scene:=TRaceAnimation.Create;Scene.Audio:=Meta;Scene.SetReference(Ref);Renderer:=TAnimationRenderer.Create(Scene,TAnimationImageBank.Create([],0));Renderer.UseD2D:=False;Image.SetSize(720,1280);Renderer.Render(Image,D.Goal*0.5,0);Image.SetSize(960,600);T:=D.Goal*0.6;Renderer.Render(Image,T,0);Expected:=ImageHash;Renderer.Render(Image,D.EndTime,0);Renderer.Render(Image,T,0);Need((Scene.Notice='') and (Expected=ImageHash),'Preview random seek');FreeAndNil(Renderer);end;
+      if C=3 then LegacyCrash8(D,Audio);
+      FreeAndNil(Cold);FreeAndNil(Meta);FreeAndNil(Plan);FreeAndNil(Audio);
     end;
-    Writeln('RacePlanSmoke passed');
+    Need(StraightCars>2*TurningCars,'Too many steering cars');Need(ShuntChecks>0,'No boss traffic contacts');Need((Contacts>0) and (SideHits>0) and (LargeHits>0) and (BossChecks>0) and (TrafficChecks>0),'Coverage incomplete');Writeln(Format('Race v10 PASS contacts=%d side=%d large=%d bosses=%d trafficChecks=%d seek=%d shunts=%d straight=%d turning=%d',[Contacts,SideHits,LargeHits,BossChecks,TrafficChecks,SeekChecks,ShuntChecks,StraightCars,TurningCars]));
   except on E:Exception do begin Writeln(E.ClassName+': '+E.Message);ExitCode:=1;end;end;
-  A.Free;B.Free;Audio.Free;
+  Renderer.Free;Image.Free;BadPlan.Free;Cold.Free;Plan.Free;Meta.Free;Audio.Free;
 end.

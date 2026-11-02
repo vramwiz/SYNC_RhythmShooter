@@ -101,7 +101,7 @@ begin
     Form.Position:=poDesigned;Form.Left:=-32000;Form.Top:=-32000;Form.Show;ScaleTestForm(Form,DPIs[D]);
     for K:=0 to Form.ComponentCount-1 do if Form.Components[K] is TPanel then if TPanel(Form.Components[K]).Caption<>'' then raise Exception.Create('Internal panel caption visible');
     Combo:=TComboBox(Form.FindComponent('AnimationStyle'));if (Combo.Items.Count<>Ord(High(TRhythmStyle))+1) or (Combo.ItemIndex<>Ord(Style)) or (Form.Snapshot.Style<>Style) then raise Exception.Create('Style registration/restore');
-    if TTrackBar(Form.FindComponent('BossFrequency')).Parent.Visible<>(Style in [rsShooting,rsBreakout,rsRace,rsBombAction,rsFighting,rsMining,rsTrain,rsNaval]) then raise Exception.Create('Boss frequency visibility');
+    if TTrackBar(Form.FindComponent('BossFrequency')).Parent.Visible<>(Style in [rsShooting,rsRunner,rsBreakout,rsRace,rsBombAction,rsFighting,rsMining,rsTrain,rsNaval]) then raise Exception.Create('Boss frequency visibility');
     if Form.FindComponent('PreviewPause')<>nil then raise Exception.Create('Separate pause button');
     if TButton(Form.FindComponent('PreviewPlay')).Caption<>'再生' then raise Exception.Create('Idle play toggle');
     for W:=0 to 2 do begin

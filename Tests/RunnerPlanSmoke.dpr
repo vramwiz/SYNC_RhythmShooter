@@ -1,114 +1,165 @@
 ﻿program RunnerPlanSmoke;
 {$APPTYPE CONSOLE}
-uses
-  RhythmBombPlan in '..\Source\BombAction\RhythmBombPlan.pas',
-  RhythmBombScene in '..\Source\BombAction\RhythmBombScene.pas',
-  RhythmRacePlan in '..\Source\Race\RhythmRacePlan.pas',
-  RhythmRaceScene in '..\Source\Race\RhythmRaceScene.pas',
-  Winapi.Windows,System.SysUtils,System.Math,System.Classes,System.Hash,System.IOUtils,Vcl.Graphics,
-  RhythmAudio,RhythmRunnerPlan,RhythmStyles,RhythmProduct,RhythmPlanRef,RhythmSettings,RhythmScene,RhythmPaths;
-var Audio,Meta:TRhythmAudio;Plan,Again:TRunnerPlan;Ref:TRhythmPlanRef;State,Cold:TRhythmSettings;
-  Renderer:TRhythmRenderer;Image:TBitmap;I,J,C:Integer;S:TRunnerStep;Pad:TRunnerPlatform;P,Q:TRunnerPoint;
-  Found,Rejected:Boolean;Gap,T,D:Double;Path,Hash:string;Id:TGUID;Info:TWin32FileAttributeData;
-  Piece,Other:TRunnerSetPiece;SavedPieceCount:Integer;PieceSignature,SavedPieceSignature:string;L,R,Y,ContactDistance:Double;Cut:TRunnerCut;Grip,Tip:TRunnerPoint;SavedCuts,SavedRuns:Integer;
-procedure Require(Value:Boolean;const Text:string);begin if not Value then raise Exception.Create(Text);end;
+uses Winapi.Windows,System.SysUtils,System.Math,System.Classes,System.Hash,System.IOUtils,System.JSON,
+  Vcl.Graphics,Vcl.Imaging.pngimage,RhythmAudio,RhythmStyles,RhythmProduct,RhythmPlanRef,RhythmPreparedData,
+  RhythmRunnerPlan,RhythmRunnerAction,RhythmRunnerScene,RhythmSettings,RhythmAnimation,RhythmImageBank,RhythmPaths;
+var Audio,Cold:TRhythmAudio;Plan,Restored,BadPlan:TRunnerPlan;Score,Again:TRunnerActionPlan;Ref,BadRef:TRhythmPlanRef;
+  Scene:TRunnerAnimation;Render:TAnimationRenderer;Image:TBitmap;PNG:TPngImage;Stamp:TWin32FileAttributeData;
+  Source,OutDir,Hash,JSON,Revision:string;C,I,J,K,N,Backend,Checks,Contacts,Moving,Falls,Both,Bosses,Frequency,FloorChecks,TimingChecks,WalkChecks,IdleChecks,OpposingChecks,BodyContactChecks:Integer;
+  Time,Gap,Duration,Err,MaxErr:Double;Pose,Other:TRunPose;Pad:TRunPad;Jump:TRunJump;H:TRunHit;G,Tip,O:TRunPoint;
+  Root,CopyRoot:TJSONObject;State,Loaded:TRhythmSettings;Rejected:Boolean;Seen,Snapped:array[TRunHitKind] of Boolean;Kind:TRunHitKind;
+procedure Need(V:Boolean;const S:string);begin if not V then raise Exception.Create(S);end;
 function ImageHash:string;
-var M:TMemoryStream;Bytes:TBytes;H:THashSHA2;
-begin M:=TMemoryStream.Create;try Image.SaveToStream(M);SetLength(Bytes,M.Size);M.Position:=0;M.ReadBuffer(Bytes[0],Length(Bytes));H:=THashSHA2.Create;H.Update(Bytes);Result:=H.HashAsString;finally M.Free;end;end;
+var M:TMemoryStream;B:TBytes;Hasher:THashSHA2;
+begin M:=TMemoryStream.Create;try Image.SaveToStream(M);SetLength(B,M.Size);M.Position:=0;if Length(B)>0 then M.ReadBuffer(B[0],Length(B));Hasher:=THashSHA2.Create;Hasher.Update(B);Result:=Hasher.HashAsString;finally M.Free;end;end;
+procedure Snap(const Name:string;T:Double);
+begin Render.Render(Image,T,0);Need(Scene.Notice='','Scene error: '+Scene.Notice);PNG:=TPngImage.Create;try PNG.Assign(Image);PNG.SaveToFile(TPath.Combine(OutDir,Name+'.png'));finally FreeAndNil(PNG);end;end;
+procedure CheckContactTiming(Score:TRunnerActionPlan;Index:Integer);
+const Lead:array[0..4] of Double=(0.020,0.012,0.006,0.001,0.0001);
+var H,Previous:TRunHit;Pose:TRunPose;Grip,Tip:TRunPoint;Time:Double;N,Prior:Integer;
 begin
-  Audio:=nil;Meta:=nil;Plan:=nil;Again:=nil;Renderer:=nil;Image:=nil;
-  try
-    ConfigureRhythmProduct('SYNC_RhythmRunner','リズムランナー',rsRunner);
-    Require((Ord(rsRunner)=3) and (Ord(rsFireworks)=2) and (StylePlanVersion(rsBall)=6),'Existing style contract changed');
-    Require(TRhythmSettings.Defaults.Style=rsRunner,'Runner default missing');
-    Require((StylePlanVersion(rsRunner)=5) and CompatiblePlanVersion(rsRunner,1) and CompatiblePlanVersion(rsRunner,2) and CompatiblePlanVersion(rsRunner,3) and CompatiblePlanVersion(rsRunner,4) and
-      not CompatiblePlanVersion(rsRunner,0) and (StylePlanVersion(rsShooting)=1) and
-      (StylePlanVersion(rsFireworks)=3),'Runner version compatibility changed');
-    Require(TRhythmSettings.TryJSON('{"schema":1,"music":"old.wav"}',State) and (State.Style=rsShooting),'Legacy JSON changed style');
-    for C:=0 to 5 do begin
-      case C of 0:Gap:=0.18;1:Gap:=0.7;2:Gap:=3;3:Gap:=0.09;4:Gap:=0.50;else Gap:=1.10;end;
-      Audio:=TRhythmAudio.Create;Audio.Duration:=22;Audio.Sensitivity:=50;SetLength(Audio.Envelope,2200);
-      if C>=4 then begin Audio.Duration:=68;SetLength(Audio.Envelope,6800);end;
-      for I:=0 to 1999 do Audio.Envelope[I]:=0.5;SetLength(Audio.Hits,Floor(19/Gap)+1);
-      if C>=4 then begin for I:=2000 to 6399 do Audio.Envelope[I]:=0.5;SetLength(Audio.Hits,Floor(63/Gap)+1);end;
-      for I:=0 to High(Audio.Hits) do begin Audio.Hits[I].Time:=0.5+I*Gap;Audio.Hits[I].Strength:=0.3+(I mod 5)*0.175;end;
-      if C>=4 then for I:=0 to High(Audio.Hits) do Audio.Hits[I].Strength:=0.8;
-      if C=3 then begin Audio.Hits[0].Time:=0;Audio.Hits[1].Time:=0;end;
-      Audio.UpdateSoundBounds;CreateGUID(Id);Path:=TPath.Combine(CacheFolder,GUIDToString(Id)+'.identity');
-      TFile.WriteAllText(Path,GUIDToString(Id),TEncoding.UTF8);Audio.Source:=Path;Audio.Key:=THashSHA2.GetHashString(GUIDToString(Id));
-      if not GetFileAttributesEx(PChar(Path),GetFileExInfoStandard,@Info) then RaiseLastOSError;
-      Audio.SourceRevision:=IntToHex(Info.nFileSizeHigh,8)+IntToHex(Info.nFileSizeLow,8)+'-'+IntToHex(Info.ftLastWriteTime.dwHighDateTime,8)+IntToHex(Info.ftLastWriteTime.dwLowDateTime,8);
-      Plan:=TRunnerPlan.Build(Audio);Again:=TRunnerPlan.Build(Audio);
-      Require(Plan.PulseCount=Length(Audio.Hits),'Runner discarded valid accents');
-      SavedPieceCount:=Plan.SetPieceCount;SavedCuts:=Plan.CutCount;SavedRuns:=Plan.SwordRunCount;SavedPieceSignature:='';
-      if C=5 then Require(SavedPieceCount>=3,'Long sparse song has no repeated vaults');
-      if C=4 then Require((Plan.SwordRunCount>0) and (Plan.CutCount>0) and (SavedPieceCount=0),'Continuous accents should become flat sword runs');
-      if C<4 then Require(SavedPieceCount=0,'Short song forces set pieces');
-      for I:=0 to Plan.SetPieceCount-1 do begin
-        Piece:=Plan.SetPiece[I];Other:=Again.SetPiece[I];
-        Require((Piece.Kind=Other.Kind) and (Piece.FirstStep=Other.FirstStep) and (Piece.LastStep=Other.LastStep),'Set-piece choice is not deterministic');
-        Require((Plan.Step[Piece.FirstStep].Takeoff>=5) and (Plan.Step[Piece.LastStep].Time<=Plan.GoalTime-5),'Set piece hides entry or goal');
-        if I>0 then Require(Plan.Step[Piece.FirstStep].Takeoff>=Plan.Step[Plan.SetPiece[I-1].LastStep].Time+10-1E-7,'Set pieces have no quiet interval');
-        Require(Piece.Kind<>rkBounce,'New plans retain bounce chains');
-        if C=5 then Require(Piece.Kind=rkVault,'Long gaps should form vaults');
-        SavedPieceSignature:=SavedPieceSignature+Format('%d:%d:%d;',[Ord(Piece.Kind),Piece.FirstStep,Piece.LastStep]);
-        if Piece.Kind=rkBounce then for J:=Piece.FirstStep to Piece.LastStep do
-          Require(Abs(Plan.Step[J].Takeoff-Plan.Step[J-1].Time)<1E-7,'Bounce does not launch on the previous contact')
-        else begin
-          S:=Plan.Step[Piece.FirstStep];RunnerVaultBounds(S,L,R,Y);
-          for J:=0 to 100 do begin
-            T:=(L-0.085+(R-L+0.17)*J/100)/RUN_SPEED;P:=Plan.PositionAt(T);
-            Require(P.Y+0.023<=Y+1E-7,'Vault silhouette intersects the obstacle');
-          end;
-        end;
-      end;
-      for I:=0 to Plan.CutCount-1 do begin
-        Cut:=Plan.Cut[I];Require(Cut.Time=Plan.Step[Cut.Step].Time,'Sword clock drift');P:=Plan.PositionAt(Cut.Time);Require(not P.Airborne,'Sword cut is airborne');
-        Require(Plan.SwordAt(Cut.Time,Grip,Tip),'Sword missing');ContactDistance:=Hypot(Cut.X-Tip.X,Cut.Y-Tip.Y);
-        Require((Abs(Tip.X-(Cut.X-0.020-RUN_SWORD_HALF))<1E-7) and (Abs(Tip.Y-Cut.Y)<=0.026+1E-7),'Blade does not touch armor');
-        Require(Cut.Radius>=0.020,'Tiny enemy fallback');
-      end;
-      Require((Plan.GoalTime=Audio.SoundEnd) and (Plan.EndTime=Plan.GoalTime+RUN_EXIT),'Goal/ending is not based on whole-song sound end');
-      for I:=0 to Plan.PulseCount-1 do Require(Plan.Pulse[I].Time=Audio.Hits[I].Time,'Contact time drifted');
-      for I:=0 to Plan.Count-1 do begin
-        S:=Plan.Step[I];P:=Plan.PositionAt(S.Time);Q:=Again.PositionAt(S.Time);
-        Require((Abs(P.X-RUN_SPEED*S.Time)<1E-8) and (Abs(P.Y-S.Y)<1E-8),'Runner misses its landing');
-        Require((P.X=Q.X) and (P.Y=Q.Y),'Runner is not deterministic');
-        Found:=False;for J:=0 to Plan.PlatformCount-1 do begin Pad:=Plan.Platform[J];if (P.X>=Pad.Left-1E-8) and (P.X<=Pad.Right+1E-8) and (Abs(P.Y-Pad.Y)<1E-8) then Found:=True;end;
-        Require(Found,'Landing has no platform');
-        D:=S.Time-S.Takeoff;
-        if D>0 then for J:=1 to 9 do begin
-          T:=D*J/10;P:=Plan.PositionAt(S.Takeoff+T);
-          Require(Abs(P.X-RUN_SPEED*(S.Takeoff+T))<1E-8,'Airborne horizontal motion changes direction');
-          Require(Abs(P.Y-(S.StartY+S.Velocity*T+0.5*RUN_GRAVITY*T*T))<1E-8,'Jump is not ballistic');
-        end;
-      end;
-      P:=Plan.PositionAt(Plan.GoalTime);Q:=Plan.PositionAt(Plan.GoalTime+1.3);Require(Q.X>P.X+1,'Runner does not leave toward the right');
-      Ref:=NewPlanRef(Audio.Key,50,0,rsRunner);Ref.SourceRevision:=Audio.SourceRevision;Plan.Save(Ref,Audio);
-      State:=TRhythmSettings.Defaults;State.Music:=Path;State.Plan:=Ref;State.Designs[8].Memo:='keep existing design';
-      TFile.WriteAllText(Path+'.json',State.ToJSON,TEncoding.UTF8);
-      Renderer:=TRhythmRenderer.Create;Renderer.UseD2D:=False;Renderer.ConfigureStyle(rsRunner,Ref);Image:=TBitmap.Create;Image.PixelFormat:=pf32bit;Image.SetSize(1280,720);
-      T:=2.75;if SavedPieceCount>0 then T:=(Plan.Step[Plan.SetPiece[0].FirstStep].Takeoff+Plan.Step[Plan.SetPiece[0].LastStep].Time)/2;
-      Renderer.Render(Image,Audio,T,0);Hash:=ImageHash;
-      FreeAndNil(Renderer);FreeAndNil(Plan);FreeAndNil(Again);FreeAndNil(Audio);
-      Require(TRhythmSettings.TryJSON(TFile.ReadAllText(Path+'.json',TEncoding.UTF8),Cold) and (Cold.Plan.SourceRevision=Ref.SourceRevision),'Runner object settings were not restored');
-      Meta:=TRunnerPlan.LoadAudioMetadata(Cold.Plan,Cold.Music,0);Require(Length(Meta.PCM)=0,'Cold runner restoration reads PCM');
-      Plan:=TRunnerPlan.Load(Cold.Plan,Meta,0);Renderer:=TRhythmRenderer.Create;Renderer.UseD2D:=False;Renderer.ConfigureStyle(Cold.Style,Cold.Plan);
-      Require((Plan.CutCount=SavedCuts) and (Plan.SwordRunCount=SavedRuns),'Cold load discarded sword score');
-      Require(Plan.SetPieceCount=SavedPieceCount,'Cold load discarded set pieces');PieceSignature:='';
-      for I:=0 to Plan.SetPieceCount-1 do begin Piece:=Plan.SetPiece[I];PieceSignature:=PieceSignature+Format('%d:%d:%d;',[Ord(Piece.Kind),Piece.FirstStep,Piece.LastStep]);end;
-      Require(PieceSignature=SavedPieceSignature,'Cold load changed set-piece identity');
-      Renderer.Render(Image,Meta,T,0);Require(ImageHash=Hash,'New instance changed the restored frame');
-      Renderer.Render(Image,Meta,Plan.EndTime+1,0);Hash:=ImageHash;Renderer.Render(Image,Meta,Plan.EndTime+20,0);Require(ImageHash=Hash,'Runner moves after exit');
-      Ref:=Cold.Plan;Ref.Digest:=StringOfChar('0',64);Rejected:=False;
-      try Again:=TRunnerPlan.Load(Ref,Meta,0);except Rejected:=True;end;Require(Rejected,'Invalid content digest accepted');
-      FreeAndNil(Renderer);FreeAndNil(Image);FreeAndNil(Plan);FreeAndNil(Meta);
+  H:=Score.Hits[Index];
+  for N:=Low(Lead) to High(Lead) do begin
+    Time:=H.Time-Lead[N];if Time<0 then Continue;
+    // Coalesced armor contacts may deliberately retain an earlier impact.
+    // Check the anticipation only when this is the selected upcoming action.
+    if Score.ActionBefore(Time+0.055)<>Index then Continue;
+    Prior:=Score.ActionBefore(Time);if (H.Kind=rhSword) and (Prior>=0) then begin Previous:=Score.Hits[Prior];if (Previous.Kind=rhSword) and (Previous.Target=H.Target) then Continue;end;
+    if H.Kind in [rhSword,rhBossCut,rhParry,rhFinish] then begin
+      Need(Score.BladeAt(Time,Grip,Tip),'Missing anticipation');
+      Need(Max(Grip.X,Tip.X)<H.X-0.005,'Blade reaches the contact before the accent');
+      Pose:=Score.HeroAt(Time);Need(Pose.Pose<>4,'Contact pose begins before the accent');Inc(TimingChecks);
     end;
-    Audio:=TRhythmAudio.Create;Audio.Duration:=1;Audio.SoundEnd:=0;
-    Plan:=TRunnerPlan.Build(Audio);Require((Plan.PulseCount=0) and (Plan.EndTime=0),'Silence generates running');FreeAndNil(Plan);
-    Rejected:=False;try Plan:=TRunnerPlan.Build(Audio,function:Boolean begin Result:=True;end);except on E:EAbort do Rejected:=True;end;
-    Require(Rejected,'Cancellation ignored');
-    Writeln('RunnerPlanSmoke passed');
+    if H.Kind=rhHurt then begin Pose:=Score.HeroAt(Time);Need(Pose.Pose<>7,'Hurt pose begins before the enemy impact');Inc(TimingChecks);end;
+  end;
+  if H.Kind in [rhSword,rhBossCut,rhFinish] then begin Pose:=Score.HeroAt(H.Time);Need(Pose.Pose=4,'Contact pose misses the accent');end;
+  if H.Kind=rhHurt then begin Pose:=Score.HeroAt(H.Time);Need(Pose.Pose=7,'Hurt pose misses the enemy impact');end;
+end;
+procedure CheckStride(Score:TRunnerActionPlan;Time:Double;Boss:Boolean);
+var A,B:TRunFeet;P,Q:TRunPose;BP,BQ:TRunBossPose;S:TRunSection;Pad:Integer;F,G,O1,O2:TRunPoint;Support,Ground:Double;
+begin
+  S:=Score.Sections[Score.SectionAt(Time)];Support:=0;Ground:=RA_GROUND;
+  if Boss then begin BP:=Score.BossAt(Time);BQ:=Score.BossAt(Time+0.001);if BP.Airborne or BQ.Airborne then Exit;A:=Score.BossFeetAt(Time);B:=Score.BossFeetAt(Time+0.001);end
+  else begin
+    P:=Score.HeroAt(Time);Q:=Score.HeroAt(Time+0.001);if P.Airborne or Q.Airborne then Exit;A:=Score.FeetAt(Time);B:=Score.FeetAt(Time+0.001);Ground:=P.Y;
+    if S.Mode=rmJump then begin Pad:=Score.PadBefore(Time);if Pad<>Score.PadBefore(Time+0.001) then Exit;O1:=Score.PadOffset(Pad,Time);O2:=Score.PadOffset(Pad,Time+0.001);Support:=O2.X-O1.X;end;
+  end;
+  if A.Plant=0 then F:=A.LeftFoot else F:=A.RightFoot;
+  if B.Plant=0 then G:=B.LeftFoot else G:=B.RightFoot;
+  Need(Abs(F.Y-Ground)<1E-7,'Planted sole leaves the floor');Need((A.LeftFoot.Y<=Ground+1E-7) and (A.RightFoot.Y<=Ground+1E-7),'Sole penetrates floor');
+  if (A.Step=B.Step) and (A.Direction=B.Direction) and A.Moving and B.Moving then begin Need(Abs(G.X-F.X-Support)<1E-7,'Planted foot slides');Inc(WalkChecks);end;
+  if not A.Moving and not B.Moving then begin
+    Need((Abs(A.LeftFoot.X-B.LeftFoot.X)<1E-7) and (Abs(A.RightFoot.X-B.RightFoot.X)<1E-7),'Feet walk while stopped');
+    Need((Abs(A.LeftFoot.Y-Ground)<1E-7) and (Abs(A.RightFoot.Y-Ground)<1E-7),'Stopped foot is floating');Inc(IdleChecks);
+  end;
+end;
+procedure CheckBodyMotion(Score:TRunnerActionPlan);
+var K,I:Integer;S:TRunSection;H:TRunHit;P,Q:TRunPose;B,After:TRunBossPose;T,Finish,HeroMin,HeroMax,BossMin,BossMax:Double;
+begin
+  P:=Score.HeroAt(Score.Goal+1.0);Q:=Score.HeroAt(Score.Goal);Need(P.X>Q.X+0.7,'Boss motion suppresses the goal runout');
+  for K:=0 to High(Score.Sections) do begin S:=Score.Sections[K];
+    if S.Mode<>rmBoss then begin T:=S.Start+0.05;while T<Min(S.Finish-0.01,S.Start+2) do begin CheckStride(Score,T,False);T:=T+0.0125;end;Continue;end;
+    Finish:=S.Finish;for I:=S.First to S.Last do if Score.Hits[I].Kind=rhFinish then Finish:=Score.Hits[I].Time;
+    T:=S.Start+0.60;HeroMin:=1E30;HeroMax:=-1E30;BossMin:=1E30;BossMax:=-1E30;
+    while T<Finish-0.002 do begin
+      P:=Score.HeroAt(T);Q:=Score.HeroAt(T+0.001);B:=Score.BossAt(T);After:=Score.BossAt(T+0.001);
+      HeroMin:=Min(HeroMin,P.X);HeroMax:=Max(HeroMax,P.X);BossMin:=Min(BossMin,B.X);BossMax:=Max(BossMax,B.X);
+      Need((P.X>=S.X-0.36) and (P.X<=S.X+1.32) and (B.X>=S.X-0.33) and (B.X<=S.X+1.29),'Body leaves boss arena');Need(B.X-P.X>0.14,'Boss and hero bodies overlap');
+      if (Q.X-P.X)*(After.X-B.X)<-1E-9 then Inc(OpposingChecks);
+      CheckStride(Score,T,False);CheckStride(Score,T,True);T:=T+0.025;
+    end;
+    Need((HeroMax-HeroMin>0.10) and (BossMax-BossMin>0.15),'One side remains static');
+    for I:=S.First to S.Last do begin H:=Score.Hits[I];P:=Score.HeroAt(H.Time);B:=Score.BossAt(H.Time);
+      if H.Kind in [rhBossCut,rhFinish] then begin Need(Abs(B.X-0.027*2.9-H.X)<0.004,'Moving boss armor misses blade');Inc(BodyContactChecks);end;
+      if H.Kind=rhBossCut then begin After:=Score.BossAt(H.Time+0.15);Need(After.X>B.X+0.05,'Boss is not knocked back');end;
+      if H.Kind=rhHurt then begin Need(Abs(H.X-P.X-0.025)<1E-7,'Enemy hit misses moving hero');Q:=Score.HeroAt(H.Time+0.15);Need(Q.X<P.X-0.05,'Hero is not pushed back');Inc(BodyContactChecks);end;
+    end;
+  end;
+end;
+
+procedure Legacy;
+var Version:Integer;A:TJSONArray;J:TJSONObject;R:TRhythmPlanRef;
+  procedure AddStep(Time,Y,Takeoff,StartY,Velocity,Strength:Double);
+  begin J:=TJSONObject.Create;A.AddElement(J);J.AddPair('time',TJSONNumber.Create(Time));J.AddPair('y',TJSONNumber.Create(Y));J.AddPair('takeoff',TJSONNumber.Create(Takeoff));J.AddPair('startY',TJSONNumber.Create(StartY));J.AddPair('velocity',TJSONNumber.Create(Velocity));J.AddPair('strength',TJSONNumber.Create(Strength));end;
+begin
+  Audio:=TRhythmAudio.Create;Audio.Source:=Source;Audio.Key:=THashSHA2.GetHashString('legacy-native');Audio.SourceRevision:=Revision;Audio.Duration:=1;Audio.Sensitivity:=50;
+  Audio.SoundEnd:=1;SetLength(Audio.Hits,1);Audio.Hits[0].Time:=0.7;Audio.Hits[0].Strength:=0.8;
+  for Version:=1 to 5 do begin
+    R:=NewPlanRef(Audio.Key,50,0,rsRunner);R.Version:=Version;R.Key:=THashSHA2.GetHashString('runner-v'+IntToStr(Version)+'|'+Audio.Key+'|50|0');R.SourceRevision:=Revision;
+    Root:=TJSONObject.Create;
+    try Root.AddPair('schema',TJSONNumber.Create(1));Root.AddPair('style','runner');Root.AddPair('version',TJSONNumber.Create(Version));Root.AddPair('key',R.Key);Root.AddPair('source',R.SourceKey);Root.AddPair('sensitivity',TJSONNumber.Create(50));Root.AddPair('direction',TJSONNumber.Create(0));AddPreparedAudio(Root,Audio);
+      Root.AddPair('goal',TJSONNumber.Create(1));Root.AddPair('excluded',TJSONNumber.Create(0));A:=TJSONArray.Create;Root.AddPair('steps',A);AddStep(0,0.72,0,0.72,0,0);AddStep(0.7,0.665,0.045,0.72,-0.055/0.655-0.5*3.8*0.655,0.8);AddStep(1,0.665,0.745,0.665,-0.5*3.8*0.255,0.8);
+      A:=TJSONArray.Create;Root.AddPair('pulses',A);J:=TJSONObject.Create;A.AddElement(J);J.AddPair('time',TJSONNumber.Create(0.7));J.AddPair('strength',TJSONNumber.Create(0.8));J.AddPair('step',TJSONNumber.Create(1));Root.AddPair('setPiecesVersion',TJSONNumber.Create(1));Root.AddPair('setPieces',TJSONArray.Create);Root.AddPair('encounterPolicy','landing-rows-v1');Root.AddPair('encounters',TJSONArray.Create);Root.AddPair('swordRuns',TJSONArray.Create);Root.AddPair('cuts',TJSONArray.Create);Root.AddPair('strikes',TJSONArray.Create);Root.AddPair('blades',TJSONArray.Create);
+      if Version=4 then Root.AddPair('swordPolicy','flat-blade-contact-v1') else Root.AddPair('swordPolicy','rapid-armor-v2');WritePreparedData(Root,R);
+    finally Root.Free;end;
+    Cold:=TRunnerPlan.LoadAudioMetadata(R,Source,0);Restored:=TRunnerPlan.Load(R,Cold,0);Need((Restored.RecipeVersion=Version) and (Restored.Action=nil),'Legacy reader changed');
+    Need((Restored.PulseCount=1) and (Abs(Restored.PositionAt(0.7).Y-0.665)<1E-8),'Legacy moving score changed');
+    State:=TRhythmSettings.Defaults;State.Style:=rsRunner;State.Music:=Source;State.Plan:=R;Need(TRhythmSettings.TryJSON(State.ToJSON,Loaded) and (Loaded.Plan.Key=R.Key),'Legacy settings dropped saved plan');
+    FreeAndNil(Restored);FreeAndNil(Cold);
+  end;FreeAndNil(Audio);
+end;
+begin
+  try
+    OutDir:=TPath.Combine(ExtractFileDir(ParamStr(0)),'ABCFrames');ForceDirectories(OutDir);Source:=TPath.Combine(OutDir,'runner-native.identity');TFile.WriteAllText(Source,'fixed native Runner test source; no PCM',TEncoding.UTF8);
+    Need(GetFileAttributesEx(PChar(Source),GetFileExInfoStandard,@Stamp),'Source stamp');Revision:=IntToHex(Stamp.nFileSizeHigh,8)+IntToHex(Stamp.nFileSizeLow,8)+'-'+IntToHex(Stamp.ftLastWriteTime.dwHighDateTime,8)+IntToHex(Stamp.ftLastWriteTime.dwLowDateTime,8);
+    ConfigureRhythmProduct('SYNC_RhythmRunner','Runner ABC native',rsRunner);Need(StylePlanVersion(rsRunner)=6,'v6 missing');Need((StylePlanVersion(rsBall)=6) and (StylePlanVersion(rsBreakout)=10),'Other style versions changed');Legacy;
+    Image:=TBitmap.Create;Image.PixelFormat:=pf32bit;Image.SetSize(1280,720);Checks:=0;FloorChecks:=0;TimingChecks:=0;WalkChecks:=0;IdleChecks:=0;OpposingChecks:=0;BodyContactChecks:=0;MaxErr:=0;Contacts:=0;Moving:=0;Falls:=0;Both:=0;Bosses:=0;FillChar(Seen,SizeOf(Seen),0);
+    for C:=0 to 15 do begin Writeln('fixture ',C);
+      Audio:=TRhythmAudio.Create;Audio.Source:=Source;Audio.SourceRevision:=Revision;Audio.Key:=THashSHA2.GetHashString('runner-abc-native-'+IntToStr(C));Audio.Sensitivity:=50;
+      Duration:=96;case C of 0:Duration:=0.1;1:Duration:=1;2:Duration:=8;3:Duration:=30;6:Duration:=3000;7:Duration:=0.5;8:Duration:=3;end;
+      Audio.Duration:=Duration;SetLength(Audio.Envelope,Ceil(Duration*100));for I:=0 to High(Audio.Envelope) do Audio.Envelope[I]:=0.5;
+      SetLength(Audio.Hits,20000);Time:=0.18;N:=0;while (Time<Duration-0.05) and (N<20000) do begin
+        Audio.Hits[N].Time:=Time;Audio.Hits[N].Strength:=0.3+0.14*(N mod 6);Inc(N);Gap:=0.70;
+        case C of 3:Gap:=0.20;4:Gap:=0.70;5,6,9,10,11,12:if (Trunc(Time/12) mod 2)=1 then Gap:=0.20;
+          8:Gap:=0.001;13:Gap:=0.44+0.055*Sin(N*1.7);14:Gap:=0.008;15:Gap:=0.50;end;Time:=Time+Gap;
+      end;SetLength(Audio.Hits,N);Audio.UpdateSoundBounds;Frequency:=0;if C in [5,6,9,10,11,12] then Frequency:=100;if C=10 then Frequency:=50;Audio.SetBossFrequency(Frequency);
+      Plan:=TRunnerPlan.Build(Audio);Score:=Plan.Action;Need(Score<>nil,'No ABC plan');Score.Validate;CheckBodyMotion(Score);
+      Pad:=Score.Pads[High(Score.Pads)];Need((Pad.Fall<0) and (Pad.Right>=Score.WorldAt(Score.Goal)+1.8),'Exit floor does not support the visible runout');
+      if C in [5,6,9,10,11,12] then begin Need((Score.ModeCount(rmJump)>0) and (Score.ModeCount(rmSword)>0),'Mixed fixture lacks A/B');Inc(Both);end;
+      if Frequency=0 then Need(Score.ModeCount(rmBoss)=0,'Boss zero ignored');Bosses:=Bosses+Score.ModeCount(rmBoss);
+      for K:=0 to High(Score.Sections) do if Score.Sections[K].Mode=rmBoss then begin
+        Time:=-1;for I:=Score.Sections[K].First to Score.Sections[K].Last do if Score.Hits[I].Kind=rhFinish then Time:=Score.Hits[I].Time;
+        Need(Time>=0,'Boss final impact missing');
+        for I:=Score.Sections[K].First to Score.Sections[K].Last do if Score.Hits[I].Time>Time then Need(Score.Hits[I].Kind=rhPulse,'Boss attacks after defeat');
+      end;
+      if C=13 then Need(Length(Score.Sections)<=2,'Threshold chatter');
+      for I:=0 to High(Score.Hits) do begin H:=Score.Hits[I];Need(H.Time=Audio.Hits[H.Source].Time,'Raw clock changed');Seen[H.Kind]:=True;CheckContactTiming(Score,I);
+        if H.Kind in [rhSword,rhBossCut,rhParry,rhFinish] then begin Need(Score.BladeAt(H.Time,G,Tip),'No blade');Err:=Hypot(Tip.X-H.X,Tip.Y-H.Y);MaxErr:=Max(MaxErr,Err);Need(Err<1E-7,'Contact mismatch');Inc(Contacts);end;
+        if H.Kind=rhDodge then begin Pose:=Score.HeroAt(H.Time);Need(Pose.Airborne and (Pose.Y<RA_GROUND-0.12),'Dodge failed');end;
+        if H.Kind in [rhParry,rhDodge,rhHurt] then begin Need(Score.EnemyBladeAt(H.Time,G,Tip),'Enemy blade missing');Need(Hypot(Tip.X-H.X,Tip.Y-H.Y)<1E-7,'Enemy blade contact mismatch');end;
+      end;
+      for I:=0 to High(Score.Jumps) do begin Jump:=Score.Jumps[I];Pad:=Score.PadAt(Jump.Pad,Jump.Time);Pose:=Score.HeroAt(Jump.Time);Err:=Abs(Pose.Y-Pad.Y);MaxErr:=Max(MaxErr,Err);Need(Err<1E-7,'Foot missed moving pad');
+        O:=Score.PadOffset(Jump.Pad,Jump.Takeoff-0.18);if (Score.Pads[Jump.Pad].AX<>0) or (Score.Pads[Jump.Pad].AY<>0) then begin Need(Hypot(O.X,O.Y)>1E-7,'Destination does not move before takeoff');Inc(Moving);end;
+        Pad:=Score.PadAt(Jump.FromPad,Jump.Takeoff+0.50);Need(Pad.Y>Score.Pads[Jump.FromPad].Y+0.30,'Departed pad did not fall');Inc(Falls);
+        for J:=0 to 32 do begin Time:=Jump.Takeoff+(Jump.Time-Jump.Takeoff)*J/32;Pose:=Score.HeroAt(Time);Need(not IsNan(Pose.X) and not IsNan(Pose.Y) and not IsInfinite(Pose.Y),'Invalid flight');
+          if (J>0) and (J<32) then for K:=Max(0,Jump.FromPad-1) to Min(High(Score.Pads),Jump.Pad+1) do begin Pad:=Score.PadAt(K,Time);if (Pose.X+0.009>=Pad.Left) and (Pose.X-0.009<=Pad.Right) then begin Need(Pose.Y<=Pad.Y+0.001,'Feet penetrate a moving floor');Inc(FloorChecks);end;end;
+        end;
+      end;
+      for I:=1 to High(Score.Sections) do begin Time:=Score.Sections[I].Start;Pose:=Score.HeroAt(Time-1E-7);Other:=Score.HeroAt(Time);Need(Hypot(Pose.X-Other.X,Pose.Y-Other.Y)<1E-5,'ABC boundary teleports');end;
+      Root:=Score.ToJSON;try JSON:=Root.ToJSON;Again:=TRunnerActionPlan.FromJSON(Root,Audio);try CopyRoot:=Again.ToJSON;try if CopyRoot.ToJSON<>JSON then begin TFile.WriteAllText(TPath.Combine(OutDir,'expected.json'),JSON,TEncoding.UTF8);TFile.WriteAllText(TPath.Combine(OutDir,'actual.json'),CopyRoot.ToJSON,TEncoding.UTF8);end;Need(CopyRoot.ToJSON=JSON,'JSON changes score');finally CopyRoot.Free;end;
+        if C=6 then begin K:=0;while (K<Length(Again.Sections)) and (Again.Sections[K].Mode<>rmBoss) do Inc(K);
+          Need(K<Length(Again.Sections),'Long-song boss fixture missing');Dec(Again.Sections[K].Last);Rejected:=False;
+          try Again.Validate;except Rejected:=True;end;Need(Rejected,'Omitted boundary accent accepted');
+        end;
+      finally Again.Free;end;finally Root.Free;end;
+      Ref:=NewPlanRef(Audio.Key,50,0,rsRunner,Frequency+1);Ref.SourceRevision:=Revision;Plan.Save(Ref,Audio);
+      State:=TRhythmSettings.Defaults;State.Style:=rsRunner;State.Music:=Source;State.Plan:=Ref;State.BossFrequency:=Frequency;Need(TRhythmSettings.TryJSON(State.ToJSON,Loaded) and (Loaded.Plan.Key=Ref.Key),'Settings drops ABC');
+      Cold:=TRunnerPlan.LoadAudioMetadata(Ref,Source,0);Need((Length(Cold.PCM)=0) and (Length(Cold.Envelope)=0),'Cold restore needs PCM');Restored:=TRunnerPlan.Load(Ref,Cold,0);Pose:=Restored.Action.HeroAt(Score.Goal/2);O.X:=Restored.PositionAt(Score.Goal/2).X;O.Y:=Restored.PositionAt(Score.Goal/2).Y;Need(Hypot(Pose.X-O.X,Pose.Y-O.Y)<1E-7,'PositionAt does not forward the v6 score');Root:=Restored.Action.ToJSON;try Need(Root.ToJSON=JSON,'Cold changes score');finally Root.Free;end;
+      BadRef:=Ref;BadRef.Digest:=StringOfChar('0',64);Rejected:=False;try BadPlan:=TRunnerPlan.Load(BadRef,Cold,0);except Rejected:=True;end;FreeAndNil(BadPlan);Need(Rejected,'Invalid digest accepted');
+      Scene:=TRunnerAnimation.Create;Scene.Audio:=Cold;Scene.SetReference(Ref);Render:=TAnimationRenderer.Create(Scene,TAnimationImageBank.Create([],0));
+      if C in [5,9] then begin FillChar(Snapped,SizeOf(Snapped),0);for I:=0 to High(Score.Hits) do begin H:=Score.Hits[I];if (H.Kind in [rhLand,rhSword,rhBossCut,rhParry,rhDodge,rhHurt,rhFinish]) and not Snapped[H.Kind] then begin Snap(IntToStr(C)+'-'+IntToStr(Ord(H.Kind)),H.Time);Snapped[H.Kind]:=True;end;end;end;
+      for Backend:=0 to 1 do begin Render.UseD2D:=Backend=1;for I:=0 to 15 do begin Time:=(Score.Goal+1.6)*((I*17) mod 31)/31;Render.Render(Image,Time,0);Need(Scene.Notice='','Scene load');Hash:=ImageHash;Render.Render(Image,Score.Goal-Time,0);Render.Render(Image,Time,0);Need(ImageHash=Hash,'Seek image drift');Inc(Checks);end;end;
+      FreeAndNil(Render);FreeAndNil(Restored);FreeAndNil(Cold);FreeAndNil(Plan);FreeAndNil(Audio);
+    end;
+    for Kind:=rhSword to rhFinish do Need(Seen[Kind],'Missing boss/sword action coverage');Need((Both>=3) and (Bosses>0) and (Moving>0) and (Falls>0),'Coverage incomplete');
+    Rejected:=False;Audio:=TRhythmAudio.Create;Audio.Duration:=1;Plan:=TRunnerPlan.Build(Audio);Need((Plan.EndTime=0) and (Plan.PulseCount=0),'Silence creates actions');FreeAndNil(Plan);
+    try Plan:=TRunnerPlan.Build(Audio,function:Boolean begin Result:=True;end);except on E:EAbort do Rejected:=True;end;Need(Rejected,'Cancel ignored');
+    SetLength(Audio.Hits,100001);Rejected:=False;try Plan:=TRunnerPlan.Build(Audio);except Rejected:=True;end;Need(Rejected,'Source cap ignored');FreeAndNil(Audio);
+    Need((WalkChecks>0) and (IdleChecks>0) and (OpposingChecks>0) and (BodyContactChecks>0),'Motion coverage missing');
+    Writeln(Format('Runner motion: stance %d / idle %d / opposing %d / body contacts %d',[WalkChecks,IdleChecks,OpposingChecks,BodyContactChecks]));
+    TFile.WriteAllText(TPath.Combine(OutDir,'motion-results.txt'),Format('stance=%d idle=%d opposing=%d bodyContacts=%d',[WalkChecks,IdleChecks,OpposingChecks,BodyContactChecks]),TEncoding.UTF8);
+    Writeln(Format('Runner ABC PASS: 16 fixtures; legacy 1..5; %d seeks; %d blade contacts; %d moving landings; %d falls; mixed A/B %d; bosses %d; floor samples %d; timing samples %d; max error %.12g',[Checks,Contacts,Moving,Falls,Both,Bosses,FloorChecks,TimingChecks,MaxErr]));
+    TFile.WriteAllText(TPath.Combine(OutDir,'results.txt'),Format('fixtures=16 legacy=1..5 seeks=%d contacts=%d moving=%d falls=%d mixed=%d bosses=%d floorSamples=%d timingSamples=%d maxError=%.12g',[Checks,Contacts,Moving,Falls,Both,Bosses,FloorChecks,TimingChecks,MaxErr]),TEncoding.UTF8);
   except on E:Exception do begin Writeln(E.ClassName+': '+E.Message);ExitCode:=1;end;end;
-  Image.Free;Renderer.Free;Again.Free;Plan.Free;Meta.Free;Audio.Free;
+  PNG.Free;Image.Free;Render.Free;Restored.Free;Plan.Free;Cold.Free;Audio.Free;
 end.

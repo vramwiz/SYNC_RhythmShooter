@@ -1,4 +1,5 @@
 ﻿unit RhythmProduct;
+// 製品識別と既定スタイル・設定名を管理し、製品間の保存先を分ける。
 interface
 uses RhythmStyles;
 procedure ConfigureRhythmProduct(const Id,Title:string;InitialStyle:TRhythmStyle);

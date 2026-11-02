@@ -1,4 +1,5 @@
 ﻿unit RhythmPaths;
+// モジュール・素材・音キャッシュ・設定・計画の保存先を解決する。
 
 interface
 

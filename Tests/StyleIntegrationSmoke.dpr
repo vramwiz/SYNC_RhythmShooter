@@ -3,21 +3,36 @@
 uses Winapi.Windows,System.SysUtils,System.Math,System.Classes,System.Hash,System.IOUtils,System.JSON,
   Vcl.Graphics,Vcl.Imaging.pngimage,AviUtl2FilterTypes,RhythmAudio,RhythmStyles,RhythmProduct,RhythmPlanRef,RhythmSettings,
   RhythmPrepare,RhythmScene,RhythmBallPlan,RhythmFireworksPlan,RhythmRunnerPlan,RhythmBreakoutPlan,
-  RhythmRacePlan,RhythmBombPlan,RhythmFightingPlan,RhythmMiningPlan,RhythmTrainPlan,RhythmNavalPlan;
+  RhythmPaths,RhythmMotion,RhythmRacePlan,RhythmBombPlan,RhythmFightingPlan,RhythmMiningPlan,RhythmTrainPlan,RhythmNavalPlan;
 type TInitPlugin=function(Version:DWORD):Byte;cdecl;
  TDonePlugin=procedure;cdecl;
  TGetPlugin=function:PFILTER_PLUGIN_TABLE;cdecl;
 var Captured:TBytes;CapturedWidth,CapturedHeight:Integer;
 var Root,Source,Revision,Expected,Actual:string;Stamp:TWin32FileAttributeData;Style:TRhythmStyle;
   Audio,Cold:TRhythmAudio;Worker:TRhythmPrepareThread;Ref:TRhythmPlanRef;Renderer:TRhythmRenderer;
-  Image:TBitmap;Settings,Restored:TRhythmSettings;Backend,J,Checks,HostChecks:Integer;T:Double;PNG:TPngImage;
+  Image:TBitmap;Race:TRacePlan;Settings,Restored:TRhythmSettings;Backend,J,Checks,HostChecks,MusicChecks:Integer;T:Double;PNG:TPngImage;
 procedure Need(V:Boolean;const S:string);begin if not V then raise Exception.Create(S);end;
 function MakeAudio:TRhythmAudio;
 var I:Integer;Time,Gap:Double;
 begin
  Result:=TRhythmAudio.Create;Result.Source:=Source;Result.Key:=THashSHA2.GetHashString('shared-preparation-native-v1');Result.Sensitivity:=50;Result.SourceRevision:=Revision;Result.Duration:=100;
  SetLength(Result.Envelope,10000);for I:=0 to 9499 do if ((I>2200) and (I<4300)) or ((I>6500) and (I<8500)) then Result.Envelope[I]:=0.85 else Result.Envelope[I]:=0.16;
- SetLength(Result.Hits,3000);I:=0;Time:=0.5;while Time<94 do begin Result.Hits[I].Time:=Time;Result.Hits[I].Strength:=0.28+(I mod 7)*0.12;Inc(I);Gap:=0.32;if ((Time>22) and (Time<43)) or ((Time>65) and (Time<85)) then Gap:=0.10;Time:=Time+Gap;end;SetLength(Result.Hits,I);Result.UpdateSoundBounds;
+ SetLength(Result.Hits,3000);I:=0;Time:=0.5;while Time<94 do begin Result.Hits[I].Time:=Time;Result.Hits[I].Strength:=0.28+(I mod 7)*0.12;Result.Hits[I].Lane:=0.5;Result.Hits[I].Flight:=ShotFlightTime(Time,0.5,Result.Hits[I].Strength);Inc(I);Gap:=0.32;if ((Time>22) and (Time<43)) or ((Time>65) and (Time<85)) then Gap:=0.10;Time:=Time+Gap;end;SetLength(Result.Hits,I);Result.UpdateSoundBounds;
+end;
+procedure SaveShootingFixture;
+var O,Index,Hit:TJSONObject;Envelope,Hits:TJSONArray;I:Integer;
+begin
+ O:=TJSONObject.Create;Index:=TJSONObject.Create;
+ try
+  O.AddPair('schema',TJSONNumber.Create(1));O.AddPair('analysisVersion',TJSONNumber.Create(2));
+  O.AddPair('sourceSHA256',Audio.Key);O.AddPair('sensitivity',TJSONNumber.Create(50));O.AddPair('duration',TJSONNumber.Create(Audio.Duration));
+  Envelope:=TJSONArray.Create;O.AddPair('envelope',Envelope);for I:=0 to High(Audio.Envelope) do Envelope.Add(Audio.Envelope[I]);
+  Hits:=TJSONArray.Create;O.AddPair('hits',Hits);for I:=0 to High(Audio.Hits) do begin Hit:=TJSONObject.Create;Hits.AddElement(Hit);
+   Hit.AddPair('time',TJSONNumber.Create(Audio.Hits[I].Time));Hit.AddPair('strength',TJSONNumber.Create(Audio.Hits[I].Strength));Hit.AddPair('lane',TJSONNumber.Create(Audio.Hits[I].Lane));end;
+  TFile.WriteAllText(TPath.Combine(CacheFolder,Audio.Key+'-s50-events-v1.json'),O.ToJSON,TEncoding.UTF8);
+  Index.AddPair('sourceSHA256',Audio.Key);Index.AddPair('sourceStamp',Revision);
+  TFile.WriteAllText(TPath.Combine(CacheFolder,THashSHA2.GetHashString(LowerCase(ExpandFileName(Source)))+'-s50-index.json'),Index.ToJSON,TEncoding.UTF8);
+ finally O.Free;Index.Free;end;
 end;
 function ColdRead:TRhythmAudio;
 begin
@@ -42,30 +57,89 @@ begin case Style of rsBall:Result:='SYNC_RhythmBall';rsFireworks:Result:='SYNC_R
 procedure CaptureHost(Buffer:PPIXEL_RGBA;W,H:Integer);cdecl;
 begin CapturedWidth:=W;CapturedHeight:=H;SetLength(Captured,W*H*4);Move(Buffer^,Captured[0],Length(Captured));end;
 procedure VerifyHost;
-var Lib:HMODULE;Init:TInitPlugin;Done:TDonePlugin;GetTable:TGetPlugin;Table:PFILTER_PLUGIN_TABLE;Json:PFILTER_ITEM_STRING;
- Item:Pointer;I,X,Y,K:Integer;Kind,JsonText,Path,Config:string;Scene:TSCENE_INFO;Obj:TOBJECT_INFO;Video:TFILTER_PROC_VIDEO;H:THashSHA2;FirstHash,SecondHash:string;Row:PByte;Expected:TBytes;
+var Lib:HMODULE;Init:TInitPlugin;Done:TDonePlugin;GetTable:TGetPlugin;Table:PFILTER_PLUGIN_TABLE;
+ Json:PFILTER_ITEM_STRING;Music:PFILTER_ITEM_FILE;Item:Pointer;I,X,Y,K,Rules:Integer;
+ Kind,JsonText,MusicText,Path,Config,FirstHash,SecondHash,OriginalJSON:string;
+ Scene:TSCENE_INFO;Obj:TOBJECT_INFO;Video:TFILTER_PROC_VIDEO;Hash:THashSHA2;Row:PByte;
+ Expected,OriginalSource:TBytes;FileHandle:THandle;SavedStamp:TWin32FileAttributeData;
+ procedure FindItems(Modern:Boolean);
+ var MusicIndex,GroupIndex,N:Integer;Name:string;
+ begin
+  Json:=nil;Music:=nil;Rules:=0;MusicIndex:=-1;GroupIndex:=99;
+  for N:=0 to 12 do begin
+   Item:=PPointer(NativeUInt(Table.Items)+NativeUInt(N*SizeOf(Pointer)))^;if Item=nil then Break;
+   Kind:=string(PWideChar(PPointer(Item)^));Name:=string(PWideChar(PPointer(NativeUInt(Item)+SizeOf(Pointer))^));
+   if Kind='string' then Json:=PFILTER_ITEM_STRING(Item);
+   if Kind='file' then begin Music:=PFILTER_ITEM_FILE(Item);MusicIndex:=N;Need(Name='音楽ファイル','SDK file label');end;
+   if Kind='group' then GroupIndex:=N;
+   if Kind='hiderule' then begin Inc(Rules);Need(Name<>'音楽ファイル','Music must remain visible');end;
+  end;
+  Need((Json<>nil) and (Music<>nil),'DLL JSON/file items');
+  Need((MusicIndex=3) and (MusicIndex<GroupIndex),'Music visible before legacy group');
+  if Modern then Need(Rules=3,'Modern hidden compatibility values') else Need(Rules=0,'Legacy host fallback');
+ end;
+ procedure Frame(const LabelText:string;Blank:Boolean);
+ var B:Byte;
+ begin
+  Need(Table.Func_Proc_Video(@Video)=1,LabelText+' callback');
+  Need((CapturedWidth=Image.Width) and (CapturedHeight=Image.Height),LabelText+' dimensions');
+  if Blank then for B in Captured do if B<>0 then Need(False,LabelText+' must be transparent');
+  Inc(MusicChecks);
+ end;
+ function CapturedHash:string;
+ begin Hash:=THashSHA2.Create;Hash.Update(Captured);Result:=Hash.HashAsString;end;
 begin
- if (ParamCount=0) or (Style=rsShooting) then Exit;
+ if ParamCount=0 then Exit;
+ if (ParamCount>2) and (StyleId(Style)<>ParamStr(3)) then Exit;
  Config:='Release';if ParamCount>1 then Config:=ParamStr(2);Need((Config='Debug') or (Config='Release'),'DLL test configuration');
- Path:=TPath.Combine(ParamStr(1),ProductForStyle+'\'+Config+'\'+ProductForStyle+'.dll');Lib:=LoadLibraryEx(PChar(Path),0,LOAD_WITH_ALTERED_SEARCH_PATH);if Lib=0 then RaiseLastOSError;
+ Path:=TPath.Combine(ParamStr(1),ProductForStyle+'\'+Config+'\'+ProductForStyle+'.dll');
+ Lib:=LoadLibraryEx(PChar(Path),0,LOAD_WITH_ALTERED_SEARCH_PATH);if Lib=0 then RaiseLastOSError;
  try
-  @Init:=GetProcAddress(Lib,'InitializePlugin');@Done:=GetProcAddress(Lib,'UninitializePlugin');@GetTable:=GetProcAddress(Lib,'GetFilterPluginTable');Need(Assigned(Init) and Assigned(Done) and Assigned(GetTable),'DLL exports');Need(Init(0)=1,'DLL initialization');
+  @Init:=GetProcAddress(Lib,'InitializePlugin');@Done:=GetProcAddress(Lib,'UninitializePlugin');@GetTable:=GetProcAddress(Lib,'GetFilterPluginTable');
+  Need(Assigned(Init) and Assigned(Done) and Assigned(GetTable),'DLL exports');Need(Init(2011500)=1,'DLL initialization');
   try
-   Table:=GetTable();Need((Table<>nil) and Assigned(Table.Func_Proc_Video),'DLL filter callback');Json:=nil;
-   for I:=0 to 12 do begin Item:=PPointer(NativeUInt(Table.Items)+NativeUInt(I*SizeOf(Pointer)))^;if Item=nil then Break;Kind:=string(PWideChar(PPointer(Item)^));if Kind='string' then Json:=PFILTER_ITEM_STRING(Item);end;
-   Need(Json<>nil,'DLL JSON item');JsonText:=Settings.ToJSON;Json.Value:=PWideChar(JsonText);
-   FillChar(Scene,SizeOf(Scene),0);Scene.Width:=Image.Width;Scene.Height:=Image.Height;Scene.Rate:=60;Scene.Scale:=1;FillChar(Obj,SizeOf(Obj),0);Obj.Width:=Image.Width;Obj.Height:=Image.Height;Obj.Time:=32.3;
+   Table:=GetTable();Need((Table<>nil) and Assigned(Table.Func_Proc_Video),'DLL filter callback');FindItems(True);
+   Settings.HostMusic:=True;JsonText:=Settings.ToJSON;OriginalJSON:=JsonText;Json.Value:=PWideChar(JsonText);
+   MusicText:=Source;Music.Value:=PWideChar(MusicText);
+   FillChar(Scene,SizeOf(Scene),0);Scene.Width:=Image.Width;Scene.Height:=Image.Height;Scene.Rate:=60;Scene.Scale:=1;
+   FillChar(Obj,SizeOf(Obj),0);Obj.Width:=Image.Width;Obj.Height:=Image.Height;Obj.Time:=32.3;
    FillChar(Video,SizeOf(Video),0);Video.Scene:=@Scene;Video.Object_:=@Obj;Video.SetImageData:=CaptureHost;
    Renderer.UseD2D:=True;Renderer.Render(Image,Cold,Obj.Time,0);SetLength(Expected,Image.Width*Image.Height*4);K:=0;
-   for Y:=0 to Image.Height-1 do begin Row:=Image.ScanLine[Y];for X:=0 to Image.Width-1 do begin Expected[K]:=Row[2];Expected[K+1]:=Row[1];Expected[K+2]:=Row[0];Expected[K+3]:=255;Inc(K,4);Inc(Row,4);end;end;
-   H:=THashSHA2.Create;H.Update(Expected);FirstHash:=H.HashAsString;
-   Need(Table.Func_Proc_Video(@Video)=1,'DLL cold frame');Need((CapturedWidth=Image.Width) and (CapturedHeight=Image.Height),'DLL dimensions');H:=THashSHA2.Create;H.Update(Captured);SecondHash:=H.HashAsString;Need(FirstHash=SecondHash,'DLL/preview pixel mismatch '+StyleId(Style));
-   Obj.Time:=63.1;Need(Table.Func_Proc_Video(@Video)=1,'DLL other frame');Obj.Time:=32.3;Need(Table.Func_Proc_Video(@Video)=1,'DLL return seek');H:=THashSHA2.Create;H.Update(Captured);Need(H.HashAsString=SecondHash,'DLL seek drift');Inc(HostChecks);WriteLn('DLL cold/preview/seek PASS: ',ProductForStyle);
+   for Y:=0 to Image.Height-1 do begin Row:=Image.ScanLine[Y];for X:=0 to Image.Width-1 do begin
+    Expected[K]:=Row[2];Expected[K+1]:=Row[1];Expected[K+2]:=Row[0];Expected[K+3]:=255;Inc(K,4);Inc(Row,4);end;end;
+   Hash:=THashSHA2.Create;Hash.Update(Expected);FirstHash:=Hash.HashAsString;
+   Frame('DLL cold frame',False);SecondHash:=CapturedHash;Need(FirstHash=SecondHash,'DLL/preview pixel mismatch '+StyleId(Style));
+   Obj.Time:=63.1;Frame('DLL other frame',False);Obj.Time:=32.3;Frame('DLL return seek',False);Need(CapturedHash=SecondHash,'DLL seek drift');
+   MusicText:=Source+'.different';Music.Value:=PWideChar(MusicText);Frame('Changed file with old plan',True);
+   MusicText:='';Music.Value:=PWideChar(MusicText);Frame('Cleared host file',True);
+   MusicText:=Source;Music.Value:=PWideChar(MusicText);Frame('Same prepared file reselected',False);Need(CapturedHash=SecondHash,'Re-select prepared file');
+   JsonText:='';Json.Value:=PWideChar(JsonText);Frame('Unprepared existing file',True);
+   JsonText:=OriginalJSON;Json.Value:=PWideChar(JsonText);Frame('Saved AUP2 restored',False);Need(CapturedHash=SecondHash,'Saved restore');
+   Settings.HostMusic:=False;JsonText:=Settings.ToJSON;Json.Value:=PWideChar(JsonText);
+   Frame('Legacy JSON same host file',False);Need(CapturedHash=SecondHash,'Legacy JSON restore');
+   MusicText:='';Music.Value:=PWideChar(MusicText);Frame('Legacy JSON awaiting host migration',True);Need(string(Json.Value)=JsonText,'Rendering must not mutate legacy JSON');
+   MusicText:=Source;Music.Value:=PWideChar(MusicText);Frame('Restored before source overwrite',False);
+   OriginalSource:=TFile.ReadAllBytes(Source);Need(GetFileAttributesEx(PChar(Source),GetFileExInfoStandard,@SavedStamp),'Source timestamp');
+   try
+    TFile.AppendAllText(Source,'changed in place',TEncoding.UTF8);Frame('Source overwritten in place',True);
+   finally
+    TFile.WriteAllBytes(Source,OriginalSource);FileHandle:=CreateFile(PChar(Source),FILE_WRITE_ATTRIBUTES,FILE_SHARE_READ or FILE_SHARE_WRITE,nil,OPEN_EXISTING,0,0);
+    Need(FileHandle<>INVALID_HANDLE_VALUE,'Restore source handle');try Need(SetFileTime(FileHandle,nil,nil,@SavedStamp.ftLastWriteTime),'Restore source stamp');finally CloseHandle(FileHandle);end;
+   end;
+   MusicText:='';Music.Value:=PWideChar(MusicText);Frame('Source revision reset',True);
+   MusicText:=Source;Music.Value:=PWideChar(MusicText);Frame('Source revision restored',False);Need(CapturedHash=SecondHash,'Source revision restore');
+   Inc(HostChecks);WriteLn('DLL host music/cold/preview/seek PASS: ',ProductForStyle);
+  finally Done();end;
+  Need(Init(0)=1,'Old host initialization');try Table:=GetTable();FindItems(False);
+   MusicText:=Source;Music.Value:=PWideChar(MusicText);JsonText:=OriginalJSON;Json.Value:=PWideChar(JsonText);
+   Frame('Old host prepared',False);Need(CapturedHash=SecondHash,'Old host prepared equality');
+   MusicText:='';Music.Value:=PWideChar(MusicText);Frame('Old host file cleared',True);
   finally Done();end;
  finally FreeLibrary(Lib);end;
 end;
+
 begin
- Audio:=nil;Cold:=nil;Worker:=nil;Renderer:=nil;Image:=nil;PNG:=nil;Checks:=0;HostChecks:=0;
+ Audio:=nil;Cold:=nil;Worker:=nil;Renderer:=nil;Image:=nil;Race:=nil;PNG:=nil;Checks:=0;HostChecks:=0;MusicChecks:=0;
  try
   Root:=TPath.Combine(ExtractFileDir(ParamStr(0)),'Evidence');ForceDirectories(Root);Source:=TPath.Combine(Root,'shared-source.identity');TFile.WriteAllText(Source,'Synthetic events only. No sound playback.',TEncoding.UTF8);
   Need(GetFileAttributesEx(PChar(Source),GetFileExInfoStandard,@Stamp),'Source stat');Revision:=IntToHex(Stamp.nFileSizeHigh,8)+IntToHex(Stamp.nFileSizeLow,8)+'-'+IntToHex(Stamp.ftLastWriteTime.dwHighDateTime,8)+IntToHex(Stamp.ftLastWriteTime.dwLowDateTime,8);
@@ -76,7 +150,10 @@ begin
    Need(Worker.Error='','Prepare '+StyleId(Style)+': '+Worker.Error);Ref:=Worker.Plan;Audio:=Worker.TakeAudio;WriteLn(StyleId(Style),' v',Ref.Version,': ',Worker.Summary);FreeAndNil(Worker);
    Settings:=TRhythmSettings.Defaults;Settings.Style:=Style;Settings.Music:=Source;Settings.BossFrequency:=100;Settings.FireworksRichness:=70;Settings.Plan:=Ref;
    Need(TRhythmSettings.TryJSON(Settings.ToJSON,Restored),'Settings parse');Need((Restored.Style=Style) and (Restored.Plan.Key=Ref.Key) and (Restored.BossFrequency=100),'Settings style/frequency/plan');
-   if Style=rsShooting then Cold:=MakeAudio else Cold:=ColdRead;
+   Restored.BindHostMusic(UpperCase(Source));Need(Restored.Plan.Key=Ref.Key,'Same path preserves plan');
+   Restored.BindHostMusic(Source+'.new');Need((Restored.Plan.Key='') and Restored.HostMusic,'Changed host file invalidates plan');
+   Actual:=Restored.ToJSON;Need(TRhythmSettings.TryJSON(Actual,Restored) and Restored.HostMusic,'Host authority JSON roundtrip');
+   if Style=rsShooting then begin SaveShootingFixture;Cold:=LoadCachedRhythmAudio(Source,50,False);Need(Cold<>nil,'Shooting PCM-free cache fixture');end else Cold:=ColdRead;
    Need(Length(Cold.PCM)=0,'PCM-free restore');Renderer:=TRhythmRenderer.Create;Renderer.ConfigureStyle(Style,Ref,100);
    for Backend:=0 to 1 do begin
     Renderer.UseD2D:=Backend=1;
@@ -87,9 +164,18 @@ begin
    end;
    VerifyHost;
    Renderer.Render(Image,Cold,32.3,0);PNG:=TPngImage.Create;PNG.Assign(Image);PNG.SaveToFile(TPath.Combine(Root,StyleId(Style)+'.png'));FreeAndNil(PNG);
+   if Style=rsRace then begin
+    Race:=TRacePlan.Load(Ref,Cold,0);try
+     Need(Length(Race.Crash.Shunts)>0,'Race boss shunt coverage');
+     for J:=0 to 2 do begin T:=Race.Crash.Shunts[Length(Race.Crash.Shunts) div 2].Time+(J-1)*0.08;
+      Renderer.Render(Image,Cold,T,0);PNG:=TPngImage.Create;PNG.Assign(Image);
+      PNG.SaveToFile(TPath.Combine(Root,'race-shunt-'+IntToStr(J)+'.png'));FreeAndNil(PNG);
+     end;
+    finally FreeAndNil(Race);end;
+   end;
    FreeAndNil(Renderer);FreeAndNil(Cold);FreeAndNil(Audio);
   end;
-  TFile.WriteAllText(TPath.Combine(Root,'result.json'),Format('{"styles":11,"warmColdSeekChecks":%d,"hostDLLChecks":%d,"backends":["GDI","Direct2D"],"audioPlayback":false}',[Checks,HostChecks]),TEncoding.UTF8);WriteLn('Shared preparation/factory/settings/cold/seek PASS: ',Checks);
+  TFile.WriteAllText(TPath.Combine(Root,'result.json'),Format('{"styles":11,"warmColdSeekChecks":%d,"hostDLLChecks":%d,"hostMusicChecks":%d,"backends":["GDI","Direct2D"],"audioPlayback":false}',[Checks,HostChecks,MusicChecks]),TEncoding.UTF8);WriteLn('Shared preparation/factory/settings/cold/seek PASS: ',Checks);
  except on E:Exception do begin WriteLn(E.ClassName,': ',E.Message);ExitCode:=1;end;end;
- PNG.Free;Renderer.Free;Worker.Free;Cold.Free;Audio.Free;Image.Free;
+ PNG.Free;Race.Free;Renderer.Free;Worker.Free;Cold.Free;Audio.Free;Image.Free;
 end.

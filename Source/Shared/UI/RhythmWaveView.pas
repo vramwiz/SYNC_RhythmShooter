@@ -1,4 +1,5 @@
 ﻿unit RhythmWaveView;
+// 音解析の包絡線と時刻を表示し、シーク位置を換算する。
 interface
 uses System.Classes, Vcl.Controls, Vcl.Graphics, RhythmAudio, Winapi.Messages;
 type

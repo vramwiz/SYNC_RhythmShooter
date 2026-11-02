@@ -1,4 +1,5 @@
 ﻿unit RhythmAudioAnalysis;
+// PCMから包絡線とアクセントを検出する純粋解析。ファイルI/Oや描画は扱わない。
 {$POINTERMATH ON}
 interface
 uses System.SysUtils;
