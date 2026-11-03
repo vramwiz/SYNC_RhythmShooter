@@ -27,6 +27,8 @@ type
     procedure Circle(X,Y,Radius:Double;Color:TColor;Filled:Boolean;Stroke:Double=1;Opacity:Double=1);
     procedure Line(X1,Y1,X2,Y2:Double;Color:TColor;Stroke:Double=1;Opacity:Double=1);
     procedure FillRect(X1,Y1,X2,Y2:Double;Color:TColor;Opacity:Double=1);
+    // 不透明な四辺形だけを追加。既存プリミティブ・alpha経路には触れない。
+    procedure FillQuad(const A,B,C,D:TPointF;Color:TColor);
     procedure ApplyChoices(const Choices:array of TRhythmDesign;Force:Boolean=False);
     property Images:TAnimationImageBank read FImages;
     property Canvas:TCanvas read GetCanvas;
@@ -96,6 +98,15 @@ begin
   if FD2DActive then begin FD2D.FillRect(X1,Y1,X2,Y2,Color,Opacity);Exit;end;
   if Opacity<1 then begin BlendPrimitive(0,X1,Y1,X2,Y2,1,Color,Opacity);Exit;end;
   Canvas.Brush.Style:=bsSolid;Canvas.Brush.Color:=Color;Canvas.FillRect(Rect(Round(X1),Round(Y1),Round(X2),Round(Y2)));
+end;
+procedure TAnimationRenderSurface.FillQuad(const A,B,C,D:TPointF;Color:TColor);
+var Points:array[0..3] of TPoint;
+begin
+  if FD2DActive then begin FD2D.FillQuad(A,B,C,D,Color);Exit;end;
+  Points[0]:=Point(Round(A.X),Round(A.Y));Points[1]:=Point(Round(B.X),Round(B.Y));
+  Points[2]:=Point(Round(C.X),Round(C.Y));Points[3]:=Point(Round(D.X),Round(D.Y));
+  Canvas.Pen.Style:=psClear;Canvas.Brush.Style:=bsSolid;Canvas.Brush.Color:=Color;
+  Canvas.Polygon(Points);Canvas.Pen.Style:=psSolid;
 end;
 procedure TAnimationRenderSurface.BlendPrimitive(Kind:Integer;X1,Y1,X2,Y2,Stroke:Double;Color:TColor;Opacity:Double);
 type PPixel=^TPixel;TPixel=packed record B,G,R,A:Byte;end;

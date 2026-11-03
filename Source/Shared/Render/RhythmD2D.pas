@@ -20,6 +20,8 @@ type
     procedure Circle(X,Y,Radius:Single;Color:TColor;Filled:Boolean;Stroke:Single=1;Opacity:Single=1);
     procedure Line(X1,Y1,X2,Y2:Single;Color:TColor;Stroke:Single=1;Opacity:Single=1);
     procedure FillRect(X1,Y1,X2,Y2:Single;Color:TColor;Opacity:Single=1);
+    // 不透明な車体面。線の重ね描きによる面外へのはみ出し・継ぎ目を作らない。
+    procedure FillQuad(const A,B,C,D:TPointF;Color:TColor);
     procedure Star(X,Y,Radius,Trail:Single;Layer,Direction:Integer);
   end;
 implementation
@@ -111,6 +113,24 @@ var Bounds:TD2D1RectF;C:TD2D1ColorF;V:Longint;
 begin
   V:=ColorToRGB(Color);C.r:=(V and 255)/255;C.g:=((V shr 8) and 255)/255;C.b:=((V shr 16) and 255)/255;C.a:=Opacity;FBrush.SetColor(C);
   Bounds.left:=X1;Bounds.top:=Y1;Bounds.right:=X2;Bounds.bottom:=Y2;FTarget.FillRectangle(Bounds,FBrush);
+end;
+procedure TRhythmD2D.FillQuad(const A,B,C,D:TPointF;Color:TColor);
+var Geometry:ID2D1PathGeometry;Sink:ID2D1GeometrySink;Point:TD2D1Point2F;
+  Tint:TD2D1ColorF;V:Longint;Mode:TD2D1AntialiasMode;
+begin
+  if FFactory.CreatePathGeometry(Geometry)<0 then raise Exception.Create('D2D face geometry unavailable');
+  if Geometry.Open(Sink)<0 then raise Exception.Create('D2D face sink unavailable');
+  Point.x:=A.X;Point.y:=A.Y;Sink.BeginFigure(Point,D2D1_FIGURE_BEGIN_FILLED);
+  Point.x:=B.X;Point.y:=B.Y;Sink.AddLine(Point);
+  Point.x:=C.X;Point.y:=C.Y;Sink.AddLine(Point);
+  Point.x:=D.X;Point.y:=D.Y;Sink.AddLine(Point);
+  Sink.EndFigure(D2D1_FIGURE_END_CLOSED);
+  if Sink.Close<0 then raise Exception.Create('D2D face geometry invalid');
+  V:=ColorToRGB(Color);Tint.r:=(V and 255)/255;Tint.g:=((V shr 8) and 255)/255;Tint.b:=((V shr 16) and 255)/255;Tint.a:=1;
+  FBrush.SetColor(Tint);
+  // 面同士の共有辺に半透明の隙間を残さない。既存の線・円のAA設定は戻す。
+  Mode:=FTarget.GetAntialiasMode;FTarget.SetAntialiasMode(D2D1_ANTIALIAS_MODE_ALIASED);
+  try FTarget.FillGeometry(Geometry,FBrush);finally FTarget.SetAntialiasMode(Mode);end;
 end;
 procedure TRhythmD2D.Star(X,Y,Radius,Trail:Single;Layer,Direction:Integer);
 var Shape:TD2D1Ellipse;Bounds:TD2D1RectF;

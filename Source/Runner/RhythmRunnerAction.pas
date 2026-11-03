@@ -1,5 +1,5 @@
 ﻿unit RhythmRunnerAction;
-// Runner v6. Immutable A/B/C score; rendering and cold restore never re-plan.
+// Runner v6/v7. Immutable A/B/C score; rendering and cold restore never re-plan.
 interface
 uses System.SysUtils,System.JSON,RhythmAudio;
 const
@@ -63,7 +63,7 @@ type
     Jumps:TArray<TRunJump>;
     Hits:TArray<TRunHit>;
     Goal:Double;
-    Frequency,SourceCount,Excluded:Integer;
+    Version,Frequency,SourceCount,Excluded:Integer;
   private
     procedure MakeMotion;
     procedure IndexActions;
@@ -618,10 +618,9 @@ var
   J:TRunJump;
   H:TRunHit;
   Cue:TRhythmBossCue;
-  I,K,N,Q,V,From,BI,GroupFirst,HP,HeroHP,Cursor:Integer;
-  Mode,Want:TRunMode;
-  Last,Gap,Median,Start,Finish,X,D,T,Y,KillTime:Double;
-  Gaps:TArray<Double>;
+  I,K,N,Q,V,From,BI,GroupFirst,HP,HeroHP,Cursor,Best,Probe:Integer;
+  Last,Start,Finish,X,D,T,Y,KillTime,JumpSeconds,SwordSeconds,JumpRun,SwordRun,ShowTime:Double;
+  Runway:Boolean;
   procedure Check;
   begin if Assigned(Cancel) and Cancel() then Abort;
   end;
@@ -634,8 +633,75 @@ var
     S.Mode:=M;
     S.First:=-1;
     S.Last:=-1;
-    Sec.Add(S);
+    if (Sec.Count>0) and (M<>rmBoss) and (Sec[Sec.Count-1].Mode=M) and
+      (Abs(Sec[Sec.Count-1].Finish-A)<1E-8) then begin
+      S:=Sec[Sec.Count-1];S.Finish:=Z;Sec[Sec.Count-1]:=S;
+    end else Sec.Add(S);
     if M<>rmBoss then X:=X+RA_SPEED*(Z-A);
+  end;
+  function FirstAt(Time:Double):Integer;
+  var L,R,M:Integer;
+  begin L:=0;R:=Length(Audio.Hits);
+    while L<R do begin M:=(L+R) div 2;if Audio.Hits[M].Time<Time then L:=M+1 else R:=M;end;
+    Result:=L;
+  end;
+  procedure AddPhrases(A,Z:Double);
+  var EndAt,WindowEnd,Median,Gap,LastLand,Span,Total:Double;
+    First,After,J,Count,Candidates:Integer;Gaps:TArray<Double>;Want:TRunMode;
+    ShortPair:Boolean;
+  begin
+    ShortPair:=(Z-A>=6) and (Z-A<=12);
+    while A<Z-1E-8 do begin Check;
+      // Original accents describe a phrase, not a per-note mode switch.
+      First:=FirstAt(A);After:=FirstAt(Min(Z,A+8));SetLength(Gaps,Max(0,After-First));Count:=0;
+      for J:=First+1 to After-1 do begin Gap:=Audio.Hits[J].Time-Audio.Hits[J-1].Time;
+        if Gap>1E-7 then begin Gaps[Count]:=Gap;Inc(Count);end;
+      end;
+      SetLength(Gaps,Count);Median:=1;
+      if Count>0 then begin TArray.Sort<Double>(Gaps);Median:=Gaps[Count div 2];end;
+      EndAt:=Min(Z,A+EnsureRange(16*Median,6.0,9.6));
+      if ShortPair and Runway then EndAt:=(A+Z)/2;
+      J:=Audio.NearestHit(EndAt);WindowEnd:=EndAt;
+      if (J>=0) and (Abs(Audio.Hits[J].Time-EndAt)<=0.60) and
+        (Audio.Hits[J].Time>=A+3) and (Audio.Hits[J].Time<Z) then WindowEnd:=Audio.Hits[J].Time;
+      if Z-WindowEnd<3 then WindowEnd:=Z;
+      if ShortPair and Runway then WindowEnd:=EnsureRange(WindowEnd,A+3,Z-3);
+      Span:=WindowEnd-A;After:=FirstAt(WindowEnd-0.95);Candidates:=0;LastLand:=A;
+      for J:=First to After-1 do if Audio.Hits[J].Time-LastLand>=0.66 then begin
+        Inc(Candidates);LastLand:=Audio.Hits[J].Time;
+      end;
+      Total:=JumpSeconds+SwordSeconds;Want:=rmSword;
+      if Median>=0.52 then begin
+        Want:=rmJump;
+        if (JumpRun>=12) and (After-First>=5) then Want:=rmSword;
+      end else if Median<=0.38 then begin
+        if (SwordRun>=6) and (JumpSeconds<0.36*(Total+Span)) and (Candidates>=2) then Want:=rmJump;
+        if JumpRun>=6 then Want:=rmSword;
+      end else begin
+        if (JumpSeconds<0.52*(Total+Span)) and (Candidates>=2) then Want:=rmJump;
+        if SwordRun>=9.6 then Want:=rmJump;
+        if JumpRun>=9.6 then Want:=rmSword;
+      end;
+      if Candidates=0 then Want:=rmSword;
+      if ShortPair and not Runway and (FirstAt(WindowEnd)-First>=3) then Want:=rmSword;
+      // A runway at song start and after C allows B enemies to enter from outside.
+      if Runway then Want:=rmJump;
+      if (Span<3) and not Runway and (Sec.Count>0) and (Sec[Sec.Count-1].Mode<>rmBoss) then Want:=Sec[Sec.Count-1].Mode;
+      AddSection(A,WindowEnd,Want);Runway:=False;
+      if Want=rmJump then begin JumpSeconds:=JumpSeconds+Span;JumpRun:=JumpRun+Span;SwordRun:=0;end
+      else begin SwordSeconds:=SwordSeconds+Span;SwordRun:=SwordRun+Span;JumpRun:=0;end;
+      A:=WindowEnd;
+    end;
+  end;
+  function EnemyShow(Score:TRunnerActionPlan;WorldX,Time:Double):Double;
+  var L,R,M:Double;J:Integer;
+  begin
+    // Enemy centre is X+0.026. Its full silhouette starts beyond the right edge.
+    L:=0;R:=Time;
+    for J:=0 to 55 do begin M:=(L+R)/2;
+      if Score.WorldAt(M)<WorldX-1.424 then L:=M else R:=M;
+    end;
+    EnemyShow:=Max(0.0,L-0.05);
   end;
   procedure AddPad(Land,Y:Double;Moving:Boolean;Section:Integer);
   begin P:=Default(TRunPad);
@@ -689,6 +755,7 @@ begin
   HL:=TList<TRunHit>.Create;
   try try
       Result.Goal:=Audio.SoundEnd;
+      Result.Version:=7;
       Result.Frequency:=Audio.BossFrequency;
       Result.SourceCount:=Length(Audio.Hits);
       Need(Good(Result.Goal) and (Result.Goal>=0) and (Result.Goal<=Audio.Duration) and (Length(Audio.Hits)<=100000),'audio bounds');
@@ -698,40 +765,10 @@ begin
         Need(Good(T) and Good(Audio.Hits[I].Strength) and (T>=Last) and (T>=0) and (T<=Audio.Duration+0.011),'source order');
         Last:=T;
       end;
-      // Local median uses ORIGINAL analysis accents, before action grouping.
-      // Separate entry/exit thresholds and a 3 s dwell prevent threshold chatter.
-      Mode:=rmJump;
-      Start:=0;
-      Last:=-10;
-      for I:=1 to High(Audio.Hits) do begin Check;
-        if Audio.Hits[I].Time>Result.Goal then Break;
-        SetLength(Gaps,0);
-        for Q:=Max(1,I-3) to Min(High(Audio.Hits),I+3) do begin Gap:=Audio.Hits[Q].Time-Audio.Hits[Q-1].Time;
-          if Gap>1E-7 then begin N:=Length(Gaps);
-            SetLength(Gaps,N+1);
-            Gaps[N]:=Gap;
-          end;
-        end;
-        if Length(Gaps)<3 then Continue;
-        TArray.Sort<Double>(Gaps);
-        Median:=Gaps[Length(Gaps) div 2];
-        Want:=Mode;
-        if Median<=0.38 then Want:=rmSword else if Median>=0.52 then Want:=rmJump;
-        if (Want<>Mode) and (Audio.Hits[I].Time-Last>=3.0) then begin
-          B:=Default(TRunSection);
-          B.Start:=Start;
-          B.Finish:=Audio.Hits[I].Time;
-          B.Mode:=Mode;
-          if B.Finish>Start then Base.Add(B);
-          Start:=B.Finish;
-          Last:=Start;
-          Mode:=Want;
-        end;
-      end;
       B:=Default(TRunSection);
-      B.Start:=Start;
+      B.Start:=0;
       B.Finish:=Result.Goal;
-      B.Mode:=Mode;
+      B.Mode:=rmJump;
       Base.Add(B);
       // Overlay common boss cues. Ready/kill are actual source events. Short
       // clips and cues with too few attacks remain normal A/B sections.
@@ -754,6 +791,12 @@ begin
       end;
       for B in Base do if B.Finish>Start then AddSection(Max(Start,B.Start),B.Finish,B.Mode);
       if Sec.Count=0 then AddSection(0,Max(0.001,Result.Goal),rmJump);
+      // Boss placement is fixed first; balance only the remaining scrolling time.
+      Base.Clear;Base.AddRange(Sec);Sec.Clear;X:=0;
+      JumpSeconds:=0;SwordSeconds:=0;JumpRun:=0;SwordRun:=0;Runway:=True;
+      for B in Base do if B.Mode=rmBoss then begin
+        AddSection(B.Start,B.Finish,rmBoss);JumpRun:=0;SwordRun:=0;Runway:=True;
+      end else AddPhrases(B.Start,B.Finish);
       Result.Sections:=Sec.ToArray;
       Q:=0;
       for K:=0 to High(Result.Sections) do begin Check;
@@ -763,12 +806,18 @@ begin
         if S.Mode=rmJump then begin
           while (Q<Length(Audio.Hits)) and (Audio.Hits[Q].Time<S.Finish-0.95) do begin Check;
             T:=Audio.Hits[Q].Time;
-            if T-PL[PL.Count-1].Land>=0.66 then begin Y:=0.68+0.045*Sin(JL.Count*1.7);
+            if T-PL[PL.Count-1].Land>=0.66 then begin
+              Best:=Q;Probe:=Q+1;
+              while (Probe<Length(Audio.Hits)) and (Audio.Hits[Probe].Time<=T+0.12) and
+                (Audio.Hits[Probe].Time<S.Finish-0.95) do begin
+                if Audio.Hits[Probe].Strength>Audio.Hits[Best].Strength then Best:=Probe;Inc(Probe);
+              end;
+              Q:=Best;T:=Audio.Hits[Q].Time;Y:=0.68+0.045*Sin(JL.Count*1.7);
               LandAt(T,Y,Q,True);
             end;
             Inc(Q);
           end;
-          if S.Finish-PL[PL.Count-1].Land>=0.48 then LandAt(S.Finish,RA_GROUND,-1,False);
+          if (PL[PL.Count-1].Land>S.Start+1E-8) and (S.Finish-PL[PL.Count-1].Land>=0.48) then LandAt(S.Finish,RA_GROUND,-1,False);
         end;
       end;
       Result.Pads:=PL.ToArray;
@@ -879,7 +928,9 @@ begin
       while I<Length(Result.Hits) do begin H:=Result.Hits[I];
         V:=I;
         if H.Kind=rhSword then begin while (V<High(Result.Hits)) and (Result.Hits[V+1].Kind=rhSword) and (Result.Hits[V+1].Target=H.Target) do Inc(V);
+          ShowTime:=EnemyShow(Result,H.X,H.Time);
           for Q:=I to V do begin H:=Result.Hits[Q];
+            H.Show:=ShowTime;
             H.Kill:=Result.Hits[V].Time;
             Result.Hits[Q]:=H;
           end;
@@ -910,6 +961,7 @@ var
   G,T:TRunPoint;
   Previous:Double;
 begin
+  Need((Version=6) or (Version=7),'version');
   Need(Good(Goal) and (Goal>=0) and (Frequency>=0) and (Frequency<=100) and (Excluded>=0) and (SourceCount>=0) and (SourceCount<=100000),'header');
   Need((Length(Sections)>0) and (Length(Sections)<=20000) and (Length(Pads)>0) and (Length(Pads)<=40001) and (Length(Jumps)<=20000) and (Length(Hits)<=100000),'limits');
   Previous:=0;
@@ -943,6 +995,8 @@ begin
     Previous:=H.Time;
     Need((H.Strength>=0) and (H.Strength<=1) and (H.Source=I),'source/strength');
     K:=SectionAt(H.Time);
+    if (Version>=7) and (H.Kind=rhSword) then Need((H.Show>=0) and
+      (H.X+0.026-(WorldAt(H.Show)-0.42)-0.05>=1.80-1E-7),'enemy starts inside viewport');
     Need(K=H.Section,Format('hit section index %d time %.12f saved %d expected %d',[I,H.Time,H.Section,K]));
     Need((I>=Sections[K].First) and (I<=Sections[K].Last),'section action range; re-prepare Runner');
     if H.Kind in [rhSword,rhBossCut,rhParry,rhFinish] then begin BladeAt(H.Time,G,T);
@@ -977,7 +1031,8 @@ var
     end;
   end;
 begin Result:=TJSONObject.Create;
-  Result.AddPair('policy','abc-moving-pixel-v1');
+  if Version>=7 then Result.AddPair('policy','abc-phrased-scroll-v2')
+  else Result.AddPair('policy','abc-moving-pixel-v1');
   Result.AddPair('goal',TJSONNumber.Create(Goal));
   Result.AddPair('frequency',TJSONNumber.Create(Frequency));
   Result.AddPair('sourceCount',TJSONNumber.Create(SourceCount));
@@ -1025,9 +1080,12 @@ var
     Result:=Trunc(D);
   end;
 begin Need(Root<>nil,'missing action score');
-  Need(Root.GetValue<string>('policy','')='abc-moving-pixel-v1','JSON policy');
+  Need((Root.GetValue<string>('policy','')='abc-moving-pixel-v1') or
+    (Root.GetValue<string>('policy','')='abc-phrased-scroll-v2'),'JSON policy');
   Result:=TRunnerActionPlan.Create;
-  try Result.Goal:=Root.GetValue<Double>('goal');
+  try Result.Version:=6;
+    if Root.GetValue<string>('policy','')='abc-phrased-scroll-v2' then Result.Version:=7;
+    Result.Goal:=Root.GetValue<Double>('goal');
     Result.Frequency:=Root.GetValue<Integer>('frequency');
     Result.SourceCount:=Root.GetValue<Integer>('sourceCount');
     Result.Excluded:=Root.GetValue<Integer>('excluded');

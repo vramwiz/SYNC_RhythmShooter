@@ -31,7 +31,7 @@ begin
 end;
 begin
   try
-    ConfigureRhythmProduct('SYNC_RhythmFighting','Fighting v2 native',rsFighting);Need((StylePlanVersion(rsFighting)=2) and CompatiblePlanVersion(rsFighting,1),'Version compatibility');Need(StylePlanVersion(rsRunner)=6,'Runner changed');
+    ConfigureRhythmProduct('SYNC_RhythmFighting','Fighting v2 native',rsFighting);Need((StylePlanVersion(rsFighting)=2) and CompatiblePlanVersion(rsFighting,1),'Version compatibility');Need(CompatiblePlanVersion(rsRunner,6),'Runner changed');
     Folder:=TPath.Combine(ExtractFileDir(ParamStr(0)),'DuelEvidence');ForceDirectories(Folder);Source:=TPath.Combine(Folder,'source.identity');TFile.WriteAllText(Source,'Synthetic native fighting source; no playback',TEncoding.UTF8);
     Need(GetFileAttributesEx(PChar(Source),GetFileExInfoStandard,@Stamp),'Source stat');Revision:=IntToHex(Stamp.nFileSizeHigh,8)+IntToHex(Stamp.nFileSizeLow,8)+'-'+IntToHex(Stamp.ftLastWriteTime.dwHighDateTime,8)+IntToHex(Stamp.ftLastWriteTime.dwLowDateTime,8);LegacyV1;
     Image:=TBitmap.Create;Image.PixelFormat:=pf32bit;Image.SetSize(960,600);Styles:=[];

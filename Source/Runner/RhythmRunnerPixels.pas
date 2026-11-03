@@ -2,13 +2,67 @@
 // v6の低解像度描画。計画の姿勢・接触時計を読み、状態は進めない。
 interface
 uses RhythmRunnerAction,RhythmRenderSurface;
+type
+  TRunnerSwordArm=record
+    Shoulder,Elbow,Grip,Tip:TRunPoint;
+    Phase:Integer;
+  end;
+// Drawing-only joints keep the score's impact point and fixed limb lengths.
+function RunnerSwordArmAt(Plan:TRunnerActionPlan;Time:Double;out Arm:TRunnerSwordArm):Boolean;
 // 任意フレームを同じ型付き計画／描画面から復元する。
 procedure RenderRunnerPixels(Plan:TRunnerActionPlan;Surface:TAnimationRenderSurface;Time:Double;Width,Height:Integer);
 implementation
 uses System.SysUtils,System.Math,Winapi.Windows,Vcl.Graphics;
 
+function RunnerSwordArmAt(Plan:TRunnerActionPlan;Time:Double;out Arm:TRunnerSwordArm):Boolean;
+const Limb=0.032;
+var
+  Hero:TRunPose;
+  OldGrip,Impact:TRunPoint;
+  I:Integer;
+  Age,DX,DY,Distance,Bend:Double;
+begin
+  Arm:=Default(TRunnerSwordArm);
+  Result:=False;
+  if not Plan.BladeAt(Time,OldGrip,Impact) then Exit;
+  I:=Plan.ActionBefore(Time);
+  if (I<0) or (Abs(Plan.Hits[I].Time-Time)>1E-8) then I:=Plan.ActionBefore(Time+0.055);
+  if I<0 then Exit;
+  if not (Plan.Hits[I].Kind in [rhSword,rhBossCut,rhFinish]) then Exit;
+  Hero:=Plan.HeroAt(Time);
+  Age:=Time-Plan.Hits[I].Time;
+  Arm.Shoulder.X:=Hero.X+0.018;
+  Arm.Shoulder.Y:=Hero.Y-0.054;
+  // Four held poses match the sprite's short wind-up, cut and recovery.
+  if Age<0 then begin
+    Arm.Phase:=0;
+    Arm.Grip.X:=Hero.X-0.014;Arm.Grip.Y:=Hero.Y-0.095;
+    Arm.Tip.X:=Arm.Grip.X-0.052;Arm.Tip.Y:=Arm.Grip.Y-0.085;
+  end else if Age<=0.025 then begin
+    Arm.Phase:=1;
+    Arm.Grip.X:=Hero.X+0.065;Arm.Grip.Y:=Hero.Y-0.055;
+    Arm.Tip:=Impact;
+  end else if Age<=0.095 then begin
+    Arm.Phase:=2;
+    Arm.Grip.X:=Hero.X+0.046;Arm.Grip.Y:=Hero.Y-0.028;
+    Arm.Tip.X:=Arm.Grip.X+0.097;Arm.Tip.Y:=Arm.Grip.Y+0.023;
+  end else begin
+    Arm.Phase:=3;
+    Arm.Grip.X:=Hero.X+0.047;Arm.Grip.Y:=Hero.Y-0.045;
+    Arm.Tip.X:=Arm.Grip.X+0.042;Arm.Tip.Y:=Arm.Grip.Y-0.091;
+  end;
+  DX:=Arm.Grip.X-Arm.Shoulder.X;DY:=Arm.Grip.Y-Arm.Shoulder.Y;
+  Distance:=Hypot(DX,DY);
+  // Same two rigid segments in every pose; one bend side prevents elbow flips.
+  Bend:=Sqrt(Max(0.0,Sqr(Limb)-Sqr(Distance/2)))/Distance;
+  Arm.Elbow.X:=(Arm.Shoulder.X+Arm.Grip.X)/2-DY*Bend;
+  Arm.Elbow.Y:=(Arm.Shoulder.Y+Arm.Grip.Y)/2+DX*Bend;
+  Result:=True;
+end;
+
 procedure RenderRunnerPixels(Plan:TRunnerActionPlan;Surface:TAnimationRenderSurface;Time:Double;Width,Height:Integer);
 const
+  CameraEase=0.24;
   Skin=$00B8DFFF;
   Hair=$003D426B;
   Ink=$00513A2B;
@@ -17,9 +71,9 @@ const
 var
   P:TRunnerActionPlan;
   R:TAnimationRenderSurface;
-  Scale,L,Top,Camera,T,X,Y,A,U,Turn,Size,DX,DY,HP:Double;
+  Scale,L,Top,Camera,T,X,Y,A,U,Turn,Size,DX,DY,HP,EntryOffset:Double;
   I,J,K,First,Last,Current,Drawn,BossLast:Integer;
-  S:TRunSection;
+  S,Arena:TRunSection;
   Pad:TRunPad;
   H,E:TRunHit;
   Hero:TRunPose;
@@ -90,14 +144,17 @@ var
   var
     Row,Col,Pose:Integer;
     C:TColor;
-    PX,PY:Double;
+    PX,PY,VX,VY,Length:Double;
     Walk:TRunFeet;
+    Arm:TRunnerSwordArm;
+    Swing:Boolean;
     procedure Tile(X1,Y1,X2,Y2:Integer;Color:TColor);
     begin Box(Hero.X+X1*0.006,Hero.Y+Y1*0.006,Hero.X+X2*0.006,Hero.Y+Y2*0.006,Color);
     end;
   begin
     Pose:=Hero.Pose;
     Walk:=P.FeetAt(T);
+    Swing:=RunnerSwordArmAt(P,T,Arm);
     // 12 px head + 10 px body: under two heads. No interpolated skeleton.
     for Row:=0 to 11 do for Col:=1 to 16 do if Head[Row][Col]<>'0' then begin
       case Head[Row][Col] of '1':C:=Ink;
@@ -131,11 +188,25 @@ var
     if Pose=7 then begin Tile(3,-9,6,-7,Skin);
       Tile(-6,-9,-4,-7,Skin);
     end
-    else begin Tile(3,-9,6,-6,Ink);
+    else if not Swing then begin Tile(3,-9,6,-6,Ink);
       Tile(4,-9,6,-7,Skin);
     end;
     Blade:=P.BladeAt(T,G,Tip);
-    if Blade or (Pose<>7) then begin
+    if Swing then begin
+      Line(Arm.Shoulder.X,Arm.Shoulder.Y,Arm.Elbow.X,Arm.Elbow.Y,Ink,0.016);
+      Line(Arm.Shoulder.X,Arm.Shoulder.Y,Arm.Elbow.X,Arm.Elbow.Y,Mint,0.010);
+      Line(Arm.Elbow.X,Arm.Elbow.Y,Arm.Grip.X,Arm.Grip.Y,Ink,0.014);
+      Line(Arm.Elbow.X,Arm.Elbow.Y,Arm.Grip.X,Arm.Grip.Y,Skin,0.009);
+      G:=Arm.Grip;Tip:=Arm.Tip;
+      VX:=Tip.X-G.X;VY:=Tip.Y-G.Y;Length:=Hypot(VX,VY);
+      VX:=VX/Length;VY:=VY/Length;
+      // Handle and guard use the blade's axis so the hand never detaches.
+      Line(G.X-VX*0.012,G.Y-VY*0.012,G.X,G.Y,RGB(116,77,53),0.009);
+      Line(G.X,G.Y,Tip.X,Tip.Y,Ink,0.010);
+      Line(G.X,G.Y,Tip.X,Tip.Y,RGB(244,250,221),0.005);
+      Line(G.X-VY*0.012,G.Y+VX*0.012,G.X+VY*0.012,G.Y-VX*0.012,RGB(236,182,72),0.006);
+      Box(G.X-0.004,G.Y-0.004,G.X+0.004,G.Y+0.004,Skin);
+    end else if Blade or (Pose<>7) then begin
       Line(Hero.X+0.024,Hero.Y-0.048,G.X,G.Y,Skin,0.012);
       Line(G.X-0.007,G.Y+0.009,G.X,G.Y,RGB(116,77,53),0.009);
       Line(G.X,G.Y,Tip.X,Tip.Y,Ink,0.010);
@@ -178,6 +249,13 @@ begin
   L:=(Width-1.8*Scale)/2;
   Top:=(Height-Scale)/2;
   Camera:=P.WorldAt(Min(T,P.Goal))-0.42;
+  // Round off changes in scroll velocity without moving the saved world.
+  if P.Version>=7 then
+    for I:=Max(1,P.SectionAt(T-CameraEase)+1) to P.SectionAt(T+CameraEase) do begin
+      A:=CameraEase-Abs(T-P.Sections[I].Start);
+      U:=Ord(P.Sections[I].Mode<>rmBoss)-Ord(P.Sections[I-1].Mode<>rmBoss);
+      Camera:=Camera+U*RA_SPEED*Sqr(Max(0.0,A))/(4*CameraEase);
+    end;
   Hero:=P.HeroAt(T);
   R.FillRect(0,0,Width,Height,RGB(207,231,232));
   Box(Camera,0,Camera+1.8,1,RGB(185,225,235));
@@ -191,9 +269,19 @@ begin
   for I:=0 to 6 do begin X:=Camera+Frac(I*0.273-Camera*0.04)*2.0;
     Box(X,0.17+(I mod 3)*0.065,X+0.16,0.19+(I mod 3)*0.065,RGB(240,248,230));
   end;
-  // C alone is a flat arena; movement uses the full visible floor. A/B keep
-  // their saved moving platforms/ground and are never flattened here.
-  if S.Mode=rmBoss then begin
+  // Anchor the arena floor in world space so it scrolls through the section boundary.
+  if P.Version>=7 then begin
+    for I:=P.SectionAt(T-5) to P.SectionAt(T+5) do begin
+      Arena:=P.Sections[I];
+      if Arena.Mode<>rmBoss then Continue;
+      X:=Max(Camera,Arena.X-0.50);
+      Y:=Min(Camera+1.8,Arena.X+1.50);
+      if X>=Y then Continue;
+      Box(X,RA_GROUND,Y,RA_GROUND+0.048,RGB(89,104,114));
+      Box(X,RA_GROUND,Y,RA_GROUND+0.010,RGB(70,134,90));
+      Box(X,RA_GROUND+0.014,Y,RA_GROUND+0.021,RGB(211,218,151));
+    end;
+  end else if S.Mode=rmBoss then begin
     Box(Camera,RA_GROUND,Camera+1.8,RA_GROUND+0.048,RGB(89,104,114));
     Box(Camera,RA_GROUND,Camera+1.8,RA_GROUND+0.010,RGB(70,134,90));
     Box(Camera,RA_GROUND+0.014,Camera+1.8,RA_GROUND+0.021,RGB(211,218,151));
@@ -201,7 +289,7 @@ begin
   First:=Max(0,P.PadBefore(T-7)-1);
   Last:=Min(High(P.Pads),P.PadBefore(T+7)+2);
   Drawn:=0;
-  for I:=First to Last do begin if S.Mode=rmBoss then Break;
+  for I:=First to Last do begin if (P.Version<7) and (S.Mode=rmBoss) then Break;
     if Drawn>=64 then Break;
     Pad:=P.PadAt(I,T);
     if (Pad.Right<Camera-0.05) or (Pad.Left>Camera+1.85) or (Pad.Y>1.10) then Continue;
@@ -225,6 +313,9 @@ begin
   end;
   First:=Max(0,P.EnemyBefore(T-0.72));
   Last:=Min(P.EnemyCount-1,P.EnemyBefore(T+2.0));
+  // v7の敵は右端外から来る。旧2秒窓は可視入場より遅れて途中出現させていた。
+  if P.Version>=7 then Last:=Min(P.EnemyCount-1,P.EnemyBefore(T+4.8));
+  Drawn:=0;
   for I:=First to Min(Last,First+191) do begin H:=P.Hits[P.EnemyIndex(I)];
     if H.Kind=rhSword then begin
       if (T<H.Show) or (T>H.Kill+0.56) then Continue;
@@ -237,6 +328,10 @@ begin
         Y:=Y-0.62*U+0.95*U*U;
         Turn:=U*(9+H.Target mod 4);
         Size:=Max(0.0,1-U/0.56);
+      end;
+      if P.Version>=7 then begin
+        if (X+0.06<Camera) or (X-0.06>Camera+1.8) then Continue;
+        if Drawn>=64 then Break;Inc(Drawn);
       end;
       Enemy(X,Y,Turn,Size,H.Target,(T>=H.Time) and (T<H.Time+0.055));
     end;
@@ -265,24 +360,35 @@ begin
     HP:=1;
     if E.Target>0 then HP:=E.BossHP/E.Target;
     Boss:=P.BossAt(T);
-    X:=Boss.X;
+    EntryOffset:=0;
+    if P.Version>=7 then begin
+      A:=EnsureRange((T-S.Start)/0.60,0.0,1.0);
+      EntryOffset:=0.50*Sqr(1-A);
+    end;
+    X:=Boss.X+EntryOffset;
     Y:=Boss.Y;
     Size:=Boss.Size;
     Turn:=Boss.Turn;
     Enemy(X,Y,Turn,Size,2+Trunc((1-HP)*3),(E.Kind in [rhBossCut,rhFinish]) and (T-E.Time<0.065));
     if not Boss.Airborne then begin Feet:=P.BossFeetAt(T);
-      Box(Feet.LeftFoot.X-0.018,Feet.LeftFoot.Y-0.014,Feet.LeftFoot.X+0.012,Feet.LeftFoot.Y,RGB(116,104,86));
-      Box(Feet.RightFoot.X-0.018,Feet.RightFoot.Y-0.014,Feet.RightFoot.X+0.012,Feet.RightFoot.Y,Ink);
+      Box(Feet.LeftFoot.X+EntryOffset-0.018,Feet.LeftFoot.Y-0.014,Feet.LeftFoot.X+EntryOffset+0.012,Feet.LeftFoot.Y,RGB(116,104,86));
+      Box(Feet.RightFoot.X+EntryOffset-0.018,Feet.RightFoot.Y-0.014,Feet.RightFoot.X+EntryOffset+0.012,Feet.RightFoot.Y,Ink);
     end;
-    // Enemy blade reaches the hero's block/contact; a slam reaches the floor
-    // while the hero clears it. The fan follows the same timestamp.
+    // The projectile meets the guard or floor on the saved contact beat.
     K:=P.ActionBefore(T+0.28);
     if (K>=S.First) and (K<=S.Last) then begin H:=P.Hits[K];
       U:=T-H.Time;
       if (H.Kind in [rhParry,rhDodge,rhHurt]) and (U>=-0.28) and (U<=0.18) then begin
-        if P.EnemyBladeAt(T,G,Tip) then begin Line(Boss.X,RA_GROUND-0.08,G.X,G.Y,Ink,0.020);
-          Line(G.X,G.Y,Tip.X,Tip.Y,Ink,0.014);
-          Line(G.X,G.Y,Tip.X,Tip.Y,RGB(240,143,91),0.006);
+        if P.EnemyBladeAt(T,G,Tip) then begin
+          Line(Boss.X+EntryOffset,RA_GROUND-0.08,G.X+EntryOffset,G.Y,Ink,0.020);
+          if U<=0 then begin
+            // The contact point travels as a compact projectile. The arm stays at the grip.
+            X:=Tip.X+EntryOffset*EnsureRange(-U/0.28,0.0,1.0);
+            Y:=Tip.Y;
+            Box(X-0.019,Y-0.010,X+0.019,Y+0.010,Ink);
+            Box(X-0.014,Y-0.006,X+0.014,Y+0.006,RGB(240,143,91));
+            Box(X-0.010,Y-0.003,X+0.004,Y+0.003,RGB(255,223,137));
+          end;
         end;
         for J:=0 to 8 do begin A:=J*Pi/4;
           DX:=H.X+Cos(A)*(-U)*0.65;

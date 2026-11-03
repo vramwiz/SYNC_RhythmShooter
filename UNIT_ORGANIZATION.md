@@ -20,7 +20,7 @@ Race v9の修正を保存・ビルド・試験した後、その状態を基準�
 | Shooting | ShootingScene、Stage、Sections、Barrage、Motion。既存の責務分離を維持、計画v1。 |
 | Ball | BallPlan／CircuitPlan、現行CircuitSceneとLegacyScene。現行6、旧4～5読込。 |
 | Fireworks | FireworksPlan／FireworksScene。現行3、旧2読込。小さいユニットは増分割しない。 |
-| Runner | RunnerPlan／Action、PixelsとLegacyScene。現行6、旧1～5読込。 |
+| Runner | RunnerPlan／Action、PixelsとLegacyScene。現行7、旧1～6読込。 |
 | Breakout | Plan／Campaign／Score／ActionとScene。Scoreの型・幾何検証を別ユニット化。現行10、旧1～9読込。 |
 | Race | 旧1～7のPlan／道路・HUDと、8～9のCrash系を分離。現行9、旧1～8読込。 |
 | BombAction | BombPlan／BombSceneを維持。現行2、旧1読込。 |

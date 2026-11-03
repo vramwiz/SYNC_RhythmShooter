@@ -5,7 +5,7 @@ uses RhythmRaceCrash,RhythmRenderSurface;
 procedure DrawRaceCrash(Plan:TRaceCrashPlan;Surface:TAnimationRenderSurface;Time:Double;Width,Height:Integer);
 // 地上の車体寸法は計画と共有し、高さ・陰影だけで立体感を作る描画ユニット。
 implementation
-uses System.Math,System.SysUtils,Winapi.Windows,Vcl.Graphics,RhythmRaceImpact;
+uses System.Math,System.SysUtils,System.Types,Winapi.Windows,Vcl.Graphics,RhythmRaceImpact;
 type
   TPointD=record
     X,Y:Double;
@@ -36,16 +36,22 @@ var
   end;
   procedure Add(const Value:TCrashPose);
   begin if Count>=Length(Cars) then Exit;
-    if (Value.Distance-Camera-Value.Back<=-32.5) or (Value.Distance-Camera>900) then Exit;
+    if Value.Distance-Camera>900 then Exit;
+    if Value.Alive then begin
+      if Value.Distance-Camera+Value.Front<=-32.5 then Exit;
+    end else if Value.Distance-Camera-Value.Back<=-32.5 then Exit;
     Cars[Count]:=Value;
     Inc(Count);
   end;
   function Vertex(D,L,H:Double):TPointD;
   var
     Q:TCrashProjection;
-    DX,DY,Co,Si:Double;
+    DX,DY,Co,Si,Distance:Double;
   begin if Pose.Role=2 then H:=H*Plan.HeroScale;
-    Q:=Plan.Project(Pose.Distance+D,Pose.Lane+L,Clock,H+Pose.Lift);
+    // 長い荷台は後端だけが近端を越えても前部が残る。接地車の面を近端で切る。
+    Distance:=Pose.Distance+D;
+    if Pose.Alive then Distance:=Max(Distance,Camera-32.5);
+    Q:=Plan.Project(Distance,Pose.Lane+L,Clock,H+Pose.Lift);
     DX:=Q.X-Center.X;
     DY:=Q.Y-Center.Y;
     Co:=Cos(Pose.Turn);
@@ -61,17 +67,12 @@ var
     Result:=Vertex(D,L,H);
   end;
   procedure Face(const A,B,C,D:TPointD;Color:TColor);
-  var
-    Row,Steps:Integer;
-    T,W,Length:Double;
   begin
-    Length:=Max(Hypot(D.X-A.X,D.Y-A.Y),Hypot(C.X-B.X,C.Y-B.Y));
-    Steps:=EnsureRange(Ceil(Length*Scale/2),2,64);
-    W:=Max(0.0015,Length/Steps+0.001);
-    for Row:=0 to Steps do begin T:=Row/Steps;
-      Line(A.X+(D.X-A.X)*T,A.Y+(D.Y-A.Y)*T,
-      B.X+(C.X-B.X)*T,B.Y+(C.Y-B.Y)*T,Color,W);
-    end;
+    // 太い線で面を掃引すると近接時に線端が外へ出る。投影した境界内だけを塗る。
+    Surface.FillQuad(TPointF.Create(Left+A.X*Scale,Top+A.Y*Scale),
+      TPointF.Create(Left+B.X*Scale,Top+B.Y*Scale),
+      TPointF.Create(Left+C.X*Scale,Top+C.Y*Scale),
+      TPointF.Create(Left+D.X*Scale,Top+D.Y*Scale),Color);
   end;
   procedure Panel(Front,Back,Lane1,Lane2,H:Double;C:TColor);
   begin Face(BodyVertex(Front,Lane1,H),BodyVertex(Front,Lane2,H),
@@ -118,13 +119,21 @@ var
     B:=Vertex(Back,Lane2,H);
     Line(A.X,A.Y,B.X,B.Y,C,W*Center.Scale);
   end;
+  procedure Post(D,L,H1,H2:Double;C:TColor;W:Double);
+  var A,B:TPointD;
+  begin
+    A:=BodyVertex(D,L,H1);B:=BodyVertex(D,L,H2);
+    Line(A.X,A.Y,B.X,B.Y,C,W*Center.Scale);
+  end;
   procedure Vehicle;
   var
-    W,F,B,H,CargoH,Axle:Double;
+    W,F,B,H,CargoH,CabH,WindowBase,WindowTop,Axle,DamageD,DamageBase,DamageTop,MarkH:Double;
     Part,Stage:Integer;
     C:TColor;
   begin
     Center:=Plan.Project(Pose.Distance,Pose.Lane,Clock,Pose.Lift);
+    if Pose.Alive and (Pose.Distance<Camera-32.5) then
+      Center:=Plan.Project(Camera-32.5,Pose.Lane,Clock,Pose.Lift);
     if not Center.Visible then Exit;
     BodyLean:=0;
     BodyBounce:=0;
@@ -147,6 +156,7 @@ var
     H:=0.047;
     if Pose.Kind>0 then H:=0.064;
     if Pose.Kind>=3 then H:=0.070;
+    DamageD:=B*0.945;DamageBase:=0.017;DamageTop:=H-0.006;
     Body:=RGB(105,151,190);
     if Pose.Role=2 then Body:=RGB(60,189,213)
     else if Pose.Role=1 then begin Body:=RGB(218,83,64);
@@ -171,14 +181,28 @@ var
     Solid(F*0.94,B*0.94,-W*0.91,W*0.91,0.012,H,Body);
     Edge(F*0.90,B*0.90,-W*0.92,-W*0.92,0.022,Mix(Body,clWhite,0.30),0.003);
     Edge(F*0.90,B*0.90,W*0.92,W*0.92,0.022,Mix(Body,clBlack,0.40),0.003);
+    // 後輪は下部車体の後、荷台より先に描く。奥側の輪を後扉の上へ重ねず、接地点は保持する。
+    if Pose.Kind>=3 then for Part:=0 to 1 do begin Axle:=B*(0.59+Part*0.18);
+      Solid(Axle+0.85,Axle-0.85,-W,-W*0.77,0.002,0.022,RGB(20,25,31));
+      Solid(Axle+0.85,Axle-0.85,W*0.77,W,0.002,0.022,RGB(20,25,31));
+    end;
     if Pose.Kind>=3 then begin
-      CargoH:=0.150;
-      if Pose.Kind>=4 then CargoH:=0.165;
+      CargoH:=0.290;
+      CabH:=0.245;
+      // 細い一般トラックと大型敵の側壁を確保。地上寸法・車体下端は変えない。
+      if Pose.Role=1 then begin
+        CargoH:=0.350;
+        CabH:=0.295;
+        if Pose.Kind>=4 then CabH:=0.285;
+      end;
+      WindowBase:=CabH-0.100;
+      WindowTop:=CabH-0.018;
+      DamageD:=B*0.89;DamageBase:=H+0.024;DamageTop:=CargoH-0.024;
       // トラックのキャビンは進行方向側。後方から荷台の扉・側板・車軸が見える。
-      Solid(F*0.94,F*0.52,-W*0.80,W*0.80,H,0.135,Body);
-      EndFace(F*0.515,-W*0.66,W*0.66,H+0.014,0.121,Glass);
-      Side(F*0.88,F*0.61,-W*0.805,H+0.014,0.121,Glass);
-      Side(F*0.88,F*0.61,W*0.805,H+0.014,0.121,Mix(Glass,clWhite,0.13));
+      Solid(F*0.94,F*0.52,-W*0.80,W*0.80,H,CabH,Body);
+      EndFace(F*0.515,-W*0.66,W*0.66,WindowBase,WindowTop,Glass);
+      Side(F*0.88,F*0.61,-W*0.805,WindowBase,WindowTop,Glass);
+      Side(F*0.88,F*0.61,W*0.805,WindowBase,WindowTop,Mix(Glass,clWhite,0.13));
       Solid(F*0.43,B*0.88,-W*0.83,W*0.83,H,CargoH,RGB(154,164,169));
       for Part:=0 to 6 do begin
         Axle:=F*0.38+(B*0.82-F*0.38)*Part/7;
@@ -188,25 +212,34 @@ var
       end;
       EndFace(B*0.885,-W*0.73,W*0.73,H+0.008,CargoH-0.008,RGB(132,144,153));
       Side(B*0.89,B*0.89+0.10,0,H+0.012,CargoH-0.012,RGB(65,82,98));
+      // 縦の扉枠と屋根境界で、高さを長い屋根面から読み分けられるようにする。
+      Post(B*0.89,-W*0.77,H+0.008,CargoH,RGB(184,198,201),0.003);
+      Post(B*0.89,W*0.77,H+0.008,CargoH,RGB(79,101,112),0.003);
+      Edge(B*0.89,B*0.89,-W*0.77,W*0.77,CargoH,RGB(188,201,204),0.003);
       Edge(B*0.89,B*0.89,-W*0.77,W*0.77,H+0.009,RGB(214,176,81),0.008);
-      for Part:=0 to 1 do begin Axle:=B*(0.59+Part*0.18);
-        Solid(Axle+0.85,Axle-0.85,-W,-W*0.77,0.002,0.022,RGB(20,25,31));
-        Solid(Axle+0.85,Axle-0.85,W*0.77,W,0.002,0.022,RGB(20,25,31));
-      end;
       if Pose.Kind>=4 then begin
         for Part:=0 to Max(0,3-Stage) do Solid(
         F*0.34+(B*0.40-F*0.34)*Part/4,F*0.25+(B*0.43-F*0.25)*Part/4,
         -W*0.85,W*0.85,CargoH,CargoH+0.010,RGB(98,105,109));
       end;
     end else if Pose.Kind=2 then begin
-      Solid(F*0.82,B*0.76,-W*0.83,W*0.83,H,0.142,Body);
-      EndFace(B*0.765,-W*0.70,W*0.70,0.082,0.130,Glass);
+      CabH:=0.255;
+      DamageD:=B*0.765;DamageBase:=H+0.018;DamageTop:=CabH-0.025;
+      Solid(F*0.82,B*0.76,-W*0.83,W*0.83,H,CabH,Body);
+      EndFace(B*0.765,-W*0.70,W*0.70,0.135,0.230,Glass);
       for Part:=1 to 5 do begin Axle:=F+(B-F)*Part/6;
-        Side(Axle+0.8,Axle-0.8,-W*0.835,0.084,0.130,Glass);
-        Side(Axle+0.8,Axle-0.8,W*0.835,0.084,0.130,Mix(Glass,clWhite,0.12));
+        Side(Axle+0.8,Axle-0.8,-W*0.835,0.135,0.230,Glass);
+        Side(Axle+0.8,Axle-0.8,W*0.835,0.135,0.230,Mix(Glass,clWhite,0.12));
       end;
+      Post(B*0.765,-W*0.80,H,CabH,Mix(Body,clWhite,0.27),0.003);
+      Post(B*0.765,W*0.80,H,CabH,Mix(Body,clBlack,0.30),0.003);
     end else begin
-      Cabin(F*0.44,B*0.36,W*0.72,H+0.001,0.105+0.015*Ord(Pose.Kind=1),Body);
+      CabH:=0.105;
+      if Pose.Kind=1 then begin
+        CabH:=0.170;
+        if Pose.Role=0 then CabH:=0.130; // 細い黄色バンだけを低くし、大型敵の比率は保つ。
+      end;
+      Cabin(F*0.44,B*0.36,W*0.72,H+0.001,CabH,Body);
       Edge(F*0.50,F*0.85,0,0,H+0.002,Mix(Body,clWhite,0.38),0.010);
       if Pose.Role=2 then begin
         Solid(B*0.64,B*0.70,-W*0.90,W*0.90,H+0.006,H+0.019,RGB(29,72,95));
@@ -229,8 +262,9 @@ var
     end;
     if (Pose.Role<>2) and (Pose.Damage>0) then for Part:=0 to Min(4,Stage+1) do begin
       C:=RGB(47,49,58);
-      Edge(F*0.6-(F-B)*Part/8,F*0.6-(F-B)*(Part+0.3)/8,
-      -W*0.45,W*0.35,H+0.061,C,0.008);
+      // 共通の高さは小型車の屋根より上に浮く。車種ごとの後面内へ傷を付ける。
+      MarkH:=DamageBase+(DamageTop-DamageBase)*(Part+1)/6;
+      Edge(DamageD,DamageD,-W*0.45,W*0.35,MarkH,C,0.004);
     end;
   end;
 

@@ -1,5 +1,5 @@
 ﻿unit RhythmRaceCrashMotion;
-// Race v8/v9の保存データ型と絶対時刻の位置・姿勢。生成とJSON処理を持たない。
+// Race v8～v11の保存データ型と絶対時刻の位置・姿勢。生成とJSON処理を持たない。
 interface
 uses System.SysUtils,RhythmAudio;
 const
@@ -57,7 +57,7 @@ type
   private
     function EnemyBaseLaneAt(Index:Integer;Time:Double):Double;
   public
-    // v8/v9は元寸法、v10は全軸90%。旧保存の接触点を勝手に変えない。
+    // v8/v9は元寸法、v10は90%、v11は75%。保存版ごとの接触寸法を維持する。
     function HeroScale:Double;
     function HeroWidth:Double;
     function HeroFront:Double;
@@ -257,7 +257,7 @@ begin Result:=Default(TCrashPose);
 end;
 
 function TRaceCrashMotion.HeroScale:Double;
-begin Result:=1;if Version>=10 then Result:=0.90;end;
+begin Result:=1;if Version>=11 then Result:=0.75 else if Version>=10 then Result:=0.90;end;
 function TRaceCrashMotion.HeroWidth:Double;
 begin Result:=CRASH_HERO_WIDTH*HeroScale;end;
 function TRaceCrashMotion.HeroFront:Double;

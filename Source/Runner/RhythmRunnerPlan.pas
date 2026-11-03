@@ -353,7 +353,7 @@ begin
   if Assigned(Cancel) and Cancel() then Abort;
   if not Finite(Audio.Duration) or not Finite(Audio.SoundEnd) or (Audio.Duration<=0) or (Audio.SoundEnd<0) or (Audio.SoundEnd>Audio.Duration) then raise Exception.Create('Invalid runner audio bounds');
   Result:=TRunnerPlan.Create;
-  try Result.FRecipeVersion:=6;
+  try Result.FRecipeVersion:=7;
     Result.FGoal:=Audio.SoundEnd;
     Result.FAction:=TRunnerActionPlan.Build(Audio,Cancel);
     Result.FExcluded:=Result.FAction.Excluded;
@@ -1079,12 +1079,12 @@ var
   A:TRunnerStrike;
   K:TRunnerBladeKey;
 begin
-  if FRecipeVersion=6 then begin
-    if (Ref.Version<>6) or not Ref.Matches(Audio.Key,Audio.Sensitivity,Ref.Direction,rsRunner,Ref.Variant) then raise Exception.Create('Runner v6 reference');
+  if FRecipeVersion>=6 then begin
+    if (Ref.Version<>FRecipeVersion) or not Ref.Matches(Audio.Key,Audio.Sensitivity,Ref.Direction,rsRunner,Ref.Variant) then raise Exception.Create('Runner v6 reference');
     Root:=TJSONObject.Create;
     try Root.AddPair('schema',TJSONNumber.Create(1));
       Root.AddPair('style','runner');
-      Root.AddPair('version',TJSONNumber.Create(6));
+      Root.AddPair('version',TJSONNumber.Create(FRecipeVersion));
       Root.AddPair('key',Ref.Key);
       Root.AddPair('source',Ref.SourceKey);
       Root.AddPair('sensitivity',TJSONNumber.Create(Ref.Sensitivity));
@@ -1230,11 +1230,12 @@ begin
       Info:=Root.GetValue<TJSONObject>('audio');
       if (Info=nil) or not Finite(Info.GetValue<Double>('duration')) or not Finite(Info.GetValue<Double>('soundEnd')) or (Info.GetValue<Integer>('events',-1)<>Length(Audio.Hits)) or
       (Abs(Info.GetValue<Double>('duration')-Audio.Duration)>1E-6) or (Abs(Info.GetValue<Double>('soundEnd')-Audio.SoundEnd)>1E-6) then raise Exception.Create('Runner audio identity mismatch');
-      if Ref.Version=6 then begin
+      if Ref.Version in [6,7] then begin
         Result:=TRunnerPlan.Create;
-        Result.FRecipeVersion:=6;
+        Result.FRecipeVersion:=Ref.Version;
         Result.FGoal:=Audio.SoundEnd;
         Result.FAction:=TRunnerActionPlan.FromJSON(Root.GetValue<TJSONObject>('action'),Audio);
+        if Result.FAction.Version<>Ref.Version then raise Exception.Create('Runner action version identity');
         if Result.FAction.Frequency<>BossFrequencyFromVariant(Ref.Variant) then raise Exception.Create('Runner boss frequency identity');
         Result.FExcluded:=Result.FAction.Excluded;
         SetLength(Result.FSteps,1);

@@ -14,6 +14,42 @@ var M:TMemoryStream;B:TBytes;Hasher:THashSHA2;
 begin M:=TMemoryStream.Create;try Image.SaveToStream(M);SetLength(B,M.Size);M.Position:=0;if Length(B)>0 then M.ReadBuffer(B[0],Length(B));Hasher:=THashSHA2.Create;Hasher.Update(B);Result:=Hasher.HashAsString;finally M.Free;end;end;
 procedure Snap(const Name:string;T:Double);
 begin Render.Render(Image,T,0);Need(Scene.Notice='','Scene error: '+Scene.Notice);PNG:=TPngImage.Create;try PNG.Assign(Image);PNG.SaveToFile(TPath.Combine(OutDir,Name+'.png'));finally FreeAndNil(PNG);end;end;
+// v6の保存済みABCは再生成せず読み、元の行動・出現時刻を維持する。
+procedure LegacyABC6;
+var J,Original,CopyJSON:TJSONObject;R:TRhythmPlanRef;Meta:TRhythmAudio;Old:TRunnerPlan;
+begin
+ J:=TJSONObject.ParseJSONValue(TFile.ReadAllText('Tests/Fixtures/Runner-v6.json',TEncoding.UTF8)) as TJSONObject;
+ Meta:=nil;Old:=nil;
+ try
+  Original:=J.GetValue<TJSONObject>('action');R:=NewPlanRef(J.GetValue<string>('source'),50,0,rsRunner,Original.GetValue<Integer>('frequency')+1);
+  R.Version:=6;R.Key:=J.GetValue<string>('key');R.SourceRevision:=Revision;WritePreparedData(J,R);
+  Meta:=TRunnerPlan.LoadAudioMetadata(R,Source,0);Old:=TRunnerPlan.Load(R,Meta,0);
+  Need((Old.RecipeVersion=6) and (Old.Action.Version=6),'Legacy ABC version');
+  CopyJSON:=Old.Action.ToJSON;try Need(CopyJSON.ToJSON=Original.ToJSON,'Legacy ABC regenerated');finally CopyJSON.Free;end;
+  Writeln('Legacy ABC v6 saved score PASS');
+ finally Old.Free;Meta.Free;J.Free;end;
+end;
+// Source time alone is insufficient: verify the actual sprite is already at the right edge.
+procedure CheckEnemyEntry(Score:TRunnerActionPlan;Renderer:TAnimationRenderer);
+var I,J,X,Y,Count,Samples,LastSection:Integer;H:TRunHit;Clock,Scale,Left,Top,CX,CY:Double;Tint:TColor;Pixel:PByte;
+begin
+ Samples:=0;LastSection:=-1;Scale:=Min(Image.Width/1.8,Image.Height);Left:=(Image.Width-Scale*1.8)/2;Top:=(Image.Height-Scale)/2;
+ for I:=0 to Score.EnemyCount-1 do begin
+  H:=Score.Hits[Score.EnemyIndex(I)];if H.Section=LastSection then Continue;
+  LastSection:=H.Section;Clock:=H.Time-2.6;Need(Clock>=H.Show,'Entry window too late');
+  Renderer.Render(Image,Clock,0);CX:=Left+(H.X+0.026-Score.WorldAt(Clock)+0.42)*Scale;CY:=Top+(H.Y+0.009)*Scale;
+  Tint:=RGB(103,80,134);if H.Target mod 3=1 then Tint:=RGB(166,88,91) else if H.Target mod 3=2 then Tint:=RGB(58,119,129);
+  Count:=0;
+  for Y:=Max(0,Round(CY-0.003*Scale)) to Min(Image.Height-1,Round(CY+0.003*Scale)) do begin Pixel:=Image.ScanLine[Y];
+   for X:=Max(0,Round(CX-0.014*Scale)) to Min(Image.Width-1,Round(CX+0.014*Scale)) do begin J:=X*4;
+    if (Pixel[J]=GetBValue(Tint)) and (Pixel[J+1]=GetGValue(Tint)) and (Pixel[J+2]=GetRValue(Tint)) then Inc(Count);
+   end;
+  end;
+  Need(Count>3,'Enemy sprite missing at scroll entry (old time culling)');Inc(Samples);if Samples>=8 then Break;
+ end;
+ if Score.EnemyCount>0 then Need(Samples>0,'Entry coverage missing');
+ Writeln('Runner enemy scroll-entry pixels PASS sections=',Samples);
+end;
 procedure CheckContactTiming(Score:TRunnerActionPlan;Index:Integer);
 const Lead:array[0..4] of Double=(0.020,0.012,0.006,0.001,0.0001);
 var H,Previous:TRunHit;Pose:TRunPose;Grip,Tip:TRunPoint;Time:Double;N,Prior:Integer;
@@ -102,7 +138,7 @@ begin
   try
     OutDir:=TPath.Combine(ExtractFileDir(ParamStr(0)),'ABCFrames');ForceDirectories(OutDir);Source:=TPath.Combine(OutDir,'runner-native.identity');TFile.WriteAllText(Source,'fixed native Runner test source; no PCM',TEncoding.UTF8);
     Need(GetFileAttributesEx(PChar(Source),GetFileExInfoStandard,@Stamp),'Source stamp');Revision:=IntToHex(Stamp.nFileSizeHigh,8)+IntToHex(Stamp.nFileSizeLow,8)+'-'+IntToHex(Stamp.ftLastWriteTime.dwHighDateTime,8)+IntToHex(Stamp.ftLastWriteTime.dwLowDateTime,8);
-    ConfigureRhythmProduct('SYNC_RhythmRunner','Runner ABC native',rsRunner);Need(StylePlanVersion(rsRunner)=6,'v6 missing');Need((StylePlanVersion(rsBall)=6) and (StylePlanVersion(rsBreakout)=10),'Other style versions changed');Legacy;
+    ConfigureRhythmProduct('SYNC_RhythmRunner','Runner ABC native',rsRunner);Need(StylePlanVersion(rsRunner)=7,'v7 missing');Need((StylePlanVersion(rsBall)=6) and (StylePlanVersion(rsBreakout)=10),'Other style versions changed');Legacy;LegacyABC6;
     Image:=TBitmap.Create;Image.PixelFormat:=pf32bit;Image.SetSize(1280,720);Checks:=0;FloorChecks:=0;TimingChecks:=0;WalkChecks:=0;IdleChecks:=0;OpposingChecks:=0;BodyContactChecks:=0;MaxErr:=0;Contacts:=0;Moving:=0;Falls:=0;Both:=0;Bosses:=0;FillChar(Seen,SizeOf(Seen),0);
     for C:=0 to 15 do begin Writeln('fixture ',C);
       Audio:=TRhythmAudio.Create;Audio.Source:=Source;Audio.SourceRevision:=Revision;Audio.Key:=THashSHA2.GetHashString('runner-abc-native-'+IntToStr(C));Audio.Sensitivity:=50;
@@ -122,20 +158,26 @@ begin
         Need(Time>=0,'Boss final impact missing');
         for I:=Score.Sections[K].First to Score.Sections[K].Last do if Score.Hits[I].Time>Time then Need(Score.Hits[I].Kind=rhPulse,'Boss attacks after defeat');
       end;
-      if C=13 then Need(Length(Score.Sections)<=2,'Threshold chatter');
+      if C=13 then Need(Length(Score.Sections)<=20,'Phrase chatter');
       for I:=0 to High(Score.Hits) do begin H:=Score.Hits[I];Need(H.Time=Audio.Hits[H.Source].Time,'Raw clock changed');Seen[H.Kind]:=True;CheckContactTiming(Score,I);
         if H.Kind in [rhSword,rhBossCut,rhParry,rhFinish] then begin Need(Score.BladeAt(H.Time,G,Tip),'No blade');Err:=Hypot(Tip.X-H.X,Tip.Y-H.Y);MaxErr:=Max(MaxErr,Err);Need(Err<1E-7,'Contact mismatch');Inc(Contacts);end;
         if H.Kind=rhDodge then begin Pose:=Score.HeroAt(H.Time);Need(Pose.Airborne and (Pose.Y<RA_GROUND-0.12),'Dodge failed');end;
         if H.Kind in [rhParry,rhDodge,rhHurt] then begin Need(Score.EnemyBladeAt(H.Time,G,Tip),'Enemy blade missing');Need(Hypot(Tip.X-H.X,Tip.Y-H.Y)<1E-7,'Enemy blade contact mismatch');end;
       end;
-      for I:=0 to High(Score.Jumps) do begin Jump:=Score.Jumps[I];Pad:=Score.PadAt(Jump.Pad,Jump.Time);Pose:=Score.HeroAt(Jump.Time);Err:=Abs(Pose.Y-Pad.Y);MaxErr:=Max(MaxErr,Err);Need(Err<1E-7,'Foot missed moving pad');
+      for I:=0 to High(Score.Jumps) do begin Jump:=Score.Jumps[I];
+        if Jump.Source>=0 then Need(Jump.Time=Audio.Hits[Jump.Source].Time,'Jump landing moved off source clock');
+        Need(Jump.Time-Jump.Takeoff>=0.32,'Jump flight too short');
+        Pad:=Score.PadAt(Jump.Pad,Jump.Time);Pose:=Score.HeroAt(Jump.Time);Err:=Abs(Pose.Y-Pad.Y);MaxErr:=Max(MaxErr,Err);Need(Err<1E-7,'Foot missed moving pad');
         O:=Score.PadOffset(Jump.Pad,Jump.Takeoff-0.18);if (Score.Pads[Jump.Pad].AX<>0) or (Score.Pads[Jump.Pad].AY<>0) then begin Need(Hypot(O.X,O.Y)>1E-7,'Destination does not move before takeoff');Inc(Moving);end;
         Pad:=Score.PadAt(Jump.FromPad,Jump.Takeoff+0.50);Need(Pad.Y>Score.Pads[Jump.FromPad].Y+0.30,'Departed pad did not fall');Inc(Falls);
         for J:=0 to 32 do begin Time:=Jump.Takeoff+(Jump.Time-Jump.Takeoff)*J/32;Pose:=Score.HeroAt(Time);Need(not IsNan(Pose.X) and not IsNan(Pose.Y) and not IsInfinite(Pose.Y),'Invalid flight');
           if (J>0) and (J<32) then for K:=Max(0,Jump.FromPad-1) to Min(High(Score.Pads),Jump.Pad+1) do begin Pad:=Score.PadAt(K,Time);if (Pose.X+0.009>=Pad.Left) and (Pose.X-0.009<=Pad.Right) then begin Need(Pose.Y<=Pad.Y+0.001,'Feet penetrate a moving floor');Inc(FloorChecks);end;end;
         end;
       end;
-      for I:=1 to High(Score.Sections) do begin Time:=Score.Sections[I].Start;Pose:=Score.HeroAt(Time-1E-7);Other:=Score.HeroAt(Time);Need(Hypot(Pose.X-Other.X,Pose.Y-Other.Y)<1E-5,'ABC boundary teleports');end;
+      for I:=1 to High(Score.Sections) do begin Time:=Score.Sections[I].Start;Pose:=Score.HeroAt(Time-1E-7);Other:=Score.HeroAt(Time);Need(Hypot(Pose.X-Other.X,Pose.Y-Other.Y)<1E-5,'ABC boundary teleports');
+        if (I<High(Score.Sections)) and (Score.Sections[I-1].Mode<>rmBoss) and (Score.Sections[I].Mode<>rmBoss) and (Score.Sections[I+1].Mode<>rmBoss) then
+          Need(Score.Sections[I].Finish-Time>=3-1E-7,'Per-note A/B switching');
+      end;
       Root:=Score.ToJSON;try JSON:=Root.ToJSON;Again:=TRunnerActionPlan.FromJSON(Root,Audio);try CopyRoot:=Again.ToJSON;try if CopyRoot.ToJSON<>JSON then begin TFile.WriteAllText(TPath.Combine(OutDir,'expected.json'),JSON,TEncoding.UTF8);TFile.WriteAllText(TPath.Combine(OutDir,'actual.json'),CopyRoot.ToJSON,TEncoding.UTF8);end;Need(CopyRoot.ToJSON=JSON,'JSON changes score');finally CopyRoot.Free;end;
         if C=6 then begin K:=0;while (K<Length(Again.Sections)) and (Again.Sections[K].Mode<>rmBoss) do Inc(K);
           Need(K<Length(Again.Sections),'Long-song boss fixture missing');Dec(Again.Sections[K].Last);Rejected:=False;
@@ -147,6 +189,7 @@ begin
       Cold:=TRunnerPlan.LoadAudioMetadata(Ref,Source,0);Need((Length(Cold.PCM)=0) and (Length(Cold.Envelope)=0),'Cold restore needs PCM');Restored:=TRunnerPlan.Load(Ref,Cold,0);Pose:=Restored.Action.HeroAt(Score.Goal/2);O.X:=Restored.PositionAt(Score.Goal/2).X;O.Y:=Restored.PositionAt(Score.Goal/2).Y;Need(Hypot(Pose.X-O.X,Pose.Y-O.Y)<1E-7,'PositionAt does not forward the v6 score');Root:=Restored.Action.ToJSON;try Need(Root.ToJSON=JSON,'Cold changes score');finally Root.Free;end;
       BadRef:=Ref;BadRef.Digest:=StringOfChar('0',64);Rejected:=False;try BadPlan:=TRunnerPlan.Load(BadRef,Cold,0);except Rejected:=True;end;FreeAndNil(BadPlan);Need(Rejected,'Invalid digest accepted');
       Scene:=TRunnerAnimation.Create;Scene.Audio:=Cold;Scene.SetReference(Ref);Render:=TAnimationRenderer.Create(Scene,TAnimationImageBank.Create([],0));
+      if C in [3,5,6,9] then CheckEnemyEntry(Score,Render);
       if C in [5,9] then begin FillChar(Snapped,SizeOf(Snapped),0);for I:=0 to High(Score.Hits) do begin H:=Score.Hits[I];if (H.Kind in [rhLand,rhSword,rhBossCut,rhParry,rhDodge,rhHurt,rhFinish]) and not Snapped[H.Kind] then begin Snap(IntToStr(C)+'-'+IntToStr(Ord(H.Kind)),H.Time);Snapped[H.Kind]:=True;end;end;end;
       for Backend:=0 to 1 do begin Render.UseD2D:=Backend=1;for I:=0 to 15 do begin Time:=(Score.Goal+1.6)*((I*17) mod 31)/31;Render.Render(Image,Time,0);Need(Scene.Notice='','Scene load');Hash:=ImageHash;Render.Render(Image,Score.Goal-Time,0);Render.Render(Image,Time,0);Need(ImageHash=Hash,'Seek image drift');Inc(Checks);end;end;
       FreeAndNil(Render);FreeAndNil(Restored);FreeAndNil(Cold);FreeAndNil(Plan);FreeAndNil(Audio);
@@ -158,8 +201,8 @@ begin
     Need((WalkChecks>0) and (IdleChecks>0) and (OpposingChecks>0) and (BodyContactChecks>0),'Motion coverage missing');
     Writeln(Format('Runner motion: stance %d / idle %d / opposing %d / body contacts %d',[WalkChecks,IdleChecks,OpposingChecks,BodyContactChecks]));
     TFile.WriteAllText(TPath.Combine(OutDir,'motion-results.txt'),Format('stance=%d idle=%d opposing=%d bodyContacts=%d',[WalkChecks,IdleChecks,OpposingChecks,BodyContactChecks]),TEncoding.UTF8);
-    Writeln(Format('Runner ABC PASS: 16 fixtures; legacy 1..5; %d seeks; %d blade contacts; %d moving landings; %d falls; mixed A/B %d; bosses %d; floor samples %d; timing samples %d; max error %.12g',[Checks,Contacts,Moving,Falls,Both,Bosses,FloorChecks,TimingChecks,MaxErr]));
-    TFile.WriteAllText(TPath.Combine(OutDir,'results.txt'),Format('fixtures=16 legacy=1..5 seeks=%d contacts=%d moving=%d falls=%d mixed=%d bosses=%d floorSamples=%d timingSamples=%d maxError=%.12g',[Checks,Contacts,Moving,Falls,Both,Bosses,FloorChecks,TimingChecks,MaxErr]),TEncoding.UTF8);
+    Writeln(Format('Runner ABC PASS: 16 fixtures; legacy 1..6; %d seeks; %d blade contacts; %d moving landings; %d falls; mixed A/B %d; bosses %d; floor samples %d; timing samples %d; max error %.12g',[Checks,Contacts,Moving,Falls,Both,Bosses,FloorChecks,TimingChecks,MaxErr]));
+    TFile.WriteAllText(TPath.Combine(OutDir,'results.txt'),Format('fixtures=16 legacy=1..6 seeks=%d contacts=%d moving=%d falls=%d mixed=%d bosses=%d floorSamples=%d timingSamples=%d maxError=%.12g',[Checks,Contacts,Moving,Falls,Both,Bosses,FloorChecks,TimingChecks,MaxErr]),TEncoding.UTF8);
   except on E:Exception do begin Writeln(E.ClassName+': '+E.Message);ExitCode:=1;end;end;
   PNG.Free;Image.Free;Render.Free;Restored.Free;Plan.Free;Cold.Free;Audio.Free;
 end.

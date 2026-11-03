@@ -1,5 +1,5 @@
 ﻿unit RhythmRaceCrashCodec;
-// v8/v9 binary64 JSONと保存済み幾何の前向き検証。逆算や音時刻修正をしない。
+// v8～v11 binary64 JSONと保存済み幾何の前向き検証。逆算や音時刻修正をしない。
 interface
 uses System.SysUtils,System.JSON,RhythmAudio,RhythmRaceCrashMotion;
 function CrashFinite(V:Double):Boolean;
@@ -33,7 +33,7 @@ var
   end;
 begin
   with Plan do begin
-    CrashRequire((Version=8) or (Version=9) or (Version=10),'version');
+    CrashRequire((Version=8) or (Version=9) or (Version=10) or (Version=11),'version');
     CrashRequire(CrashFinite(Duration) and (Duration>0) and (Duration<=CRASH_MAX_SECONDS) and CrashFinite(SoundEnd) and (SoundEnd>=0) and (SoundEnd<=Duration) and CrashFinite(EndTime) and (EndTime>0) and (EndTime<=Duration),'duration');
     if SoundEnd>0 then CrashRequire(Abs(EndTime-SoundEnd)<1E-7,'audible end') else CrashRequire(EndTime=Duration,'silent end');
     CrashRequire((Frequency>=0) and (Frequency<=100) and CrashFinite(Launch) and CrashFinite(Acceleration) and CrashFinite(Goal) and CrashFinite(TopSpeed) and (Launch>=0) and (Acceleration>0) and (Launch+Acceleration<Goal) and (Goal<EndTime) and (TopSpeed>=135) and (TopSpeed<=159),'timeline');
@@ -195,10 +195,11 @@ var
     CrashRequire((D>=Lo) and (D<=Hi) and (Frac(D)=0),'JSON integer');
     Result:=Trunc(D);
   end;
-begin CrashRequire((Root<>nil) and ((Root.GetValue<string>('policy','')='inverse-ram-traffic-v8') or (Root.GetValue<string>('policy','')='inverse-ram-traffic-v9') or (Root.GetValue<string>('policy','')='inverse-ram-traffic-v10')),'JSON policy');
+begin CrashRequire((Root<>nil) and ((Root.GetValue<string>('policy','')='inverse-ram-traffic-v8') or (Root.GetValue<string>('policy','')='inverse-ram-traffic-v9') or (Root.GetValue<string>('policy','')='inverse-ram-traffic-v10') or (Root.GetValue<string>('policy','')='inverse-ram-traffic-v11')),'JSON policy');
   Plan.Version:=8;
   if Root.GetValue<string>('policy','')='inverse-ram-traffic-v9' then Plan.Version:=9;
   if Root.GetValue<string>('policy','')='inverse-ram-traffic-v10' then Plan.Version:=10;
+  if Root.GetValue<string>('policy','')='inverse-ram-traffic-v11' then Plan.Version:=11;
   A:=Table('meta',1);
   CrashRequire(A.Count=1,'JSON header');
   I:=0;

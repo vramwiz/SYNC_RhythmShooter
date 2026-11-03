@@ -69,7 +69,7 @@ begin CrashRequire(Audio<>nil,'audio');
   Wanted:=TList<TCrashKey>.Create;
   Selected:=TList<Integer>.Create;
   try
-    Plan.Version:=10;
+    Plan.Version:=11;
     Plan.Events:=Copy(Audio.Hits);
     Plan.Duration:=Audio.Duration;
     Plan.SoundEnd:=Audio.SoundEnd;

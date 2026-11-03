@@ -136,7 +136,7 @@ end;
 class function TRacePlan.Build(Audio:TRhythmAudio;const Cancel:TFunc<Boolean>):TRacePlan;
 begin Result:=TRacePlan.Create;
   try Result.FCrash:=TRaceCrashPlan.Build(Audio,Cancel);
-    Result.FVersion:=10;
+    Result.FVersion:=11;
     Result.FFocus:=RACE_FOCUS;
     Result.FDuration:=Result.FCrash.Duration;
     Result.FSoundEnd:=Result.FCrash.SoundEnd;
