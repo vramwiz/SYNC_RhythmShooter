@@ -25,6 +25,7 @@ type
     class function Load(const Ref:TRhythmPlanRef;Audio:TRhythmAudio;Direction:Integer):TOrbitPlan;static;
     class function LoadAudioMetadata(const Ref:TRhythmPlanRef;const Source:string;Direction:Integer):TRhythmAudio;static;
     function Before(Time:Double):Integer;
+    function IsRoll(Index:Integer):Boolean;
     function LegAt(Time:Double):Integer;
     function PointAt(Leg:Integer;Time:Double):TOrbitPoint;
     function CursorAt(Time:Double):TOrbitPoint;
@@ -45,7 +46,17 @@ type
   end;
 function OrbitProject(const P:TOrbitPoint;const Camera:TOrbitCamera;Aspect:Double):TOrbitPoint;
 implementation
-uses System.Math,System.Generics.Collections,RhythmOrbitCodec;
+uses System.Math,System.Generics.Collections,RhythmOrbitCodec,RhythmOrbitAudio,RhythmStyles;
+
+function TOrbitPlan.IsRoll(Index:Integer):Boolean;
+var L,R:Integer;
+begin
+  if (Version<4) or (Threshold>RHYTHM_ROLL_SENSITIVITY) or (Index<0) or (Index>=Count) then Exit(False);
+  L:=Index;R:=Index;
+  while (L>0) and (Index-L<2) and RollPair(FData.Taps[L-1].Time,FData.Taps[L].Time) do Dec(L);
+  while (R+1<Count) and (R-L<2) and RollPair(FData.Taps[R].Time,FData.Taps[R+1].Time) do Inc(R);
+  Result:=R-L>=2;
+end;
 function Smooth(U:Double):Double;
 begin U:=EnsureRange(U,0.0,1.0);Result:=U*U*(3-2*U);end;
 function OrbitProject(const P:TOrbitPoint;const Camera:TOrbitCamera;Aspect:Double):TOrbitPoint;
@@ -157,7 +168,7 @@ begin
   Check;Result:=TOrbitPlan.Create;Times:=nil;Bodies:=nil;Legs:=nil;Taps:=nil;
   try
     try
-      Result.FData.Version:=3;Result.FData.Duration:=Audio.Duration;Result.FData.SoundEnd:=Audio.SoundEnd;
+      Result.FData.Version:=StylePlanVersion(rsRhythmGame);Result.FData.Duration:=Audio.Duration;Result.FData.SoundEnd:=Audio.SoundEnd;
       Result.FData.EndTime:=Audio.Duration;Result.FData.Threshold:=Threshold;
       Result.FData.Events:=Copy(Audio.Hits);Times:=TList<Double>.Create;Last:=-1;
       for I:=0 to High(Audio.Hits) do begin Check;T:=Audio.Hits[I].Time;
@@ -230,7 +241,7 @@ begin
   Require(OrbitFinite(FData.Duration) and OrbitFinite(FData.SoundEnd) and OrbitFinite(FData.EndTime) and
     (FData.Duration>0) and (FData.Duration<=3043.5) and (FData.SoundEnd>=0) and (FData.SoundEnd<=FData.Duration) and
     (((FData.Version=2) and (FData.EndTime=Max(FData.Duration,FData.SoundEnd+ORBIT_EFFECT_LIFE)) and (FData.Threshold>=0)) or
-     ((FData.Version=3) and (FData.EndTime=FData.Duration) and (FData.Threshold>=-100))) and (FData.Threshold<=100),'bounds');
+     ((FData.Version>=3) and (FData.EndTime=FData.Duration) and (FData.Threshold>=-100))) and (FData.Threshold<=100),'bounds');
   Require((Length(FData.Events)<=ORBIT_MAX_EVENTS) and (Count<=Length(FData.Events)) and (BodyCount<=ORBIT_MAX_BODIES) and (LegCount<=2*ORBIT_MAX_BODIES+3),'capacity');
   Adopted:=0;Weak:=0;Tail:=0;Last:=-1;
   for I:=0 to High(FData.Events) do begin E:=FData.Events[I];
@@ -242,7 +253,7 @@ begin
     end;
   end;
   Require((Adopted=Count) and (Weak=FData.Weak) and (Tail=FData.Tail),'selection coverage');
-  if (FData.Version=3) and (Count>0) then Require((FData.IntroFinish>0) and (FData.IntroFinish<FData.DepartStart) and
+  if (FData.Version>=3) and (Count>0) then Require((FData.IntroFinish>0) and (FData.IntroFinish<FData.DepartStart) and
     (FData.DepartStart<FData.DepartFinish) and (FData.DepartFinish<FData.SoundEnd) and
     (FData.ClearTime>=FData.DepartStart) and (FData.ClearTime<=FData.SoundEnd) and
     (FData.Legs[0].Kind=2) and (FData.Legs[LegCount-1].Kind=4),'show timeline');

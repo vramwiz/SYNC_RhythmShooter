@@ -179,7 +179,7 @@ var W,H,S,Aspect,T,Scale,Age,Alpha,U,Angle,D,Progress:Double;Camera:TOrbitCamera
   end;
   procedure FutureMarkers;
   var I,K,Count,Rank:Integer;Indices:array[0..127] of Integer;N:TOrbitTap;P,A,B:TOrbitPoint;
-    Ahead,Opacity,U,Radius,Angle:Double;Near:Boolean;
+    Ahead,Opacity,U,Radius,Angle:Double;Near:Boolean;Kind:TOrbitMarkKind;
   begin
     Count:=0;
     for I:=Max(0,Next) to Min(FPlan.Count-1,Next+ORBIT_MARKER_LIMIT-1) do begin
@@ -194,7 +194,9 @@ var W,H,S,Aspect,T,Scale,Age,Alpha,U,Angle,D,Progress:Double;Camera:TOrbitCamera
       if Near then begin Inc(FStats.NearMarkers);Radius:=(0.06+N.Strength*0.018)*Scale;end
       else begin Inc(FStats.FarMarkers);Radius:=(0.023+0.010*N.Strength)*Scale;end;
       A:=FPlan.CursorAt(N.Time-0.015);B:=FPlan.CursorAt(N.Time+0.015);Angle:=ArcTan2(B.Y-A.Y,B.X-A.X);
-      DrawOrbitMark(Surface,P.X,P.Y,Radius,Angle,Opacity,U,OrbitMarkKind(N),OrbitMarkColor(N),Near);Inc(FStats.Markers);
+      Kind:=OrbitMarkKind(N);
+      if FPlan.IsRoll(I) then Kind:=omArrow;
+      DrawOrbitMark(Surface,P.X,P.Y,Radius,Angle,Opacity,U,Kind,OrbitMarkColor(N),Near);Inc(FStats.Markers);
     end;
   end;
   procedure Hud;
@@ -240,7 +242,7 @@ begin
   end;
   // 予告の主線と判定リングを反応粒子より手前へ置き、密音でも進路を読ませる。
   FutureRoute;FutureMarkers;
-  if Hit>=0 then begin N:=FPlan.Taps[Hit];P:=Screen(N.P);DrawOrbitGood(Surface,P.X,P.Y,T-N.Time,Round(W),Round(H),OrbitMarkColor(N));end;
+  if Hit>=0 then begin N:=FPlan.Taps[Hit];P:=Screen(N.P);DrawOrbitGood(Surface,P.X,P.Y,T-N.Time,Round(W),Round(H),OrbitMarkColor(N),FPlan.IsRoll(Hit));end;
   C:=Palette(FPlan.Bodies[ToBody].Hue);Alpha:=1;
   if T>FPlan.SoundEnd then Alpha:=Max(0.0,1-(T-FPlan.SoundEnd)/0.9);
   P:=FPlan.CursorAt(T-0.28);

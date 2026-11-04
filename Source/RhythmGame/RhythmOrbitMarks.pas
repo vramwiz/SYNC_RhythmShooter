@@ -8,7 +8,7 @@ function OrbitMarkColor(const Tap:TOrbitTap):TColor;
 procedure DrawOrbitMark(Surface:TAnimationRenderSurface;X,Y,Radius,Angle,Opacity,Approach:Double;
   Kind:TOrbitMarkKind;Color:TColor;Near:Boolean);
 // GOODは自動成功の反応表示。操作成績と誤解しないようAUTOを添える。
-procedure DrawOrbitGood(Surface:TAnimationRenderSurface;X,Y,Age:Double;W,H:Integer;Color:TColor);
+procedure DrawOrbitGood(Surface:TAnimationRenderSurface;X,Y,Age:Double;W,H:Integer;Color:TColor;Roll:Boolean=False);
 implementation
 uses System.Math,Winapi.Windows;
 function OrbitMarkKind(const Tap:TOrbitTap):TOrbitMarkKind;
@@ -43,12 +43,13 @@ begin
       Surface.Line(X+Cos(A)*R,Y+Sin(A)*R,X+Cos(B)*R,Y+Sin(B)*R,clWhite,Stroke,1);end;
   end;
 end;
-procedure DrawOrbitGood(Surface:TAnimationRenderSurface;X,Y,Age:Double;W,H:Integer;Color:TColor);
+procedure DrawOrbitGood(Surface:TAnimationRenderSurface;X,Y,Age:Double;W,H:Integer;Color:TColor;Roll:Boolean);
 var Cell,Alpha,Top,Left:Double;
   function Glyph(C:Char):Cardinal;
   begin case C of
     'G':Result:=$1f085e2e;'O':Result:=$1d18c62e;'D':Result:=$3d18c63e;
-    'A':Result:=$1d18fe31;'U':Result:=$2318c62e;'T':Result:=$3e421084;else Result:=0;end;end;
+    'A':Result:=$1d18fe31;'U':Result:=$2318c62e;'T':Result:=$3e421084;
+    'R':Result:=$3d1f4a51;'L':Result:=$2108421f;else Result:=0;end;end;
   procedure Text(const S:string;X,Y,Size:Double);
   var I,J,K:Integer;Bits:Cardinal;
   begin
@@ -62,6 +63,7 @@ begin
   Left:=EnsureRange(X-11.5*Cell,4.0,Max(4.0,W-24*Cell-4));Top:=EnsureRange(Y-31-6*Cell-Age*15,4.0,Max(4.0,H-10*Cell-4));
   // 小さな読み取り用プレートだけを置き、密な火花や中層映像から評価文字を分離する。
   Surface.FillRect(Left-2,Top-2,Left+24*Cell,Top+11*Cell,RGB(4,10,24),Alpha*0.82);
-  Text('GOOD',Left,Top,Cell);Text('AUTO',Left+5.75*Cell,Top+7*Cell,Cell*0.5);
+  if Roll then Text('ROLL',Left,Top,Cell) else Text('GOOD',Left,Top,Cell);
+  Text('AUTO',Left+5.75*Cell,Top+7*Cell,Cell*0.5);
 end;
 end.

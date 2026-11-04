@@ -5,7 +5,7 @@ interface
 uses System.SysUtils,RhythmAudio;
 type
   TOrbitAudioStats=record
-    Legacy,Peaks,Qualified,SelectedExtra,NoiseRejected,Merged,Capped:Integer;
+    Legacy,Peaks,Qualified,SelectedExtra,NoiseRejected,Merged,Capped,RollTicks:Integer;
   end;
   TOrbitCandidate=record
     Hit:TRhythmHit;
@@ -25,8 +25,102 @@ type
 function PrepareOrbitAudio(Audio:TRhythmAudio;Value:Integer;out Stats:TOrbitAudioStats;
   const Cancel:TFunc<Boolean> = nil):TRhythmAudio;
 function SelectAnimationHits(Audio:TRhythmAudio;Value:Integer;const Cancel:TFunc<Boolean>):TArray<TRhythmHit>;
+function RollPair(First,Second:Double):Boolean;
+const RHYTHM_ROLL_SENSITIVITY=-35;
 implementation
 uses System.Math,System.Generics.Collections,System.Generics.Defaults,RhythmMotion,RhythmStyles;
+
+function RollPair(First,Second:Double):Boolean;
+begin
+  Result:=(Second>First) and (Second-First<=0.17);
+end;
+
+function SustainedBlock(Samples:PSmallInt):Boolean;
+const Stride=16; Points=110;
+var Signal:array[0..Points-1] of Double;
+  Power:array[0..1] of Double;
+  I,J,Lag,Channel:Integer;
+  X,A,B,Mean,Cross,First,Second:Double;
+  Reversed:Boolean;
+begin
+  Power[0]:=0;Power[1]:=0;
+  for I:=0 to Points-1 do for J:=0 to 1 do begin
+    X:=Samples[I*Stride*2+J];Power[J]:=Power[J]+X*X;
+  end;
+  Channel:=Ord(Power[1]>Power[0]);
+  if Power[Channel]<Points*320.0*320.0 then Exit(False);
+  Mean:=0;
+  for I:=0 to Points-1 do begin
+    Signal[I]:=Samples[I*Stride*2+Channel];Mean:=Mean+Signal[I];
+  end;
+  Mean:=Mean/Points;First:=0;Second:=0;
+  for I:=0 to Points-1 do begin
+    Signal[I]:=Signal[I]-Mean;
+    X:=Signal[I]*Signal[I];
+    if I<Points div 2 then First:=First+X else Second:=Second+X;
+  end;
+  // 無音、直流、短い打音の減衰を先に落とし、周期が続く波形だけを見る。
+  if (First+Second<Points*320.0*320.0) or (Min(First,Second)<Max(First,Second)*0.32) then Exit(False);
+  Reversed:=False;
+  for Lag:=3 to 42 do begin
+    Cross:=0;First:=0;Second:=0;
+    for I:=Lag to Points-1 do begin
+      A:=Signal[I];B:=Signal[I-Lag];
+      Cross:=Cross+A*B;First:=First+A*A;Second:=Second+B*B;
+    end;
+    // 短い遅延で似ているだけの低域雑音を避け、位相反転の後の一致を使う。
+    if Cross<=0 then Reversed:=True
+    else if Reversed and (Cross*Cross>=0.78*First*Second) then Exit(True);
+  end;
+  Result:=False;
+end;
+
+function AddRollTicks(Audio,Snapshot:TRhythmAudio;const Cancel:TFunc<Boolean>):Integer;
+const BlockSamples=1764; Step=0.12; Guard=0.047;
+var List:TList<TRhythmHit>;Samples:PSmallInt;Blocks,I,Run,Near,J:Integer;
+  Time,Finish:Double;Blocked,Tonal:Boolean;Hit:TRhythmHit;
+begin
+  Result:=0;
+  // 有音端の直後も確認し、曲頭の持続音に続く無音を区間の境界として扱う。
+  Blocks:=Min(Length(Audio.PCM) div (BlockSamples*4),Ceil(Audio.SoundEnd/0.04)+1);
+  if Blocks<9 then Exit;
+  Samples:=PSmallInt(Audio.PCM);
+  List:=TList<TRhythmHit>.Create;
+  try
+    List.AddRange(Snapshot.Hits);Run:=-1;
+    for I:=0 to Blocks do begin
+      if (I mod 64=0) and Assigned(Cancel) and Cancel() then Abort;
+      Tonal:=(I<Blocks) and SustainedBlock(Samples+I*BlockSamples*2);
+      if Tonal then begin
+        if Run<0 then Run:=I;
+        Continue;
+      end;
+      if (Run>=0) and (I-Run>=9) and ((Run>0) or (I<Blocks)) then begin
+        // 持続区間の内側だけで演出を刻む。既に採用したピークは元の位置を使う。
+        Time:=Run*0.04+0.08;Finish:=Min(I*0.04-0.04,Audio.SoundEnd);
+        while (Time<=Finish) and (List.Count<100000) do begin
+          Near:=Snapshot.NearestHit(Time);Blocked:=False;
+          for J:=Max(0,Near-1) to Near do
+            if Abs(Snapshot.Hits[J].Time-Time)<Guard then Blocked:=True;
+          if not Blocked then begin
+            Hit:=Default(TRhythmHit);Hit.Time:=Time;Hit.Strength:=0.67;
+            List.Add(Hit);Inc(Result);
+          end;
+          Time:=Time+Step;
+        end;
+      end;
+      Run:=-1;
+    end;
+    if Result>0 then begin
+      Snapshot.Hits:=List.ToArray;
+      TArray.Sort<TRhythmHit>(Snapshot.Hits,TComparer<TRhythmHit>.Construct(
+        function(const A,B:TRhythmHit):Integer
+        begin Result:=CompareValue(A.Time,B.Time,0.0);end));
+    end;
+  finally
+    List.Free;
+  end;
+end;
 type
   TBandValues=array[0..2] of Double;
   TOrbitFrame=record
@@ -141,7 +235,17 @@ begin
   if Audio=nil then raise EArgumentNilException.Create('Audio');
   if Value>=0 then begin Stats:=Default(TOrbitAudioStats);Stats.Legacy:=Length(Audio.Hits);Result:=Snapshot(Audio);Result.Hits:=Copy(Audio.Hits);Exit;end;
   Pool:=TOrbitCandidatePool.Analyze(Audio,Cancel);
-  try Result:=Pool.Select(Audio,Value,Stats);finally Pool.Free;end;
+  try
+    Result:=Pool.Select(Audio,Value,Stats);
+    try
+      if Value<=RHYTHM_ROLL_SENSITIVITY then Stats.RollTicks:=AddRollTicks(Audio,Result,Cancel);
+    except
+      Result.Free;
+      raise;
+    end;
+  finally
+    Pool.Free;
+  end;
 end;
 
 function TOrbitCandidatePool.SelectSpaced(Audio:TRhythmAudio;Value:Integer;const Cancel:TFunc<Boolean>):TArray<TRhythmHit>;

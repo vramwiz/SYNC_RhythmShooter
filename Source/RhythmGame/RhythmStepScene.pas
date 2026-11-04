@@ -255,7 +255,10 @@ var W,H,DeckWidth,Center,JudgeY,SpawnY,PanelBottom,Scale,Cell,T,Duration,Pulse:D
       for Lane:=0 to STEP_LANE_COUNT-1 do if Mask and (1 shl Lane)<>0 then begin
         X:=LaneX(Lane);
         C:=LaneColors[Player,Lane];
-        if Note.Strength>=0.78 then Surface.Line(X,Y+NoteH*0.45,X,Min(PanelBottom,Y+NoteH*1.48),Tone(C,Depth*0.34),Max(1.0,Scale*2));
+        if FPlan.IsRoll(I) then
+          Surface.Line(X-LaneW*0.19,Y+NoteH*0.55,X+LaneW*0.19,Y+NoteH*0.55,Tone(C,Depth),Max(1.0,Scale*1.5))
+        else if Note.Strength>=0.78 then
+          Surface.Line(X,Y+NoteH*0.45,X,Min(PanelBottom,Y+NoteH*1.48),Tone(C,Depth*0.34),Max(1.0,Scale*2));
         Tile(Surface,X,Y,LaneW*0.75,NoteH*Depth,Depth,Lane,C,False);
       end;
     end;
@@ -305,6 +308,7 @@ begin
     TryActivity(T,Activity);
     Pulse:=Min(1.0,Activity.Pulse);
     Status:='SYNC';
+    if (Past>0) and FPlan.IsRoll(Past-1) and (T-FPlan.Notes[Past-1].Time<0.17) then Status:='ROLL';
     if FPlan.Count=0 then Status:='NO NOTES'
     else if (Past=FPlan.Count) and (T+STEP_TIME_EPSILON>=Min(Duration,FPlan.Notes[Past-1].Time+STEP_FLASH_TIME)) then Status:='CLEAR';
   end;

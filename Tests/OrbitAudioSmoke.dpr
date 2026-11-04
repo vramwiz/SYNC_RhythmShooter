@@ -81,6 +81,11 @@ begin Audio:=nil;Snapshot:=nil;Pool:=nil;Root:=nil;Checks:=0;DenseGain:=0;QuietE
         end;
         FreeAndNil(Snapshot);
       end;
+      if C in [4,5,6,10] then begin
+        Snapshot:=PrepareOrbitAudio(Audio,-100,Stats);
+        Need(Stats.RollTicks=0,'Stationary signal created a sustained roll');
+        FreeAndNil(Snapshot);Inc(Checks);
+      end;
       if C=1 then begin
         Worker:=TRhythmPrepareThread.Create(Source,50,0,rsRhythmGame,False,Audio,1,1);Audio:=nil;Worker.Start;Worker.WaitFor;
         try Need(Worker.Error='','Dense worker '+Worker.Error);Audio:=Worker.TakeAudio;Need((Length(Audio.Hits)=Stats.Legacy) and (BytesHash(Audio.PCM)=PCMHash),'Worker leaked private dense events');

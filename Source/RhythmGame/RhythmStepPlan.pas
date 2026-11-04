@@ -19,7 +19,7 @@ type
   private
     FNotes:TArray<TStepNote>;
     FDuration,FSoundEnd:Double;
-    FThreshold:Integer;
+    FThreshold,FVersion:Integer;
     function GetCount:Integer;
     function GetNote(Index:Integer):TStepNote;
     class function ReadChart(Root:TJSONObject;const Ref:TRhythmPlanRef):TStepPlan;static;
@@ -29,6 +29,7 @@ type
     class function Load(const Ref:TRhythmPlanRef;Audio:TRhythmAudio;Direction:Integer):TStepPlan;static;
     class function LoadAudioMetadata(const Ref:TRhythmPlanRef;const Source:string;Direction:Integer):TRhythmAudio;static;
     function CountThrough(Time:Double):Integer;
+    function IsRoll(Index:Integer):Boolean;
     property Count:Integer read GetCount;
     property Notes[Index:Integer]:TStepNote read GetNote;
     property Duration:Double read FDuration;
@@ -36,11 +37,21 @@ type
   end;
 
 implementation
-uses System.Math,System.Generics.Collections,RhythmStyles,RhythmPreparedData;
+uses System.Math,System.Generics.Collections,RhythmStyles,RhythmPreparedData,RhythmOrbitAudio;
 
 const
   MaxNotes=100000;
-  Policy='prism-step-v1';
+  Policy='prism-step-v';
+
+function TStepPlan.IsRoll(Index:Integer):Boolean;
+var L,R:Integer;
+begin
+  if (FVersion<2) or (FThreshold>RHYTHM_ROLL_SENSITIVITY) or (Index<0) or (Index>=Count) then Exit(False);
+  L:=Index;R:=Index;
+  while (L>0) and (Index-L<2) and RollPair(FNotes[L-1].Time,FNotes[L].Time) do Dec(L);
+  while (R+1<Count) and (R-L<2) and RollPair(FNotes[R].Time,FNotes[R+1].Time) do Inc(R);
+  Result:=R-L>=2;
+end;
 
 function Finite(Value:Double):Boolean;
 begin
@@ -89,7 +100,7 @@ const
   Motif:array[0..1,0..15] of Byte=(
     (0,1,3,2,1,2,0,3,2,0,1,3,1,3,2,1),
     (2,3,1,0,3,1,2,0,1,2,3,1,0,2,0,3));
-var I,J,N,Lane:Integer;Hit:TRhythmHit;Last,Previous,LastChord:Double;Chord:Boolean;
+var I,J,N,Lane:Integer;Hit:TRhythmHit;Last,Previous,LastChord:Double;Chord,Roll:Boolean;
 begin
   if Audio=nil then raise EArgumentNilException.Create('Audio');
   CheckBounds(Audio.Duration,Audio.SoundEnd,Threshold,Length(Audio.Hits));
@@ -98,6 +109,7 @@ begin
     Result.FDuration:=Audio.Duration;
     Result.FSoundEnd:=Audio.SoundEnd;
     Result.FThreshold:=Threshold;
+    Result.FVersion:=StylePlanVersion(rsStepGame);
     SetLength(Result.FNotes,Length(Audio.Hits));
     Last:=-1;
     N:=0;
@@ -123,10 +135,12 @@ begin
     for I:=0 to N-1 do begin
       if (I mod 256=0) and Assigned(Cancel) and Cancel() then Abort;
       // 強音でだけ同時押し風の二列発光。密な区間では単音の列を優先する。
-      Chord:=(Result.FNotes[I].Strength>=0.78) and (Result.FNotes[I].Time-LastChord>=0.72) and
+      Roll:=Result.IsRoll(I);
+      Chord:=not Roll and (Result.FNotes[I].Strength>=0.78) and (Result.FNotes[I].Time-LastChord>=0.72) and
         (Result.FNotes[I].Time-Previous>=0.16) and ((I=N-1) or (Result.FNotes[I+1].Time-Result.FNotes[I].Time>=0.16));
       for J:=0 to 1 do begin
         Lane:=Motif[J,I mod 16];
+        if Roll then Lane:=(I+J) mod 2+2*J;
         Result.FNotes[I].Lanes[J]:=1 shl Lane;
         if Chord then Result.FNotes[I].Lanes[J]:=Result.FNotes[I].Lanes[J] or (1 shl (Lane xor (2-J)));
       end;
@@ -142,7 +156,7 @@ end;
 procedure TStepPlan.Save(var Ref:TRhythmPlanRef;Audio:TRhythmAudio);
 var Root,Info:TJSONObject;Rows,Row:TJSONArray;Note:TStepNote;
 begin
-  if (Audio=nil) or not Ref.Matches(Audio.Key,Audio.Sensitivity,Ref.Direction,rsStepGame,FThreshold+101) or
+  if (Audio=nil) or (Ref.Version<>FVersion) or not Ref.Matches(Audio.Key,Audio.Sensitivity,Ref.Direction,rsStepGame,FThreshold+101) or
     (Audio.Duration<>FDuration) or (Audio.SoundEnd<>FSoundEnd) then raise EArgumentException.Create('Step chart save identity');
   Root:=TJSONObject.Create;
   try
@@ -153,7 +167,7 @@ begin
     Root.AddPair('source',Ref.SourceKey);
     Root.AddPair('sensitivity',TJSONNumber.Create(Ref.Sensitivity));
     Root.AddPair('direction',TJSONNumber.Create(Ref.Direction));
-    Root.AddPair('policy',Policy);
+    Root.AddPair('policy',Policy+IntToStr(FVersion));
     Root.AddPair('threshold',TJSONNumber.Create(FThreshold));
     Root.AddPair('durationExact',PreparedExact(FDuration));
     Root.AddPair('soundEndExact',PreparedExact(FSoundEnd));
@@ -180,13 +194,14 @@ end;
 class function TStepPlan.ReadChart(Root:TJSONObject;const Ref:TRhythmPlanRef):TStepPlan;
 var Rows,Row:TJSONArray;I:Integer;Note:TStepNote;Last:Double;
 begin
-  if Root.GetValue<string>('policy','')<>Policy then raise EConvertError.Create('Unknown step chart policy');
+  if Root.GetValue<string>('policy','')<>Policy+IntToStr(Ref.Version) then raise EConvertError.Create('Unknown step chart policy');
   Rows:=Root.GetValue<TJSONArray>('notes');
   Result:=TStepPlan.Create;
   try
     Result.FDuration:=ReadPreparedExact(Root.GetValue('durationExact'));
     Result.FSoundEnd:=ReadPreparedExact(Root.GetValue('soundEndExact'));
     Result.FThreshold:=Root.GetValue<Integer>('threshold',-1000);
+    Result.FVersion:=Ref.Version;
     if (Rows=nil) or (Ref.Variant<>Result.FThreshold+101) then raise EConvertError.Create('Invalid step chart identity');
     CheckBounds(Result.Duration,Result.SoundEnd,Result.FThreshold,Rows.Count);
     SetLength(Result.FNotes,Rows.Count);

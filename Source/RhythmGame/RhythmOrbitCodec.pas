@@ -1,5 +1,5 @@
 ﻿unit RhythmOrbitCodec;
-// 宇宙v3/v2をbinary64で保存・復元。版別の候補数を検証し、PCM解析や軌道の再生成はしない。
+// 宇宙v4/v3/v2をbinary64で保存・復元。版別の候補数を検証し、PCM解析や軌道の再生成はしない。
 interface
 uses RhythmAudio,RhythmPlanRef,RhythmOrbitTypes;
 procedure WriteOrbitData(const Data:TOrbitData;var Ref:TRhythmPlanRef;Audio:TRhythmAudio);
@@ -25,7 +25,7 @@ var Root:TJSONObject;A,R:TJSONArray;Info:TJSONObject;E:TRhythmHit;B:TOrbitBody;L
   procedure Row;
   begin R:=TJSONArray.Create;A.AddElement(R);end;
 begin
-  if (Audio=nil) or (Ref.Version<>Data.Version) or not Ref.Matches(Audio.Key,Audio.Sensitivity,Ref.Direction,rsRhythmGame,Data.Threshold+1+Ord(Data.Version=3)*100) or
+  if (Audio=nil) or (Ref.Version<>Data.Version) or not Ref.Matches(Audio.Key,Audio.Sensitivity,Ref.Direction,rsRhythmGame,Data.Threshold+1+Ord(Data.Version>=3)*100) or
     (Data.Duration<>Audio.Duration) or (Data.SoundEnd<>Audio.SoundEnd) then raise Exception.Create('Orbit save identity');
   Root:=TJSONObject.Create;
   try
@@ -34,7 +34,7 @@ begin
     Root.AddPair('direction',TJSONNumber.Create(Ref.Direction));Root.AddPair('policy','planet-orbit-v'+IntToStr(Data.Version));AddPreparedAudio(Root,Audio);
     // v3 keeps a private dense event set; the source audio/cache remains classic.
     Info:=Root.GetValue<TJSONObject>('audio');Info.RemovePair('events').Free;Info.AddPair('events',TJSONNumber.Create(Length(Data.Events)));
-    if Data.Version=3 then begin Root.AddPair('intro',Exact(Data.IntroFinish));Root.AddPair('depart',Exact(Data.DepartStart));
+    if Data.Version>=3 then begin Root.AddPair('intro',Exact(Data.IntroFinish));Root.AddPair('depart',Exact(Data.DepartStart));
       Root.AddPair('arrival',Exact(Data.DepartFinish));Root.AddPair('clear',Exact(Data.ClearTime));end;
     Root.AddPair('durationExact',Exact(Data.Duration));Root.AddPair('soundEndExact',Exact(Data.SoundEnd));Root.AddPair('end',Exact(Data.EndTime));
     Root.AddPair('threshold',TJSONNumber.Create(Data.Threshold));Root.AddPair('weak',TJSONNumber.Create(Data.Weak));Root.AddPair('tail',TJSONNumber.Create(Data.Tail));
@@ -44,7 +44,7 @@ begin
     for B in Data.Bodies do begin Row;Point(B.Center);Num(B.Show);Num(B.Entry);Num(B.Exit);Num(B.Clear);Num(B.Radius);
       Num(B.RX);Num(B.RY);Num(B.Rotation);Num(B.Phase);Num(B.Speed);R.Add(B.Hue);end;
     A:=TJSONArray.Create;Root.AddPair('legs',A);
-    for L in Data.Legs do begin Row;Num(L.Start);Num(L.Finish);R.Add(L.FromBody);R.Add(L.ToBody);Point(L.A);Point(L.B);Point(L.C);Point(L.D);if Data.Version=3 then R.Add(L.Kind);end;
+    for L in Data.Legs do begin Row;Num(L.Start);Num(L.Finish);R.Add(L.FromBody);R.Add(L.ToBody);Point(L.A);Point(L.B);Point(L.C);Point(L.D);if Data.Version>=3 then R.Add(L.Kind);end;
     A:=TJSONArray.Create;Root.AddPair('taps',A);
     for N in Data.Taps do begin Row;Num(N.Time);Num(N.Appear);Num(N.Strength);R.Add(N.Source);R.Add(N.Leg);R.Add(N.Chain);Point(N.P);end;
     WritePreparedData(Root,Ref);
@@ -68,9 +68,9 @@ end;
 function ReadOrbitMetadata(const Ref:TRhythmPlanRef;const Source:string;Direction:Integer):TRhythmAudio;
 var Root:TJSONObject;
 begin
-  if not (Ref.Version in [2,3]) then raise Exception.Create('Orbit metadata version');Root:=ReadPreparedData(Ref,rsRhythmGame,Direction);
+  if not (Ref.Version in [2,3,4]) then raise Exception.Create('Orbit metadata version');Root:=ReadPreparedData(Ref,rsRhythmGame,Direction);
   try
-    if (Root.GetValue<Integer>('threshold',-1000)+1+Ord(Ref.Version=3)*100<>Ref.Variant) or (Ref.Variant<1) or (Ref.Variant>101+Ord(Ref.Version=3)*100) then raise Exception.Create('Orbit metadata threshold');
+    if (Root.GetValue<Integer>('threshold',-1000)+1+Ord(Ref.Version>=3)*100<>Ref.Variant) or (Ref.Variant<1) or (Ref.Variant>101+Ord(Ref.Version>=3)*100) then raise Exception.Create('Orbit metadata threshold');
     Result:=PreparedAudio(Root,Ref,Source);
     try Restore(Root,Result);except Result.Free;raise;end;
   finally Root.Free;end;
@@ -90,7 +90,7 @@ var Root:TJSONObject;A,R:TJSONArray;I:Integer;Meta:TRhythmAudio;B:TOrbitBody;L:T
   begin Result:=OrbitPoint(Num(Index),Num(Index+1));end;
 begin
   Result:=Default(TOrbitData);Result.Version:=Ref.Version;
-  if (Audio=nil) or not (Ref.Version in [2,3]) or not Ref.Matches(Audio.Key,Audio.Sensitivity,Direction,rsRhythmGame,Ref.Variant) then raise Exception.Create('Orbit load identity');
+  if (Audio=nil) or not (Ref.Version in [2,3,4]) or not Ref.Matches(Audio.Key,Audio.Sensitivity,Direction,rsRhythmGame,Ref.Variant) then raise Exception.Create('Orbit load identity');
   Root:=ReadPreparedData(Ref,rsRhythmGame,Direction);
   try
     Meta:=TRhythmAudio.Create;
@@ -99,15 +99,15 @@ begin
     finally Meta.Free;end;
     if Ref.Version=2 then for I:=0 to High(Result.Events) do if (Result.Events[I].Time<>Audio.Hits[I].Time) or (Result.Events[I].Strength<>Audio.Hits[I].Strength) then raise Exception.Create('Orbit supplied audio differs');
     Result.EndTime:=Value(Root.GetValue('end'));Result.Threshold:=Root.GetValue<Integer>('threshold');
-    if Result.Threshold+1+Ord(Ref.Version=3)*100<>Ref.Variant then raise Exception.Create('Orbit threshold identity');
-    if Ref.Version=3 then begin Result.IntroFinish:=Value(Root.GetValue('intro'));Result.DepartStart:=Value(Root.GetValue('depart'));
+    if Result.Threshold+1+Ord(Ref.Version>=3)*100<>Ref.Variant then raise Exception.Create('Orbit threshold identity');
+    if Ref.Version>=3 then begin Result.IntroFinish:=Value(Root.GetValue('intro'));Result.DepartStart:=Value(Root.GetValue('depart'));
       Result.DepartFinish:=Value(Root.GetValue('arrival'));Result.ClearTime:=Value(Root.GetValue('clear'));end;
     Result.Weak:=Root.GetValue<Integer>('weak');Result.Tail:=Root.GetValue<Integer>('tail');
     A:=Rows('bodies',ORBIT_MAX_BODIES);SetLength(Result.Bodies,A.Count);
     for I:=0 to A.Count-1 do begin Row(I,13);B.Center:=Point(0);B.Show:=Num(2);B.Entry:=Num(3);B.Exit:=Num(4);B.Clear:=Num(5);
       B.Radius:=Num(6);B.RX:=Num(7);B.RY:=Num(8);B.Rotation:=Num(9);B.Phase:=Num(10);B.Speed:=Num(11);B.Hue:=Int(12);Result.Bodies[I]:=B;end;
     A:=Rows('legs',2*ORBIT_MAX_BODIES+3);SetLength(Result.Legs,A.Count);
-    for I:=0 to A.Count-1 do begin Row(I,12+Ord(Ref.Version=3));L.Start:=Num(0);L.Finish:=Num(1);L.FromBody:=Int(2);L.ToBody:=Int(3);L.A:=Point(4);L.B:=Point(6);L.C:=Point(8);L.D:=Point(10);L.Kind:=Ord(L.FromBody<>L.ToBody);if Ref.Version=3 then L.Kind:=Int(12);Result.Legs[I]:=L;end;
+    for I:=0 to A.Count-1 do begin Row(I,12+Ord(Ref.Version>=3));L.Start:=Num(0);L.Finish:=Num(1);L.FromBody:=Int(2);L.ToBody:=Int(3);L.A:=Point(4);L.B:=Point(6);L.C:=Point(8);L.D:=Point(10);L.Kind:=Ord(L.FromBody<>L.ToBody);if Ref.Version>=3 then L.Kind:=Int(12);Result.Legs[I]:=L;end;
     A:=Rows('taps',ORBIT_MAX_EVENTS);SetLength(Result.Taps,A.Count);
     for I:=0 to A.Count-1 do begin Row(I,8);N.Time:=Num(0);N.Appear:=Num(1);N.Strength:=Num(2);N.Source:=Int(3);N.Leg:=Int(4);N.Chain:=Int(5);N.P:=Point(6);Result.Taps[I]:=N;end;
   finally Root.Free;end;

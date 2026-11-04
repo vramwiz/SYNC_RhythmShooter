@@ -1,9 +1,10 @@
 ﻿program StepGameSmoke;
 {$APPTYPE CONSOLE}
+{$POINTERMATH ON}
 // Synthetic PCM, absolute hit timing, shared density, saved chart and GDI/D2D rendering.
-uses System.SysUtils,System.Classes,System.IOUtils,System.Math,System.Hash,Vcl.Graphics,Vcl.Imaging.pngimage,
+uses System.SysUtils,System.Classes,System.IOUtils,System.Math,System.Hash,System.JSON,Vcl.Graphics,Vcl.Imaging.pngimage,
   RhythmAudio,RhythmAudioCache,RhythmOrbitAudio,RhythmStyles,RhythmProduct,RhythmPlanRef,RhythmSettings,RhythmPrepare,
-  RhythmStepPlan,RhythmStepScene,RhythmScene;
+  RhythmStepPlan,RhythmStepScene,RhythmScene,RhythmGamePlan,RhythmStyleRegistry,RhythmPreparedData;
 var
   Audio,Cold:TRhythmAudio;
   Plan:TStepPlan;
@@ -160,6 +161,125 @@ begin
   end;
 end;
 
+procedure CheckRolls;
+var Input,Peaks,Dense,Restored:TRhythmAudio;Pool:TOrbitCandidatePool;Stats:TOrbitAudioStats;
+  Step:TStepPlan;Game:TGamePlan;Job:TRhythmPrepareThread;Saved,Legacy:TRhythmPlanRef;
+  Style:TRhythmStyle;Path,Policy,FrameHash:string;Samples:PSmallInt;Seed:Cardinal;I,J,Added,Rolls,ToneBytes:Integer;
+  Time,Value,ShowAt:Double;Sample:SmallInt;N:TStepNote;PNG:TPngImage;
+  Root:TJSONObject;Settings,Parsed:TRhythmSettings;
+begin
+  Input:=TRhythmAudio.Create;Peaks:=nil;Dense:=nil;
+  try
+    SetLength(Input.PCM,4*RHYTHM_RATE*4);
+    Samples:=PSmallInt(Input.PCM);Seed:=17;
+    for I:=0 to 4*RHYTHM_RATE-1 do begin
+      Time:=I/RHYTHM_RATE;
+      Seed:=Cardinal((UInt64(Seed)*1664525+1013904223) and $FFFFFFFF);
+      Value:=((Seed shr 16)/65535.0-0.5)*0.09;
+      if (Time>=0.64) and (Time<2.36) then
+        Value:=0.22*Sin(2*Pi*220*Time)+0.08*Sin(2*Pi*440*Time);
+      Sample:=Round(Value*32767);Samples[I*2]:=Sample;Samples[I*2+1]:=Sample;
+    end;
+    Path:=TPath.Combine(Folder,'hold-with-noise.pcm');
+    TFile.WriteAllBytes(Path,Input.PCM);
+    Input.Source:=Path;Input.SourceRevision:=AudioSourceStamp(Path);
+    Input.Key:=THashSHA2.GetHashStringFromFile(Path);Input.Sensitivity:=50;Input.Detect;
+    Pool:=TOrbitCandidatePool.Analyze(Input);
+    try Peaks:=Pool.Select(Input,-80,Stats);finally Pool.Free;end;
+    Dense:=PrepareOrbitAudio(Input,-34,Stats);
+    Need(Stats.RollTicks=0,'Rolls start below the high-sensitivity setting');
+    FreeAndNil(Dense);
+    Dense:=PrepareOrbitAudio(Input,-80,Stats);
+    Need(Stats.RollTicks>=5,'Sustained tone produced no roll');
+    J:=0;Added:=0;
+    for I:=0 to High(Dense.Hits) do begin
+      if (J<Length(Peaks.Hits)) and (Dense.Hits[I].Time=Peaks.Hits[J].Time) then begin Inc(J);Continue;end;
+      Need((Dense.Hits[I].Time>0.64) and (Dense.Hits[I].Time<2.36),'Roll tick escaped into noise');
+      Inc(Added);
+    end;
+    Need((Added=Stats.RollTicks) and (J=Length(Peaks.Hits)),'Roll moved existing peaks');
+    for Style:=rsRhythmGame to rsStepGame do begin
+      Job:=TRhythmPrepareThread.Create(Path,50,0,Style,False,Input,2,StyleVariant(Style,50,100,-80),-80);
+      Input:=nil;Job.Start;Job.WaitFor;
+      try Need(Job.Error='',Job.Error);Input:=Job.TakeAudio;Saved:=Job.Plan;finally Job.Free;end;
+      Restored:=LoadStyleAudio(Style,Saved,Path,0);
+      try
+        Need(Length(Restored.PCM)=0,'Roll restore needs PCM');
+        Rolls:=0;ShowAt:=0;
+        if Style=rsStepGame then begin
+          Step:=TStepPlan.Load(Saved,Restored,0);
+          try
+            for I:=0 to Step.Count-1 do if Step.IsRoll(I) then begin
+              N:=Step.Notes[I];Inc(Rolls);
+              if Abs(N.Time-1.5)<Abs(ShowAt-1.5) then ShowAt:=N.Time;
+              Need((N.Lanes[0] in [1,2]) and (N.Lanes[1] in [4,8]),'Roll did not alternate dedicated lanes');
+            end;
+          finally Step.Free;end;
+        end else begin
+          Game:=TGamePlan.Load(Saved,Restored,0);
+          try
+            for I:=0 to Game.Count-1 do if Game.Orbit.IsRoll(I) then begin
+              Inc(Rolls);
+              Time:=Game.Orbit.Taps[I].Time;
+              if Abs(Time-1.5)<Abs(ShowAt-1.5) then ShowAt:=Time;
+            end;
+          finally Game.Free;end;
+        end;
+        Need(Rolls>=5,'Saved chart lost roll classification');
+        Renderer.ConfigureStyle(Style,Saved,100,0);
+        Renderer.UseD2D:=False;
+        Image.SetSize(960,540);Renderer.Render(Image,Restored,ShowAt,0);
+        FrameHash:=ImageHash;
+        Renderer.Render(Image,Restored,ShowAt+0.6,0);
+        Renderer.Render(Image,Restored,ShowAt,0);
+        Need(ImageHash=FrameHash,'Roll seek changed the GDI frame');
+        Renderer.UseD2D:=True;
+        Image.SetSize(960,540);Renderer.Render(Image,Restored,ShowAt,0);
+        Need(Renderer.LastUsedD2D,'Roll preview lost D2D');
+        PNG:=TPngImage.Create;
+        try
+          PNG.Assign(Image);PNG.SaveToFile(TPath.Combine(Folder,StyleId(Style)+'-roll.png'));
+        finally PNG.Free;end;
+      finally Restored.Free;end;
+
+      // 旧版と行の形は同じ。旧キー・旧policyを使ったファイルを新readerで開く。
+      Legacy:=Saved;Dec(Legacy.Version);
+      Legacy.Key:=THashSHA2.GetHashString(Format('%s-v%d|%s|50|0|variant=%d',
+        [StyleId(Style),Legacy.Version,Legacy.SourceKey,Legacy.Variant]));
+      if Style=rsStepGame then Policy:='prism-step-v1' else Policy:='planet-orbit-v3';
+      Root:=ReadPreparedData(Saved,Style,0);
+      try
+        Root.RemovePair('version').Free;Root.AddPair('version',TJSONNumber.Create(Legacy.Version));
+        Root.RemovePair('key').Free;Root.AddPair('key',Legacy.Key);
+        Root.RemovePair('policy').Free;Root.AddPair('policy',Policy);
+        WritePreparedData(Root,Legacy);
+      finally Root.Free;end;
+      Settings:=TRhythmSettings.Defaults;Settings.Style:=Style;Settings.GameThreshold:=-80;Settings.Plan:=Legacy;
+      Need(TRhythmSettings.TryJSON(Settings.ToJSON,Parsed) and (Parsed.Plan.Key=Legacy.Key),'Old settings lost saved chart');
+      Restored:=LoadStyleAudio(Style,Legacy,Path,0);
+      try
+        if Style=rsStepGame then begin
+          Step:=TStepPlan.Load(Legacy,Restored,0);
+          try Need((Step.Count>=5) and not Step.IsRoll(3),'Old 4-lane chart migration');finally Step.Free;end;
+        end else begin
+          Game:=TGamePlan.Load(Legacy,Restored,0);
+          try Need((Game.Count>=5) and not Game.Orbit.IsRoll(3),'Old orbit chart migration');finally Game.Free;end;
+        end;
+      finally Restored.Free;end;
+    end;
+    FreeAndNil(Dense);
+    ToneBytes:=Round(1.72*RHYTHM_RATE)*4;
+    Move(Input.PCM[Round(0.64*RHYTHM_RATE)*4],Input.PCM[0],ToneBytes);
+    FillChar(Input.PCM[ToneBytes],Length(Input.PCM)-ToneBytes,0);
+    Input.Detect;
+    Dense:=PrepareOrbitAudio(Input,-80,Stats);
+    Need(Stats.RollTicks>=5,'Leading sustained tone was lost before trailing silence');
+    WriteLn('Sustained roll PASS inserted=',Added,' isolated from noise; both saved styles restored');
+  finally
+    Dense.Free;Peaks.Free;Input.Free;
+  end;
+end;
+
 begin
   Audio:=nil;Cold:=nil;Plan:=nil;Worker:=nil;Renderer:=nil;Image:=nil;
   Checks:=0;ChordCount:=0;Different:=0;
@@ -224,6 +344,7 @@ begin
     SaveImage('prism-step-duo',1280,720,SampleTime);
     SaveImage('prism-step-solo',540,960,SampleTime);
     SaveImage('prism-step-clear',960,540,Audio.Duration);
+    CheckRolls;
     WriteLn('Step game PASS checks=',Checks,' taps=',Plan.Count,' chords=',ChordCount,' sample=',SampleTime:0:3);
   except
     on E:Exception do begin WriteLn(E.ClassName,': ',E.Message);ExitCode:=1;end;

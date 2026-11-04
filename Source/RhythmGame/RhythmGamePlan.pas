@@ -1,5 +1,5 @@
 ﻿unit RhythmGamePlan;
-// 同一スタイルの宇宙v3/v2と旧平面v1の窓口。共有音声は書き換えず、描画時に再計画しない。
+// 同一スタイルの宇宙v4/v3/v2と旧平面v1の窓口。共有音声は書き換えず、描画時に再計画しない。
 interface
 uses System.SysUtils,RhythmAudio,RhythmPlanRef,RhythmOrbitPlan,RhythmGameLegacyPlan;
 type

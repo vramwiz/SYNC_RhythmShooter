@@ -309,7 +309,7 @@ begin
   FGameThreshold.Min:=-100;FGameThreshold.Max:=100;FGameThreshold.Position:=20;
   FGameThreshold.TickStyle:=tsNone;FGameThreshold.Frequency:=10;
   FGameThreshold.ShowHint:=True;
-  FGameThreshold.Hint:='左ほど採用する音が増え、右ほど強い音に絞ります。音の時刻は変わりません。変更後は再準備して適用してください。';
+  FGameThreshold.Hint:='左ほど採用する音が増え、右ほど強い音に絞ります。リズムゲームでは−35以下で持続音の連打も追加します。変更後は再準備して適用してください。';
   FGameThreshold.OnChange:=SettingChange;FGameLabel.FocusControl:=FGameThreshold;
   FGameValue:=LabelAt(FGameRow,'20',alNone,32);FGameValue.Alignment:=taRightJustify;
   FEqualizerRow:=Panel(FOptionsBar,alNone,44);FEqualizerRow.Name:='EqualizerOptions';

@@ -5,7 +5,7 @@ uses System.SysUtils,System.Classes,System.Hash,System.IOUtils,System.JSON,
   RhythmStyles,RhythmStyleSelection,RhythmSettings,RhythmPlanRef,RhythmStyleOps,RhythmStyleRegistry,
   RhythmAudio,RhythmAnimation,RhythmImageBank;
 const Ids:array[TRhythmStyle] of string=('shooting','ball','fireworks','runner','breakout','race','bomb-action','fighting','mining','train','naval','rhythm-game','prism-step');
-  Versions:array[TRhythmStyle] of Integer=(1,6,3,7,10,11,2,2,1,1,1,3,1);
+  Versions:array[TRhythmStyle] of Integer=(1,6,3,7,10,11,2,2,1,1,1,4,2);
   Groups:array[TRhythmStyle] of TRhythmStyleGroup=(sgShooting,sgBall,sgMusic,sgAction,sgBall,sgRace,sgAction,sgAction,sgAction,sgShooting,sgShooting,sgMusic,sgMusic);
   Scenes:array[TRhythmStyle] of string=('TShootingAnimation','TBallAnimation','TFireworksAnimation','TRunnerAnimation','TBreakoutAnimation','TRaceAnimation','TBombActionAnimation','TFightingAnimation','TMiningAnimation','TTrainAnimation','TNavalAnimation','TGameAnimation','TStepAnimation');
   GroupCounts:array[TRhythmStyleGroup] of Integer=(3,2,4,1,3);
@@ -20,7 +20,7 @@ function WasCompatible(Style:TRhythmStyle;Version:Integer):Boolean;
 begin Result:=Version=Versions[Style];case Style of
   rsBall:Result:=Version in [4,5,6];rsFireworks:Result:=Version in [2,3];rsRunner:Result:=Version in [1,2,3,4,5,6,7];
   rsBreakout:Result:=Version in [1,2,3,4,5,6,7,8,9,10];rsRace:Result:=Version in [1,2,3,4,5,6,7,8,9,10,11];
-  rsBombAction,rsFighting:Result:=Version in [1,2];rsRhythmGame:Result:=Version in [1,2,3];
+  rsBombAction,rsFighting:Result:=Version in [1,2];rsRhythmGame:Result:=Version in [1,2,3,4];rsStepGame:Result:=Version in [1,2];
 end;end;
 begin Scene:=nil;Images:=nil;Names:=nil;Checks:=0;Combinations:=0;
   try

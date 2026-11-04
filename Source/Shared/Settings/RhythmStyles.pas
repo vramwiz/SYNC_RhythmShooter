@@ -53,8 +53,8 @@ const
     (Id:'mining';Title:'採掘';MiddleTitle:'掘削アクション';FixedSmall:'見下ろし';ProgressText:'切削・敵・ボスを逆算/保存検証中';Group:sgAction;Order:3;SmallKind:skFixed;Version:1;Versions:[1];Features:[sfPrepared,sfBoss,sfDefaultBoss50];VariantKind:svBoss),
     (Id:'train';Title:'列車';MiddleTitle:'装甲列車';FixedSmall:'横からの視点';ProgressText:'列車・砲撃・ボスを逆算/保存検証中';Group:sgShooting;Order:1;SmallKind:skFixed;Version:1;Versions:[1];Features:[sfPrepared,sfBoss,sfDefaultBoss50];VariantKind:svBoss),
     (Id:'naval';Title:'海戦';MiddleTitle:'海戦';FixedSmall:'見下ろし';ProgressText:'艦隊・砲撃・ボスを逆算/保存検証中';Group:sgShooting;Order:2;SmallKind:skFixed;Version:1;Versions:[1];Features:[sfPrepared,sfBoss,sfDefaultBoss50];VariantKind:svBoss),
-    (Id:'rhythm-game';Title:'リズムゲーム';MiddleTitle:'リズムゲーム';FixedSmall:'MV重ね（透過）';ProgressText:'音時刻からマーク・カーソル軌道・連打を逆算/保存検証中';Group:sgMusic;Order:0;SmallKind:skFixed;Version:3;Versions:[1,2,3];Features:[sfPrepared,sfThreshold,sfTransparent];VariantKind:svRhythm),
-    (Id:'prism-step';Title:'4レーン・リズム';MiddleTitle:'4レーン・リズム';FixedSmall:'縦スクロール（人数は自動）';ProgressText:'音時刻から4レーン譜面を準備中';Group:sgMusic;Order:1;SmallKind:skFixed;Version:1;Versions:[1];Features:[sfPrepared,sfThreshold];VariantKind:svRhythm)
+    (Id:'rhythm-game';Title:'リズムゲーム';MiddleTitle:'リズムゲーム';FixedSmall:'MV重ね（透過）';ProgressText:'音時刻からマーク・カーソル軌道・連打を逆算/保存検証中';Group:sgMusic;Order:0;SmallKind:skFixed;Version:4;Versions:[1,2,3,4];Features:[sfPrepared,sfThreshold,sfTransparent];VariantKind:svRhythm),
+    (Id:'prism-step';Title:'4レーン・リズム';MiddleTitle:'4レーン・リズム';FixedSmall:'縦スクロール（人数は自動）';ProgressText:'音時刻から4レーン譜面を準備中';Group:sgMusic;Order:1;SmallKind:skFixed;Version:2;Versions:[1,2];Features:[sfPrepared,sfThreshold];VariantKind:svRhythm)
   );
   GroupTitles:array[TRhythmStyleGroup] of string=('シューティング','ボールアクション','アクション','レース','音楽・演出');
 function StyleInfo(Style:TRhythmStyle):TStyleInfo;

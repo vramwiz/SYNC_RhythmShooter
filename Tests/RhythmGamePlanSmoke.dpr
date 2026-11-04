@@ -75,7 +75,7 @@ begin
   Notes:=0;OrbitHits:=0;FlightHits:=0;Planets:=0;Transfers:=0;Samples:=0;Seeks:=0;Frames:=0;Rejected:=0;MaxError:=0;BoundaryError:=0;MinSpan:=1E30;MaxSpan:=0;
   try
     ConfigureRhythmProduct('SYNC_RhythmGame','Music Sync Orbit Game',rsRhythmGame);
-    Need((Ord(rsRhythmGame)=11) and (StylePlanVersion(rsRhythmGame)=3) and CompatiblePlanVersion(rsRhythmGame,1),'Version registration');
+    Need((Ord(rsRhythmGame)=11) and (StylePlanVersion(rsRhythmGame)=4) and CompatiblePlanVersion(rsRhythmGame,1),'Version registration');
     Need((StyleVariant(rsRace,50,100)=101) and (StyleVariant(rsRhythmGame,50,100,20)=121),'Variant separation');
     Folder:=TPath.Combine(ExtractFileDir(ParamStr(0)),'OrbitEvidence');ForceDirectories(Folder);Source:=TPath.Combine(Folder,'events.identity');TFile.WriteAllText(Source,'Synthetic orbit events; no playback.',TEncoding.UTF8);
     Need(GetFileAttributesEx(PChar(Source),GetFileExInfoStandard,@Stamp),'Source stamp');Revision:=IntToHex(Stamp.nFileSizeHigh,8)+IntToHex(Stamp.nFileSizeLow,8)+'-'+IntToHex(Stamp.ftLastWriteTime.dwHighDateTime,8)+IntToHex(Stamp.ftLastWriteTime.dwLowDateTime,8);
@@ -166,7 +166,7 @@ begin
     Audio:=TRhythmAudio.Create;Audio.Duration:=1;Audio.SoundEnd:=1;Failed:=False;
     try Again:=TOrbitPlan.Build(Audio,20,function:Boolean begin Result:=True;end);except on E:EAbort do Failed:=True;end;Need(Failed,'Cancel ignored');Inc(Rejected);FreeAndNil(Audio);
     TFile.WriteAllText(TPath.Combine(Folder,ParamStr(1)+'result.json'),Format('{"cases":17,"contacts":%d,"orbitHits":%d,"flightHits":%d,"planets":%d,"transfers":%d,"projectionSamples":%d,"seekFrames":%d,"savedFrames":%d,"rejected":%d,"maxContactError":%.16f,"maxCameraBoundaryDelta":%.12f,"minSpan":%.9f,"maxSpan":%.9f}',[Notes,OrbitHits,FlightHits,Planets,Transfers,Samples,Seeks,Frames,Rejected,MaxError,BoundaryError,MinSpan,MaxSpan],TFormatSettings.Invariant),TEncoding.UTF8);
-    WriteLn('Orbit v3 PASS contacts=',Notes,' orbit=',OrbitHits,' flight=',FlightHits,' planets=',Planets,' transfers=',Transfers,' cameraSamples=',Samples,' seek=',Seeks,' maxError=',MaxError:0:12);
+    WriteLn('Orbit v4 PASS contacts=',Notes,' orbit=',OrbitHits,' flight=',FlightHits,' planets=',Planets,' transfers=',Transfers,' cameraSamples=',Samples,' seek=',Seeks,' maxError=',MaxError:0:12);
   except on E:Exception do begin WriteLn(E.ClassName,': ',E.Message);ExitCode:=1;end;end;
   PNG.Free;Renderer.Free;Facade.Free;Again.Free;Cold.Free;Plan.Free;Meta.Free;Audio.Free;Image.Free;
 end.
