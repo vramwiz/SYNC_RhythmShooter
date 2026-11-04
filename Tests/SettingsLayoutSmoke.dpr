@@ -106,8 +106,8 @@ begin
     if Form.FindComponent('MovieLayerStyle')<>nil then raise Exception.Create('Duplicate middle selection');
     if (Form.FindComponent('RhythmLayerVisible')<>nil) or (Form.FindComponent('MovieLayerVisible')<>nil) then raise Exception.Create('Obsolete layer controls');
     if TTrackBar(Form.FindComponent('BossFrequency')).Parent.Visible<>(Style in [rsShooting,rsRunner,rsBreakout,rsRace,rsBombAction,rsFighting,rsMining,rsTrain,rsNaval]) then raise Exception.Create('Boss frequency visibility');
-    if TTrackBar(Form.FindComponent('GameThreshold')).Parent.Visible<>(Style=rsRhythmGame) then raise Exception.Create('Game threshold visibility');
-    if Style=rsRhythmGame then CheckOptionCaption(Form,'GameThresholdCaption','GameThreshold');
+    if not TTrackBar(Form.FindComponent('GameThreshold')).Parent.Visible then raise Exception.Create('Audio density visibility');
+    CheckOptionCaption(Form,'GameThresholdCaption','GameThreshold');
     if (Form.FindComponent('EqualizerVisible')=nil) or not TCheckBox(Form.FindComponent('EqualizerVisible')).Visible then raise Exception.Create('Equalizer option missing');
     if TCheckBox(Form.FindComponent('EqualizerVisible')).Checked<>EqualizerEnabled(-1,Style,0) then raise Exception.Create('Equalizer migration default');
     if Form.FindComponent('PreviewPause')<>nil then raise Exception.Create('Separate pause button');

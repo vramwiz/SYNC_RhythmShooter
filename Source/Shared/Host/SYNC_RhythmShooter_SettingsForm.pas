@@ -302,14 +302,14 @@ begin
   FBossValue.Alignment:=taRightJustify;
   FGameRow:=Panel(FOptionsBar,alNone,44);
   FGameRow.Name:='GameThresholdOptions';
-  FGameLabel:=LabelAt(FGameRow,'音要素（多←→少）',alNone,128);
+  FGameLabel:=LabelAt(FGameRow,'音要素の感度',alNone,110);
   FGameLabel.Name:='GameThresholdCaption';
   FGameThreshold:=TRhythmTrackBar.Create(Self);
   FGameThreshold.Parent:=FGameRow;FGameThreshold.Name:='GameThreshold';
   FGameThreshold.Min:=-100;FGameThreshold.Max:=100;FGameThreshold.Position:=20;
   FGameThreshold.TickStyle:=tsNone;FGameThreshold.Frequency:=10;
   FGameThreshold.ShowHint:=True;
-  FGameThreshold.Hint:='左ほど音要素を多く採用。-100:細かい候補も追加 / 0:従来の全音 / 右:強い音のみ。変更後は再準備が必要。音時刻は移動しません。';
+  FGameThreshold.Hint:='左ほど採用する音が増え、右ほど強い音に絞ります。音の時刻は変わりません。変更後は再準備して適用してください。';
   FGameThreshold.OnChange:=SettingChange;FGameLabel.FocusControl:=FGameThreshold;
   FGameValue:=LabelAt(FGameRow,'20',alNone,32);FGameValue.Alignment:=taRightJustify;
   FEqualizerRow:=Panel(FOptionsBar,alNone,44);FEqualizerRow.Name:='EqualizerOptions';
@@ -509,17 +509,17 @@ begin
     PlayWidth:=ButtonWidth(FPlay,100);
     StopWidth:=ButtonWidth(FStop,90);
     ClockWidth:=Max(S(240),TextWidth(FClock.Caption,FClock.Font)+S(8));
-    ValueWidth:=Max(S(32),TextWidth('100',FLevel.Font)+S(4));
+    ValueWidth:=Max(S(32),TextWidth('-100',FLevel.Font)+S(4));
     BossValueWidth:=Max(S(144),TextWidth('100 / 約135秒',FBossValue.Font)+S(4));
     Groups[0]:=FCategoryPanel;Groups[1]:=FStylePanel;Groups[2]:=FDirectionPanel;
-    Groups[3]:=FSensitivityPanel;Groups[4]:=FFireworksRow;Groups[5]:=FBossRow;
-    Groups[6]:=FGameRow;Groups[7]:=FEqualizerRow;
+    Groups[3]:=FSensitivityPanel;Groups[4]:=FGameRow;Groups[5]:=FFireworksRow;Groups[6]:=FBossRow;Groups[7]:=FEqualizerRow;
     CaptionWidths[0]:=LabelWidth(FCategoryLabel,56);
     CaptionWidths[1]:=LabelWidth(FStyleLabel,56);
     CaptionWidths[2]:=LabelWidth(FDirectionLabel,40);
     CaptionWidths[3]:=LabelWidth(FSensitivityLabel,56);
-    CaptionWidths[4]:=LabelWidth(FRichnessLabel,56);
-    CaptionWidths[5]:=LabelWidth(FBossLabel,110);
+    CaptionWidths[4]:=LabelWidth(FGameLabel,110);
+    CaptionWidths[5]:=LabelWidth(FRichnessLabel,56);
+    CaptionWidths[6]:=LabelWidth(FBossLabel,110);
     // Re-evaluate from full width so a previous wrap cannot retain a needless
     // scrollbar. Restore the user's scroll position once the final range exists.
     FAnimationBody.Height:=FAnimationScroll.ClientHeight;
@@ -546,23 +546,22 @@ begin
       Widths[2]:=CaptionWidths[2]+S(6)+ComboWidth(FDirection,130);
       Widths[3]:=Max(S(170),CaptionWidths[3]+ValueWidth+S(80));
       Widths[4]:=Max(S(170),CaptionWidths[4]+ValueWidth+S(80));
-      Widths[5]:=CaptionWidths[5]+BossValueWidth+S(88);
-      Widths[6]:=CaptionWidths[6]+ValueWidth+S(90);
+      Widths[5]:=Max(S(170),CaptionWidths[5]+ValueWidth+S(80));
+      Widths[6]:=CaptionWidths[6]+BossValueWidth+S(88);
       Widths[7]:=TextWidth(FEqualizer.Caption,FEqualizer.Font)+S(32);
       W:=Max(1,FOptionsBar.ClientWidth);
       Total:=0;
-      Numbers:=1;
+      Numbers:=2;
       if FFireworksRow.Visible then Inc(Numbers);
       if FBossRow.Visible then Inc(Numbers);
-      if FGameRow.Visible then Inc(Numbers);
       for I:=0 to 7 do if Groups[I].Visible then begin if Total>0 then Inc(Total,Gap);
         Inc(Total,Widths[I]);
       end;
       if W>Total then begin Extra:=(W-Total) div Numbers;
         Inc(Widths[3],Extra);
-        if FFireworksRow.Visible then Inc(Widths[4],Extra);
-        if FBossRow.Visible then Inc(Widths[5],Extra);
-        if FGameRow.Visible then Inc(Widths[6],Extra);
+        Inc(Widths[4],Extra);
+        if FFireworksRow.Visible then Inc(Widths[5],Extra);
+        if FBossRow.Visible then Inc(Widths[6],Extra);
       end;
       X:=0;
       Y:=0;
@@ -581,9 +580,9 @@ begin
       Combo(FStyleLabel,FStyle,CaptionWidths[1]);
       Combo(FDirectionLabel,FDirection,CaptionWidths[2]);
       Slider(FSensitivityLabel,FLevel,FSensitivity,CaptionWidths[3],ValueWidth);
-      Slider(FRichnessLabel,FRichnessLevel,FFireworksRichness,CaptionWidths[4],ValueWidth);
-      Slider(FBossLabel,FBossValue,FBossFrequency,CaptionWidths[5],BossValueWidth);
-      Slider(FGameLabel,FGameValue,FGameThreshold,CaptionWidths[6],ValueWidth);
+      Slider(FGameLabel,FGameValue,FGameThreshold,CaptionWidths[4],ValueWidth);
+      Slider(FRichnessLabel,FRichnessLevel,FFireworksRichness,CaptionWidths[5],ValueWidth);
+      Slider(FBossLabel,FBossValue,FBossFrequency,CaptionWidths[6],BossValueWidth);
       Place(FEqualizer,0,Max(0,(H-Max(S(24),TextHeight+S(6))) div 2),FEqualizerRow.ClientWidth,Max(S(24),TextHeight+S(6)));
       W:=Max(1,FTransportButtons.ClientWidth);
       Place(FPlay,0,S(6),PlayWidth,ButtonHeight);
@@ -768,8 +767,10 @@ end;
 function TFormRhythmShooterSettings.Ready:Boolean;
 begin
   Result:=(FAudio<>nil) and (FWorker=nil) and (FReloadAt=0);
-  if Result then Result:=SameFileName(FAudio.Source,ExpandFileName(MusicFile)) and FState.Plan.Matches(FAudio.Key,DetectionSensitivity,ScrollDirection,SelectedStyle,SelectedVariant);
-  if Result and StyleHas(SelectedStyle,sfPrepared) then Result:=ValidDigest(FState.Plan.Digest);
+  if Result then Result:=SameFileName(FAudio.Source,ExpandFileName(MusicFile)) and
+    (FState.Plan.AudioDensity=AudioDensityKey(SelectedStyle,FGameThreshold.Position)) and
+    FState.Plan.Matches(FAudio.Key,DetectionSensitivity,ScrollDirection,SelectedStyle,SelectedVariant);
+  if Result and (StyleHas(SelectedStyle,sfPrepared) or (FState.Plan.AudioDensity<>0)) then Result:=ValidDigest(FState.Plan.Digest);
 end;
 
 function TFormRhythmShooterSettings.CanApplyPrepared:Boolean;
@@ -811,7 +812,6 @@ begin
   FBossRow.Visible:=StyleHas(SelectedStyle,sfBoss);
   FBossValue.Caption:=BossFrequencyText(FBossFrequency.Position);
   FFireworksRow.Visible:=StyleHas(SelectedStyle,sfRichness);
-  FGameRow.Visible:=StyleHas(SelectedStyle,sfThreshold);
   FGameValue.Caption:=IntToStr(FGameThreshold.Position);
   FDirectionPanel.Visible:=True;
   FRichnessLevel.Caption:=IntToStr(FFireworksRichness.Position);
@@ -907,7 +907,7 @@ begin
   SetBusy(True);
   FTimer.Enabled:=True;
   try
-    FWorker:=TRhythmPrepareThread.Create(MusicFile,DetectionSensitivity,ScrollDirection,SelectedStyle,Force,Existing,FRequestSerial,SelectedVariant);
+    FWorker:=TRhythmPrepareThread.Create(MusicFile,DetectionSensitivity,ScrollDirection,SelectedStyle,Force,Existing,FRequestSerial,SelectedVariant,FGameThreshold.Position);
     SetStatus('準備開始: '+MusicFile,True);
     FWorker.Start;
   except
@@ -1138,7 +1138,8 @@ begin
         FState.Plan:=FWorker.Plan;
         if ErrorText='' then begin
           if FAudio=nil then ErrorText:='音声準備結果がありません。'
-          else if not FState.Plan.Matches(FAudio.Key,DetectionSensitivity,ScrollDirection,SelectedStyle,SelectedVariant) then
+          else if (FState.Plan.AudioDensity<>AudioDensityKey(SelectedStyle,FGameThreshold.Position)) or
+            not FState.Plan.Matches(FAudio.Key,DetectionSensitivity,ScrollDirection,SelectedStyle,SelectedVariant) then
           ErrorText:='準備結果と現在の設定が一致しません。準備ボタンで再試行してください。';
         end;
         if ErrorText<>'' then FState.Plan:=Default(TRhythmPlanRef);

@@ -118,6 +118,7 @@ var
   Key,Source,Revision:string;
   Sensitivity:Integer;
   Loaded:TRhythmAudio;
+  StoredPlan:Boolean;
 begin
   Source:=Settings.Music;
   Sensitivity:=Settings.Sensitivity;
@@ -138,8 +139,9 @@ begin
     GError:='ボス頻度を変更しました。設定画面で再準備・適用してください。';
     Exit;
   end;
-  if StyleHas(Settings.Style,sfPrepared) then Key:='prepared-'+StyleId(Settings.Style)+'|'+Key+'|'+Settings.Plan.Key+'|'+Settings.Plan.Digest+'|'+Settings.Plan.SourceRevision+'|'+IntToStr(Settings.Direction);
-  if (GRequest=Key) and (StyleHas(Settings.Style,sfPrepared)) and (GAudio=nil) and (GError<>'') and (GetTickCount64>=GBallProbeAt) then begin
+  StoredPlan:=StyleHas(Settings.Style,sfPrepared) or (Settings.Plan.AudioDensity<>0);
+  if StoredPlan then Key:='prepared-'+StyleId(Settings.Style)+'|'+Key+'|'+Settings.Plan.Key+'|'+Settings.Plan.Digest+'|'+Settings.Plan.SourceRevision+'|'+IntToStr(Settings.Direction);
+  if (GRequest=Key) and StoredPlan and (GAudio=nil) and (GError<>'') and (GetTickCount64>=GBallProbeAt) then begin
     GBallProbeAt:=GetTickCount64+1000;
     Revision:=PreparedRestorationRevision(Settings);
     if Revision<>GFailedBallRevision then begin GRequest:='';
@@ -185,7 +187,7 @@ begin
     except on E:Exception do begin
         Loaded.Free;
         GError:=E.Message;
-        if StyleHas(Settings.Style,sfPrepared) then begin GFailedBallRevision:=PreparedRestorationRevision(Settings);
+        if StoredPlan then begin GFailedBallRevision:=PreparedRestorationRevision(Settings);
           GBallProbeAt:=GetTickCount64+1000;
         end;
       end;

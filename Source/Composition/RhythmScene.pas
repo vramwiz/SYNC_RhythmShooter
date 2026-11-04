@@ -1,5 +1,5 @@
 ﻿unit RhythmScene;
-// 全12種の描画窓口。音ゲーはMV上へ重ねる透明RGBA、他の種類は従来の単独描画。
+// 全種類の描画窓口。MV重ねの種類は透明RGBA、他の種類は単独描画。
 interface
 uses Vcl.Graphics,RhythmAudio,RhythmMotion,RhythmDesignTypes,RhythmAnimation,RhythmStyleOps,RhythmStyleRegistry,RhythmStyles,RhythmPlanRef,RhythmPresentation,RhythmLayerBlend,RhythmOverlay;
 type
@@ -102,7 +102,7 @@ begin
     FOverlay.Resolve(Target,Zoom,OffsetX,OffsetY);FHasAlpha:=True;FWasComposite:=True;Exit;
   end;
   if not EQ then begin FRenderer.Render(Target,Time,Direction,Text,Zoom,OffsetX,OffsetY);Exit;end;
-  // 従来11種の共通EQだけを保持。同じ種類の背景抽出であり、別種類の二重描画はしない。
+  // 単独描画の種類へ共通EQを合成する。同じ種類の背景だけを抽出する。
   if FLayers=nil then FLayers:=TRhythmLayerBlend.Create;
   FLayers.Resize(Target.Width,Target.Height,True,True);
   Frame:=Default(TAnimationFrame);Frame.Time:=Max(0.0,Time);Frame.Width:=Target.Width;Frame.Height:=Target.Height;Frame.Direction:=EnsureRange(Direction,0,1);

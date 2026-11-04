@@ -15,6 +15,8 @@ type
     FEnvelopePeak: Double;
     FTimelineRevision: Cardinal;
     FBossFrequency:Integer;
+    FOriginalHits:TArray<TRhythmHit>;
+    FHasSelection:Boolean;
   public
     Source, Key, PcmPath, SourceRevision: string;
     // 44.1kHz・signed16 little-endian・stereo。1フレーム4byte。
@@ -27,6 +29,8 @@ type
     CacheReused: Boolean;
     constructor Create;
     procedure SetBossFrequency(Value:Integer);
+    procedure SetSelectedHits(const Value:TArray<TRhythmHit>);
+    procedure ResetSelectedHits;
     property BossFrequency:Integer read FBossFrequency;
     property TimelineRevision: Cardinal read FTimelineRevision;
     procedure Detect;
@@ -51,6 +55,25 @@ begin Value:=EnsureRange(Value,0,100);
   FBossFrequency:=Value;
   FBossCuesReady:=False;
   FBossCues:=nil;
+  Inc(FTimelineRevision);
+end;
+
+procedure TRhythmAudio.SetSelectedHits(const Value:TArray<TRhythmHit>);
+begin
+  if not FHasSelection then FOriginalHits:=Hits;
+  FHasSelection:=True;
+  Hits:=Value;
+  FBossCuesReady:=False;
+  Inc(FTimelineRevision);
+end;
+
+procedure TRhythmAudio.ResetSelectedHits;
+begin
+  if not FHasSelection then Exit;
+  Hits:=FOriginalHits;
+  FOriginalHits:=nil;
+  FHasSelection:=False;
+  FBossCuesReady:=False;
   Inc(FTimelineRevision);
 end;
 
@@ -114,6 +137,7 @@ var
   H:TRhythmHit;
 begin
   Analysis:=AnalyzeRhythmPCM(PCM,Sensitivity);
+  ResetSelectedHits;
   Duration:=Analysis.Duration;
   Envelope:=Analysis.Envelope;
   SetLength(Hits,Length(Analysis.Accents));

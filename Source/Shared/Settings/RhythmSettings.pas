@@ -8,7 +8,7 @@ type
     HostMusic:Boolean;
     Style:TRhythmStyle;
     Plan:TRhythmPlanRef;
-    Direction,Sensitivity,FireworksRichness,BossFrequency,GameThreshold:Integer;
+    Direction,Sensitivity,FireworksRichness,BossFrequency,GameThreshold:Integer; // GameThresholdは全種類の音要素設定
     Zoom,X,Y:Double;
     OffsetSeconds:Double; // 描画専用。ホストではtrackが正、JSONはPreviewへの受渡し用。
     EqualizerMode:Integer; // -1=旧版移行の初期値、0=非表示、1=表示。解析計画とは独立。
@@ -32,7 +32,7 @@ begin Result:=Default(TRhythmSettings);
   Result.Sensitivity:=50;
   Result.BossFrequency:=BOSS_DEFAULT_FREQUENCY;
   Result.FireworksRichness:=FIREWORKS_DEFAULT_RICHNESS;
-  Result.GameThreshold:=20;
+  Result.GameThreshold:=AUDIO_DEFAULT_DENSITY;
   Result.Zoom:=100;
   Result.OffsetSeconds:=0;
   Result.EqualizerMode:=-1;
@@ -75,7 +75,8 @@ begin
     if HostMusic then J.AddPair('musicSource','host');
     J.AddPair('bossFrequency',TJSONNumber.Create(EnsureRange(BossFrequency,0,100)));
     J.AddPair('style',StyleId(Style));
-    J.AddPair('gameThreshold',TJSONNumber.Create(EnsureRange(GameThreshold,-100,100)));
+    J.AddPair('audioDensity',TJSONNumber.Create(EnsureRange(GameThreshold,-100,100)));
+    J.AddPair('gameThreshold',TJSONNumber.Create(EnsureRange(GameThreshold,-100,100))); // 旧音ゲー版で読むため保持
     if EqualizerMode>=0 then J.AddPair('equalizer',TJSONBool.Create(EqualizerMode>0));
     J.AddPair('fireworksRichness',TJSONNumber.Create(EnsureRange(FireworksRichness,0,100)));
     if Plan.Key<>'' then begin
@@ -90,6 +91,7 @@ begin
       PlanObject.AddPair('sensitivity',TJSONNumber.Create(Plan.Sensitivity));
       PlanObject.AddPair('direction',TJSONNumber.Create(Plan.Direction));
       PlanObject.AddPair('variant',TJSONNumber.Create(Plan.Variant));
+      if Plan.AudioDensity<>0 then PlanObject.AddPair('density',TJSONNumber.Create(Plan.AudioDensity));
     end;
     Assets:=TJSONArray.Create;
     J.AddPair('designs',Assets);
@@ -130,7 +132,12 @@ begin
       Value.Sensitivity:=EnsureRange(O.GetValue<Integer>('sensitivity',50),1,100);
       Value.BossFrequency:=EnsureRange(O.GetValue<Integer>('bossFrequency',100),0,100);
       Value.FireworksRichness:=EnsureRange(O.GetValue<Integer>('fireworksRichness',FIREWORKS_DEFAULT_RICHNESS),0,100);
-      Value.GameThreshold:=EnsureRange(O.GetValue<Integer>('gameThreshold',20),-100,100);
+      V:=O.GetValue('audioDensity');
+      if V<>nil then begin
+        if not (V is TJSONNumber) or not TryStrToInt(V.Value,I) then Exit;
+        Value.GameThreshold:=EnsureRange(I,-100,100);
+      end else if StyleHas(Value.Style,sfThreshold) then
+        Value.GameThreshold:=EnsureRange(O.GetValue<Integer>('gameThreshold',AUDIO_DEFAULT_DENSITY),-100,100);
       V:=O.GetValue('equalizer');if V<>nil then begin if not (V is TJSONBool) then Exit;Value.EqualizerMode:=Ord(O.GetValue<Boolean>('equalizer'));end;
       V:=O.GetValue('offsetSeconds');if (V<>nil) and not (V is TJSONNumber) then Exit;
       Value.OffsetSeconds:=O.GetValue<Double>('offsetSeconds',0);
@@ -175,6 +182,8 @@ begin
           Value.Plan.Sensitivity:=PlanObject.GetValue<Integer>('sensitivity',0);
           Value.Plan.Direction:=PlanObject.GetValue<Integer>('direction',-1);
           Value.Plan.Variant:=PlanObject.GetValue<Integer>('variant',0);
+          V:=PlanObject.GetValue('density');
+          if (V<>nil) and ((not (V is TJSONNumber)) or not TryStrToInt(V.Value,Value.Plan.AudioDensity)) then Exit;
           ExpectedVariant:=StyleVariant(Value.Style,Value.FireworksRichness,Value.BossFrequency,Value.GameThreshold);
           if (Value.Style=rsRhythmGame) and (Value.Plan.Version=1) then ExpectedVariant:=0;
           if (Value.Style=rsRhythmGame) and (Value.Plan.Version=2) then ExpectedVariant:=Value.GameThreshold+1;
@@ -182,15 +191,16 @@ begin
           if (Value.Style=rsRunner) and (Value.Plan.Variant=0) and (Value.BossFrequency=100) then ExpectedVariant:=0;
           if ((Value.Style in [rsShooting,rsBreakout]) or ((Value.Style=rsRace) and (Value.Plan.Version=1))) and (Value.Plan.Variant=0) and (Value.BossFrequency=100) then ExpectedVariant:=0;
           if (Value.Style=rsRace) and (Value.Plan.Version=1) and (Value.Plan.Variant=0) then ExpectedVariant:=0;
-          if not Value.Plan.Matches(Value.Plan.SourceKey,Value.Sensitivity,Value.Direction,Value.Style,ExpectedVariant) or not ValidDigest(Value.Plan.SourceKey) or
-          ((Value.Style<>rsShooting) and not ValidDigest(Value.Plan.Digest)) then Value.Plan:=Default(TRhythmPlanRef);
+          if (Value.Plan.AudioDensity<>AudioDensityKey(Value.Style,Value.GameThreshold)) or
+            not Value.Plan.Matches(Value.Plan.SourceKey,Value.Sensitivity,Value.Direction,Value.Style,ExpectedVariant) or not ValidDigest(Value.Plan.SourceKey) or
+            (((Value.Style<>rsShooting) or (Value.Plan.AudioDensity<>0)) and not ValidDigest(Value.Plan.Digest)) then Value.Plan:=Default(TRhythmPlanRef);
         end;
       end;
       V:=O.GetValue('layers');
       if V<>nil then begin
         // 旧三層は読込時だけ一種類へ移行する。表示中の前面を優先し、前面OFF/中層ONならその計画を採用。
         if not (V is TJSONObject) then Exit;Layers:=TJSONObject(V);LegacyPlan:=Default(TRhythmPlanRef);
-        if not TryStyle(Layers.GetValue<string>('style','shooting'),LegacyStyle) or (LegacyStyle=rsRhythmGame) then Exit;
+        if not TryStyle(Layers.GetValue<string>('style','shooting'),LegacyStyle) or StyleHas(LegacyStyle,sfThreshold) then Exit;
         LegacyMovie:=Layers.GetValue<Boolean>('movie',False);LegacyForeground:=Layers.GetValue<Boolean>('foreground',True);
         V:=Layers.GetValue('plan');
         if V<>nil then begin if not (V is TJSONObject) then Exit;Movie:=TJSONObject(V);
@@ -209,7 +219,7 @@ begin
             ((Value.Plan.SourceRevision<>'') and (LegacyPlan.SourceRevision<>Value.Plan.SourceRevision)) then LegacyPlan:=Default(TRhythmPlanRef);
           // 自動初期値だったEQも、旧音ゲーで実際に有効だった状態を維持する。
           if Value.EqualizerMode<0 then Value.EqualizerMode:=Ord(EqualizerEnabled(Value.EqualizerMode,Value.Style,Value.Plan.Version));
-          Value.Style:=LegacyStyle;Value.Plan:=LegacyPlan;
+          Value.Style:=LegacyStyle;Value.Plan:=LegacyPlan;Value.GameThreshold:=AUDIO_DEFAULT_DENSITY;
         end;
         // 中層の破損・欠落は、選択中の音ゲーの有効な主計画を無効化しない。
       end;

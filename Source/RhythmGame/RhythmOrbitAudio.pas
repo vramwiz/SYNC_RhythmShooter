@@ -1,5 +1,5 @@
 ﻿unit RhythmOrbitAudio;
-// 宇宙専用の細粒度候補。共通180ms解析とキャッシュを変更せず、元ピークを保持する。
+// 細粒度の音候補。音ゲーは密な候補、他の演出は既存の180ms間隔を保つ候補を使う。
 {$POINTERMATH ON}
 interface
 uses System.SysUtils,RhythmAudio;
@@ -20,11 +20,13 @@ type
     class function Analyze(Audio:TRhythmAudio;const Cancel:TFunc<Boolean> = nil):TOrbitCandidatePool;static;
     // Value<0は追加候補の品質閾値。固定候補集合なので左ほど採用数が単調に増える。
     function Select(Audio:TRhythmAudio;Value:Integer;out Stats:TOrbitAudioStats):TRhythmAudio;
+    function SelectSpaced(Audio:TRhythmAudio;Value:Integer;const Cancel:TFunc<Boolean>):TArray<TRhythmHit>;
   end;
 function PrepareOrbitAudio(Audio:TRhythmAudio;Value:Integer;out Stats:TOrbitAudioStats;
   const Cancel:TFunc<Boolean> = nil):TRhythmAudio;
+function SelectAnimationHits(Audio:TRhythmAudio;Value:Integer;const Cancel:TFunc<Boolean>):TArray<TRhythmHit>;
 implementation
-uses System.Math,System.Generics.Collections,System.Generics.Defaults;
+uses System.Math,System.Generics.Collections,System.Generics.Defaults,RhythmMotion,RhythmStyles;
 type
   TBandValues=array[0..2] of Double;
   TOrbitFrame=record
@@ -140,5 +142,88 @@ begin
   if Value>=0 then begin Stats:=Default(TOrbitAudioStats);Stats.Legacy:=Length(Audio.Hits);Result:=Snapshot(Audio);Result.Hits:=Copy(Audio.Hits);Exit;end;
   Pool:=TOrbitCandidatePool.Analyze(Audio,Cancel);
   try Result:=Pool.Select(Audio,Value,Stats);finally Pool.Free;end;
+end;
+
+function TOrbitCandidatePool.SelectSpaced(Audio:TRhythmAudio;Value:Integer;const Cancel:TFunc<Boolean>):TArray<TRhythmHit>;
+const Gap=0.18;
+var
+  Candidates:TArray<TOrbitCandidate>;
+  Occupied:TArray<Double>;
+  List:TList<TRhythmHit>;
+  Candidate:TOrbitCandidate;
+  Hit:TRhythmHit;
+  I,J,Bucket,Near,Seed:Integer;
+  Cut:Double;
+  Blocked:Boolean;
+begin
+  Cut:=100-(AUDIO_DEFAULT_DENSITY-Value)*100/(AUDIO_DEFAULT_DENSITY+100);
+  Candidates:=Copy(FExtras);
+  // 品質の高い候補から採用する。左へ動かしても先に採用した時刻は動かない。
+  TArray.Sort<TOrbitCandidate>(Candidates,TComparer<TOrbitCandidate>.Construct(
+    function(const A,B:TOrbitCandidate):Integer
+    begin
+      Result:=CompareValue(B.Quality,A.Quality,0.0);
+      if Result=0 then Result:=CompareValue(A.Hit.Time,B.Hit.Time,0.0);
+    end));
+  SetLength(Occupied,Floor(Audio.SoundEnd/Gap)+1);
+  for I:=0 to High(Occupied) do Occupied[I]:=-1;
+  List:=TList<TRhythmHit>.Create;
+  try
+    List.AddRange(Audio.Hits);
+    for I:=0 to High(Candidates) do begin
+      if (I mod 256=0) and Assigned(Cancel) and Cancel() then Abort;
+      Candidate:=Candidates[I];
+      if Candidate.Quality<Cut then Break;
+      Hit:=Candidate.Hit;
+      Near:=Audio.NearestHit(Hit.Time);
+      Blocked:=False;
+      for J:=Max(0,Near-1) to Near do
+        if Abs(Audio.Hits[J].Time-Hit.Time)<Gap then Blocked:=True;
+      if Blocked then Continue;
+      Bucket:=Floor(Hit.Time/Gap);
+      for J:=Max(0,Bucket-1) to Min(High(Occupied),Bucket+1) do
+        if (Occupied[J]>=0) and (Abs(Occupied[J]-Hit.Time)<Gap) then Blocked:=True;
+      if Blocked then Continue;
+      Occupied[Bucket]:=Hit.Time;
+      Seed:=Round(Hit.Time*100);
+      Seed:=(Seed*73+(Seed mod 17)*131) mod 997;
+      Hit.Lane:=0.14+Seed/996.0*0.72;
+      Hit.Flight:=ShotFlightTime(Hit.Time,Hit.Lane,Hit.Strength);
+      List.Add(Hit);
+    end;
+    Result:=List.ToArray;
+    TArray.Sort<TRhythmHit>(Result,TComparer<TRhythmHit>.Construct(
+      function(const A,B:TRhythmHit):Integer
+      begin
+        Result:=CompareValue(A.Time,B.Time,0.0);
+      end));
+  finally
+    List.Free;
+  end;
+end;
+
+function SelectAnimationHits(Audio:TRhythmAudio;Value:Integer;const Cancel:TFunc<Boolean>):TArray<TRhythmHit>;
+var Pool:TOrbitCandidatePool;I,Count:Integer;Cut:Double;
+begin
+  if Value<AUDIO_DEFAULT_DENSITY then begin
+    Pool:=TOrbitCandidatePool.Analyze(Audio,Cancel);
+    try
+      Result:=Pool.SelectSpaced(Audio,Value,Cancel);
+    finally
+      Pool.Free;
+    end;
+    Exit;
+  end;
+  if Value=AUDIO_DEFAULT_DENSITY then Exit(Audio.Hits);
+  Cut:=0.15+0.85*(Value-AUDIO_DEFAULT_DENSITY)/(100-AUDIO_DEFAULT_DENSITY);
+  SetLength(Result,Length(Audio.Hits));
+  Count:=0;
+  for I:=0 to High(Audio.Hits) do begin
+    if (I mod 256=0) and Assigned(Cancel) and Cancel() then Abort;
+    if Audio.Hits[I].Strength<Cut then Continue;
+    Result[Count]:=Audio.Hits[I];
+    Inc(Count);
+  end;
+  SetLength(Result,Count);
 end;
 end.

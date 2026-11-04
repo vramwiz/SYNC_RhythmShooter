@@ -1,23 +1,42 @@
 ﻿program StyleIntegrationSmoke;
 {$APPTYPE CONSOLE}
+{$POINTERMATH ON}
 uses Winapi.Windows,System.SysUtils,System.Math,System.Classes,System.Hash,System.IOUtils,System.JSON,
   Vcl.Graphics,Vcl.Imaging.pngimage,AviUtl2FilterTypes,RhythmAudio,RhythmStyles,RhythmProduct,RhythmPlanRef,RhythmSettings,
-  RhythmPrepare,RhythmScene,RhythmBallPlan,RhythmFireworksPlan,RhythmRunnerPlan,RhythmBreakoutPlan,
-  RhythmPaths,RhythmMotion,RhythmRacePlan,RhythmBombPlan,RhythmFightingPlan,RhythmMiningPlan,RhythmTrainPlan,RhythmNavalPlan,RhythmGamePlan;
+  RhythmPrepare,RhythmScene,RhythmStyleRegistry,RhythmPaths,RhythmMotion,RhythmRacePlan;
 type TInitPlugin=function(Version:DWORD):Byte;cdecl;
  TDonePlugin=procedure;cdecl;
  TGetPlugin=function:PFILTER_PLUGIN_TABLE;cdecl;
 var Captured:TBytes;CapturedWidth,CapturedHeight:Integer;
 var Root,Source,Revision,Expected,Actual:string;Stamp:TWin32FileAttributeData;Style:TRhythmStyle;
   Audio,Cold:TRhythmAudio;Worker:TRhythmPrepareThread;Ref:TRhythmPlanRef;Renderer:TRhythmRenderer;
-  Image:TBitmap;Race:TRacePlan;Settings,Restored:TRhythmSettings;Backend,J,Checks,HostChecks,MusicChecks,OffsetChecks:Integer;T,Shift:Double;PNG:TPngImage;
+  Image:TBitmap;Race:TRacePlan;Settings,Restored:TRhythmSettings;Backend,J,Checks,HostChecks,MusicChecks,OffsetChecks,Density,StylesChecked,BaseHits:Integer;T,Shift:Double;PNG:TPngImage;
 procedure Need(V:Boolean;const S:string);begin if not V then raise Exception.Create(S);end;
 function MakeAudio:TRhythmAudio;
-var I:Integer;Time,Gap:Double;
+var I,J,Start:Integer;Time,Gap,Phase:Double;Samples:PSmallInt;V:SmallInt;
 begin
  Result:=TRhythmAudio.Create;Result.Source:=Source;Result.Key:=THashSHA2.GetHashString('shared-preparation-native-v1');Result.Sensitivity:=50;Result.SourceRevision:=Revision;Result.Duration:=100;
  SetLength(Result.Envelope,10000);for I:=0 to 9499 do if ((I>2200) and (I<4300)) or ((I>6500) and (I<8500)) then Result.Envelope[I]:=0.85 else Result.Envelope[I]:=0.16;
- SetLength(Result.Hits,3000);I:=0;Time:=0.5;while Time<94 do begin Result.Hits[I].Time:=Time;Result.Hits[I].Strength:=0.28+(I mod 7)*0.12;Result.Hits[I].Lane:=0.5;Result.Hits[I].Flight:=ShotFlightTime(Time,0.5,Result.Hits[I].Strength);Inc(I);Gap:=0.32;if ((Time>22) and (Time<43)) or ((Time>65) and (Time<85)) then Gap:=0.10;Time:=Time+Gap;end;SetLength(Result.Hits,I);Result.UpdateSoundBounds;
+ if Density<AUDIO_DEFAULT_DENSITY then SetLength(Result.PCM,100*RHYTHM_RATE*4);
+ Samples:=PSmallInt(Result.PCM);
+ SetLength(Result.Hits,3000);I:=0;Time:=0.5;
+ while Time<94 do begin
+  Result.Hits[I].Time:=Time;Result.Hits[I].Strength:=0.28+(I mod 7)*0.12;Result.Hits[I].Lane:=0.5;
+  if Density=100 then Result.Hits[I].Strength:=Min(0.98,Result.Hits[I].Strength);
+  Result.Hits[I].Flight:=ShotFlightTime(Time,0.5,Result.Hits[I].Strength);
+  Inc(I);Gap:=0.32;
+  if ((Time>22) and (Time<43)) or ((Time>65) and (Time<85)) then Gap:=0.10
+  else if Samples<>nil then begin
+   Gap:=0.58;Start:=Round((Time+0.28)*RHYTHM_RATE)*2;
+   for J:=0 to 1499 do begin
+    Phase:=J/RHYTHM_RATE;
+    V:=Round(14500*Exp(-85*Phase)*(0.7*Sin(2*Pi*810*Phase)+0.3*Sin(2*Pi*3150*Phase)));
+    Samples[Start+J*2]:=V;Samples[Start+J*2+1]:=V;
+   end;
+  end;
+  Time:=Time+Gap;
+ end;
+ SetLength(Result.Hits,I);Result.UpdateSoundBounds;
 end;
 procedure SaveShootingFixture;
 var O,Index,Hit:TJSONObject;Envelope,Hits:TJSONArray;I:Integer;
@@ -34,27 +53,11 @@ begin
   TFile.WriteAllText(TPath.Combine(CacheFolder,THashSHA2.GetHashString(LowerCase(ExpandFileName(Source)))+'-s50-index.json'),Index.ToJSON,TEncoding.UTF8);
  finally O.Free;Index.Free;end;
 end;
-function ColdRead:TRhythmAudio;
-begin
- case Style of
- rsBall:Result:=TRhythmBallPlan.LoadAudioMetadata(Ref,Source,0);
- rsFireworks:Result:=TFireworksPlan.LoadAudioMetadata(Ref,Source,0);
- rsRunner:Result:=TRunnerPlan.LoadAudioMetadata(Ref,Source,0);
- rsBreakout:Result:=TBreakoutPlan.LoadAudioMetadata(Ref,Source,0);
- rsRace:Result:=TRacePlan.LoadAudioMetadata(Ref,Source,0);
- rsBombAction:Result:=TBombActionPlan.LoadAudioMetadata(Ref,Source,0);
- rsFighting:Result:=TFightingPlan.LoadAudioMetadata(Ref,Source,0);
- rsMining:Result:=TMiningPlan.LoadAudioMetadata(Ref,Source,0);
- rsTrain:Result:=TTrainPlan.LoadAudioMetadata(Ref,Source,0);
- rsNaval:Result:=TNavalPlan.LoadAudioMetadata(Ref,Source,0);
- rsRhythmGame:Result:=TGamePlan.LoadAudioMetadata(Ref,Source,0);
- else raise Exception.Create('Unknown cold style');end;
-end;
 function ImageHash:string;
 var S:TMemoryStream;B:TBytes;H:THashSHA2;
 begin S:=TMemoryStream.Create;try Image.SaveToStream(S);SetLength(B,S.Size);S.Position:=0;S.ReadBuffer(B[0],Length(B));H:=THashSHA2.Create;H.Update(B);Result:=H.HashAsString;finally S.Free;end;end;
 function ProductForStyle:string;
-begin case Style of rsBall:Result:='SYNC_RhythmBall';rsFireworks:Result:='SYNC_RhythmFireworks';rsRunner:Result:='SYNC_RhythmRunner';rsBreakout:Result:='SYNC_RhythmBreakout';rsRace:Result:='SYNC_RhythmRace';rsBombAction:Result:='SYNC_RhythmBombAction';rsFighting:Result:='SYNC_RhythmFighting';rsMining:Result:='SYNC_RhythmMining';rsTrain:Result:='SYNC_RhythmTrain';rsNaval:Result:='SYNC_RhythmNaval';rsRhythmGame:Result:='SYNC_RhythmGame';else Result:='SYNC_RhythmShooter';end;end;
+begin case Style of rsBall:Result:='SYNC_RhythmBall';rsFireworks:Result:='SYNC_RhythmFireworks';rsRunner:Result:='SYNC_RhythmRunner';rsBreakout:Result:='SYNC_RhythmBreakout';rsRace:Result:='SYNC_RhythmRace';rsBombAction:Result:='SYNC_RhythmBombAction';rsFighting:Result:='SYNC_RhythmFighting';rsMining:Result:='SYNC_RhythmMining';rsTrain:Result:='SYNC_RhythmTrain';rsNaval:Result:='SYNC_RhythmNaval';rsRhythmGame,rsStepGame:Result:='SYNC_RhythmGame';else Result:='SYNC_RhythmShooter';end;end;
 procedure CaptureHost(Buffer:PPIXEL_RGBA;W,H:Integer);cdecl;
 begin CapturedWidth:=W;CapturedHeight:=H;SetLength(Captured,W*H*4);Move(Buffer^,Captured[0],Length(Captured));end;
 procedure VerifyHost;
@@ -105,7 +108,6 @@ var Lib:HMODULE;Init:TInitPlugin;Done:TDonePlugin;GetTable:TGetPlugin;Table:PFIL
  end;
 begin
  if ParamCount=0 then Exit;
- if (ParamCount>2) and (StyleId(Style)<>ParamStr(3)) then Exit;
  Config:='Release';if ParamCount>1 then Config:=ParamStr(2);Need((Config='Debug') or (Config='Release'),'DLL test configuration');
  Path:=TPath.Combine(ParamStr(1),ProductForStyle+'\'+Config+'\'+ProductForStyle+'.dll');
  Lib:=LoadLibraryEx(PChar(Path),0,LOAD_WITH_ALTERED_SEARCH_PATH);if Lib=0 then RaiseLastOSError;
@@ -172,22 +174,28 @@ begin
 end;
 
 begin
- Audio:=nil;Cold:=nil;Worker:=nil;Renderer:=nil;Image:=nil;Race:=nil;PNG:=nil;Checks:=0;HostChecks:=0;MusicChecks:=0;OffsetChecks:=0;
+ Audio:=nil;Cold:=nil;Worker:=nil;Renderer:=nil;Image:=nil;Race:=nil;PNG:=nil;Checks:=0;HostChecks:=0;MusicChecks:=0;OffsetChecks:=0;StylesChecked:=0;
  try
+  Density:=AUDIO_DEFAULT_DENSITY;if ParamCount>3 then Density:=StrToInt(ParamStr(4));
   Root:=TPath.Combine(ExtractFileDir(ParamStr(0)),'Evidence');ForceDirectories(Root);Source:=TPath.Combine(Root,'shared-source.identity');TFile.WriteAllText(Source,'Synthetic events only. No sound playback.',TEncoding.UTF8);
   Need(GetFileAttributesEx(PChar(Source),GetFileExInfoStandard,@Stamp),'Source stat');Revision:=IntToHex(Stamp.nFileSizeHigh,8)+IntToHex(Stamp.nFileSizeLow,8)+'-'+IntToHex(Stamp.ftLastWriteTime.dwHighDateTime,8)+IntToHex(Stamp.ftLastWriteTime.dwLowDateTime,8);
   Image:=TBitmap.Create;Image.PixelFormat:=pf32bit;Image.SetSize(960,540);
   for Style:=Low(TRhythmStyle) to High(TRhythmStyle) do begin
-   if (ParamCount>=3) and (ParamStr(3)<>StyleId(Style)) then Continue;
+   if (ParamCount>=3) and (ParamStr(3)<>'*') and (ParamStr(3)<>StyleId(Style)) then Continue;
+   Inc(StylesChecked);
    ConfigureRhythmProduct(ProductForStyle,'Shared integration',Style);
-   Worker:=TRhythmPrepareThread.Create(Source,50,0,Style,False,MakeAudio,Ord(Style)+1,StyleVariant(Style,70,100));Worker.Start;Worker.WaitFor;
+   Audio:=MakeAudio;BaseHits:=Length(Audio.Hits);if Style=rsShooting then SaveShootingFixture;
+   Worker:=TRhythmPrepareThread.Create(Source,50,0,Style,False,Audio,Ord(Style)+1,StyleVariant(Style,70,100,Density),Density);Audio:=nil;
+   Worker.Start;Worker.WaitFor;
    Need(Worker.Error='','Prepare '+StyleId(Style)+': '+Worker.Error);Ref:=Worker.Plan;Audio:=Worker.TakeAudio;WriteLn(StyleId(Style),' v',Ref.Version,': ',Worker.Summary);FreeAndNil(Worker);
-   Settings:=TRhythmSettings.Defaults;Settings.Style:=Style;Settings.Music:=Source;Settings.BossFrequency:=100;Settings.FireworksRichness:=70;Settings.Plan:=Ref;
+   Settings:=TRhythmSettings.Defaults;Settings.Style:=Style;Settings.Music:=Source;Settings.BossFrequency:=100;Settings.FireworksRichness:=70;Settings.Plan:=Ref;Settings.GameThreshold:=Density;
+   if (Density>AUDIO_DEFAULT_DENSITY) and not StyleHas(Style,sfThreshold) then Need(Length(Audio.Hits)<BaseHits,'Audio density did not reduce adopted hits');
+   if (Density<AUDIO_DEFAULT_DENSITY) and not StyleHas(Style,sfThreshold) then Need(Length(Audio.Hits)>BaseHits,'Audio density did not add spaced hits');
    Need(TRhythmSettings.TryJSON(Settings.ToJSON,Restored),'Settings parse');Need((Restored.Style=Style) and (Restored.Plan.Key=Ref.Key) and (Restored.BossFrequency=100),'Settings style/frequency/plan');
    Restored.BindHostMusic(UpperCase(Source));Need(Restored.Plan.Key=Ref.Key,'Same path preserves plan');
    Restored.BindHostMusic(Source+'.new');Need((Restored.Plan.Key='') and Restored.HostMusic,'Changed host file invalidates plan');
    Actual:=Restored.ToJSON;Need(TRhythmSettings.TryJSON(Actual,Restored) and Restored.HostMusic,'Host authority JSON roundtrip');
-   if Style=rsShooting then begin SaveShootingFixture;Cold:=LoadCachedRhythmAudio(Source,50,False);Need(Cold<>nil,'Shooting PCM-free cache fixture');end else Cold:=ColdRead;
+   Cold:=LoadStyleAudio(Style,Ref,Source,0);Need(Cold<>nil,'PCM-free restore fixture');
    Need(Length(Cold.PCM)=0,'PCM-free restore');Renderer:=TRhythmRenderer.Create;Renderer.ConfigureStyle(Style,Ref,100);
    for Backend:=0 to 1 do begin
     Renderer.UseD2D:=Backend=1;
@@ -204,7 +212,8 @@ begin
    Renderer.Render(Image,Cold,32.3,0);PNG:=TPngImage.Create;PNG.Assign(Image);PNG.SaveToFile(TPath.Combine(Root,StyleId(Style)+'.png'));FreeAndNil(PNG);
    if Style=rsRace then begin
     Race:=TRacePlan.Load(Ref,Cold,0);try
-     Need(Length(Race.Crash.Shunts)>0,'Race boss shunt coverage');
+     if Density=AUDIO_DEFAULT_DENSITY then Need(Length(Race.Crash.Shunts)>0,'Race boss shunt coverage');
+     if Length(Race.Crash.Shunts)>0 then
      for J:=0 to 2 do begin T:=Race.Crash.Shunts[Length(Race.Crash.Shunts) div 2].Time+(J-1)*0.08;
       Renderer.Render(Image,Cold,T,0);PNG:=TPngImage.Create;PNG.Assign(Image);
       PNG.SaveToFile(TPath.Combine(Root,'race-shunt-'+IntToStr(J)+'.png'));FreeAndNil(PNG);
@@ -213,7 +222,7 @@ begin
    end;
    FreeAndNil(Renderer);FreeAndNil(Cold);FreeAndNil(Audio);
   end;
-  TFile.WriteAllText(TPath.Combine(Root,'result.json'),Format('{"styles":%d,"warmColdSeekChecks":%d,"hostDLLChecks":%d,"hostMusicChecks":%d,"offsetChecks":%d,"backends":["GDI","Direct2D"],"audioPlayback":false}',[12-Ord(ParamCount>=3)*11,Checks,HostChecks,MusicChecks,OffsetChecks]),TEncoding.UTF8);WriteLn('Shared preparation/factory/settings/cold/seek PASS: ',Checks);
+  TFile.WriteAllText(TPath.Combine(Root,'result.json'),Format('{"styles":%d,"density":%d,"warmColdSeekChecks":%d,"hostDLLChecks":%d,"hostMusicChecks":%d,"offsetChecks":%d,"backends":["GDI","Direct2D"],"audioPlayback":false}',[StylesChecked,Density,Checks,HostChecks,MusicChecks,OffsetChecks]),TEncoding.UTF8);WriteLn('Shared preparation/factory/settings/cold/seek PASS: ',Checks);
  except on E:Exception do begin WriteLn(E.ClassName,': ',E.Message);ExitCode:=1;end;end;
  PNG.Free;Race.Free;Renderer.Free;Worker.Free;Cold.Free;Audio.Free;Image.Free;
 end.

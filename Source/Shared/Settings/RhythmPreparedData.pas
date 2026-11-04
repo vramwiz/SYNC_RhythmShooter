@@ -6,8 +6,26 @@ function ReadPreparedData(const Ref:TRhythmPlanRef;Style:TRhythmStyle;Direction:
 function PreparedAudio(Root:TJSONObject;const Ref:TRhythmPlanRef;const Source:string):TRhythmAudio;
 procedure AddPreparedAudio(Root:TJSONObject;Audio:TRhythmAudio);
 procedure WritePreparedData(Root:TJSONObject;var Ref:TRhythmPlanRef);
+function PreparedExact(Value:Double):TJSONString;
+function ReadPreparedExact(Value:TJSONValue):Double;
 implementation
 uses System.SysUtils,System.Math,System.IOUtils,System.Hash,Winapi.Windows,RhythmPaths;
+
+function PreparedExact(Value:Double):TJSONString;
+var Bits:UInt64;
+begin
+  Move(Value,Bits,SizeOf(Bits));
+  Result:=TJSONString.Create(IntToHex(Bits,16));
+end;
+
+function ReadPreparedExact(Value:TJSONValue):Double;
+var Bits:UInt64;
+begin
+  if not (Value is TJSONString) or (Length(Value.Value)<>16) or not TryStrToUInt64('$'+Value.Value,Bits) then
+    raise EConvertError.Create('Invalid prepared binary64');
+  Move(Bits,Result,SizeOf(Bits));
+  if IsNan(Result) or IsInfinite(Result) then raise EConvertError.Create('Nonfinite prepared value');
+end;
 
 function PathFor(const Key:string):string;
 begin if not ValidDigest(Key) then raise Exception.Create('Invalid prepared key');
