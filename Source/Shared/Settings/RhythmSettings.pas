@@ -8,17 +8,22 @@ type
     HostMusic:Boolean;
     Style:TRhythmStyle;
     Plan:TRhythmPlanRef;
-    Direction,Sensitivity,FireworksRichness,BossFrequency:Integer;
+    Direction,Sensitivity,FireworksRichness,BossFrequency,GameThreshold:Integer;
     Zoom,X,Y:Double;
+    OffsetSeconds:Double; // 描画専用。ホストではtrackが正、JSONはPreviewへの受渡し用。
+    EqualizerMode:Integer; // -1=旧版移行の初期値、0=非表示、1=表示。解析計画とは独立。
     Designs:TRhythmDesigns;
     class function Defaults:TRhythmSettings; static;
     procedure BindHostMusic(const FileName:string);
     function ToJSON:string;
     class function TryJSON(const Text:string;out Value:TRhythmSettings):Boolean; static;
   end;
+function EqualizerEnabled(Mode:Integer;Style:TRhythmStyle;PlanVersion:Integer):Boolean;
 implementation
-uses System.SysUtils,System.JSON,System.Math,RhythmProduct;
+uses System.SysUtils,System.JSON,System.Math,RhythmProduct,RhythmTiming;
 
+function EqualizerEnabled(Mode:Integer;Style:TRhythmStyle;PlanVersion:Integer):Boolean;
+begin if Mode<0 then Result:=(Style=rsRhythmGame) and (PlanVersion<>1) else Result:=Mode>0;end;
 class function TRhythmSettings.Defaults:TRhythmSettings;
 begin Result:=Default(TRhythmSettings);
   Result.Music:='';
@@ -27,7 +32,10 @@ begin Result:=Default(TRhythmSettings);
   Result.Sensitivity:=50;
   Result.BossFrequency:=BOSS_DEFAULT_FREQUENCY;
   Result.FireworksRichness:=FIREWORKS_DEFAULT_RICHNESS;
+  Result.GameThreshold:=20;
   Result.Zoom:=100;
+  Result.OffsetSeconds:=0;
+  Result.EqualizerMode:=-1;
   Result.X:=0;
   Result.Y:=0;
 end;
@@ -56,15 +64,19 @@ var
 begin
   J:=TJSONObject.Create;
   try J.AddPair('schema',TJSONNumber.Create(1));
+    J.AddPair('presentationVersion',TJSONNumber.Create(3));
     J.AddPair('music',Music);
     J.AddPair('direction',TJSONNumber.Create(Direction));
     J.AddPair('sensitivity',TJSONNumber.Create(Sensitivity));
     J.AddPair('zoom',TJSONNumber.Create(Zoom));
+    J.AddPair('offsetSeconds',TJSONNumber.Create(NormalizeRenderOffset(OffsetSeconds)));
     J.AddPair('x',TJSONNumber.Create(X));
     J.AddPair('y',TJSONNumber.Create(Y));
     if HostMusic then J.AddPair('musicSource','host');
     J.AddPair('bossFrequency',TJSONNumber.Create(EnsureRange(BossFrequency,0,100)));
     J.AddPair('style',StyleId(Style));
+    J.AddPair('gameThreshold',TJSONNumber.Create(EnsureRange(GameThreshold,-100,100)));
+    if EqualizerMode>=0 then J.AddPair('equalizer',TJSONBool.Create(EqualizerMode>0));
     J.AddPair('fireworksRichness',TJSONNumber.Create(EnsureRange(FireworksRichness,0,100)));
     if Plan.Key<>'' then begin
       PlanObject:=TJSONObject.Create;
@@ -97,9 +109,10 @@ end;
 class function TRhythmSettings.TryJSON(const Text:string;out Value:TRhythmSettings):Boolean;
 var
   J,V:TJSONValue;
-  O,Item,PlanObject:TJSONObject;
+  O,Item,PlanObject,Layers,Movie:TJSONObject;
   Assets:TJSONArray;
-  I,ExpectedVariant:Integer;
+  I,ExpectedVariant:Integer;LegacyPlan:TRhythmPlanRef;LegacyStyle:TRhythmStyle;
+  LegacyMovie,LegacyForeground:Boolean;
   Seen:array[0..RHYTHM_DESIGN_COUNT-1] of Boolean;
 begin
   Value:=Defaults;
@@ -117,6 +130,12 @@ begin
       Value.Sensitivity:=EnsureRange(O.GetValue<Integer>('sensitivity',50),1,100);
       Value.BossFrequency:=EnsureRange(O.GetValue<Integer>('bossFrequency',100),0,100);
       Value.FireworksRichness:=EnsureRange(O.GetValue<Integer>('fireworksRichness',FIREWORKS_DEFAULT_RICHNESS),0,100);
+      Value.GameThreshold:=EnsureRange(O.GetValue<Integer>('gameThreshold',20),-100,100);
+      V:=O.GetValue('equalizer');if V<>nil then begin if not (V is TJSONBool) then Exit;Value.EqualizerMode:=Ord(O.GetValue<Boolean>('equalizer'));end;
+      V:=O.GetValue('offsetSeconds');if (V<>nil) and not (V is TJSONNumber) then Exit;
+      Value.OffsetSeconds:=O.GetValue<Double>('offsetSeconds',0);
+      if IsNan(Value.OffsetSeconds) or IsInfinite(Value.OffsetSeconds) then Exit;
+      Value.OffsetSeconds:=NormalizeRenderOffset(Value.OffsetSeconds);
       Value.Zoom:=O.GetValue<Double>('zoom',100);
       Value.X:=O.GetValue<Double>('x',0);
       Value.Y:=O.GetValue<Double>('y',0);
@@ -156,7 +175,9 @@ begin
           Value.Plan.Sensitivity:=PlanObject.GetValue<Integer>('sensitivity',0);
           Value.Plan.Direction:=PlanObject.GetValue<Integer>('direction',-1);
           Value.Plan.Variant:=PlanObject.GetValue<Integer>('variant',0);
-          ExpectedVariant:=StyleVariant(Value.Style,Value.FireworksRichness,Value.BossFrequency);
+          ExpectedVariant:=StyleVariant(Value.Style,Value.FireworksRichness,Value.BossFrequency,Value.GameThreshold);
+          if (Value.Style=rsRhythmGame) and (Value.Plan.Version=1) then ExpectedVariant:=0;
+          if (Value.Style=rsRhythmGame) and (Value.Plan.Version=2) then ExpectedVariant:=Value.GameThreshold+1;
           if (Value.Style=rsRunner) and (Value.Plan.Version<=5) then ExpectedVariant:=0;
           if (Value.Style=rsRunner) and (Value.Plan.Variant=0) and (Value.BossFrequency=100) then ExpectedVariant:=0;
           if ((Value.Style in [rsShooting,rsBreakout]) or ((Value.Style=rsRace) and (Value.Plan.Version=1))) and (Value.Plan.Variant=0) and (Value.BossFrequency=100) then ExpectedVariant:=0;
@@ -164,6 +185,33 @@ begin
           if not Value.Plan.Matches(Value.Plan.SourceKey,Value.Sensitivity,Value.Direction,Value.Style,ExpectedVariant) or not ValidDigest(Value.Plan.SourceKey) or
           ((Value.Style<>rsShooting) and not ValidDigest(Value.Plan.Digest)) then Value.Plan:=Default(TRhythmPlanRef);
         end;
+      end;
+      V:=O.GetValue('layers');
+      if V<>nil then begin
+        // 旧三層は読込時だけ一種類へ移行する。表示中の前面を優先し、前面OFF/中層ONならその計画を採用。
+        if not (V is TJSONObject) then Exit;Layers:=TJSONObject(V);LegacyPlan:=Default(TRhythmPlanRef);
+        if not TryStyle(Layers.GetValue<string>('style','shooting'),LegacyStyle) or (LegacyStyle=rsRhythmGame) then Exit;
+        LegacyMovie:=Layers.GetValue<Boolean>('movie',False);LegacyForeground:=Layers.GetValue<Boolean>('foreground',True);
+        V:=Layers.GetValue('plan');
+        if V<>nil then begin if not (V is TJSONObject) then Exit;Movie:=TJSONObject(V);
+          LegacyPlan.Key:=Movie.GetValue<string>('key','');LegacyPlan.SourceKey:=Movie.GetValue<string>('source','');
+          LegacyPlan.Digest:=Movie.GetValue<string>('digest','');LegacyPlan.SourceRevision:=Movie.GetValue<string>('sourceStamp','');
+          if not TryStyle(Movie.GetValue<string>('style',''),LegacyPlan.Style) then LegacyPlan:=Default(TRhythmPlanRef)
+          else begin LegacyPlan.Version:=Movie.GetValue<Integer>('version',0);LegacyPlan.Sensitivity:=Movie.GetValue<Integer>('sensitivity',0);
+            LegacyPlan.Direction:=Movie.GetValue<Integer>('direction',-1);LegacyPlan.Variant:=Movie.GetValue<Integer>('variant',0);
+          end;
+        end;
+        if (Value.Style=rsRhythmGame) and not LegacyForeground and LegacyMovie then begin
+          if (LegacyPlan.Version<>StylePlanVersion(LegacyStyle)) or
+            not LegacyPlan.Matches(LegacyPlan.SourceKey,Value.Sensitivity,Value.Direction,LegacyStyle,StyleVariant(LegacyStyle,Value.FireworksRichness,Value.BossFrequency)) or
+            not ValidDigest(LegacyPlan.SourceKey) or ((LegacyStyle<>rsShooting) and not ValidDigest(LegacyPlan.Digest)) or
+            ((Value.Plan.SourceKey<>'') and (LegacyPlan.SourceKey<>Value.Plan.SourceKey)) or
+            ((Value.Plan.SourceRevision<>'') and (LegacyPlan.SourceRevision<>Value.Plan.SourceRevision)) then LegacyPlan:=Default(TRhythmPlanRef);
+          // 自動初期値だったEQも、旧音ゲーで実際に有効だった状態を維持する。
+          if Value.EqualizerMode<0 then Value.EqualizerMode:=Ord(EqualizerEnabled(Value.EqualizerMode,Value.Style,Value.Plan.Version));
+          Value.Style:=LegacyStyle;Value.Plan:=LegacyPlan;
+        end;
+        // 中層の破損・欠落は、選択中の音ゲーの有効な主計画を無効化しない。
       end;
       Result:=True;
     except Result:=False;

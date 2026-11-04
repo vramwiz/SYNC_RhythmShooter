@@ -1,7 +1,7 @@
 ﻿unit RhythmScene;
-// 全11スタイルの共通描画窓口。専用シーンへ委譲してPreviewとDLLの描画を揃える。
+// 全12種の描画窓口。音ゲーはMV上へ重ねる透明RGBA、他の種類は従来の単独描画。
 interface
-uses Vcl.Graphics,RhythmAudio,RhythmMotion,RhythmDesignTypes,RhythmAnimation,RhythmShootingScene,RhythmBallScene,RhythmFireworksScene,RhythmRunnerScene,RhythmBreakoutScene,RhythmRaceScene,RhythmBombScene,RhythmFightingScene,RhythmMiningScene,RhythmTrainScene,RhythmNavalScene,RhythmStyles,RhythmPlanRef;
+uses Vcl.Graphics,RhythmAudio,RhythmMotion,RhythmDesignTypes,RhythmAnimation,RhythmStyleOps,RhythmStyleRegistry,RhythmStyles,RhythmPlanRef,RhythmPresentation,RhythmLayerBlend,RhythmOverlay;
 type
   TRhythmPoint=RhythmMotion.TRhythmPoint;
   // Compatibility facade shared by AviUtl2 and the preview. New animations can
@@ -9,13 +9,11 @@ type
   TRhythmRenderer=class
   private
     FRenderer:TAnimationRenderer;
-    FShooting:TShootingAnimation;
-    FBall:TBallAnimation;
-    FFireworks:TFireworksAnimation;
-    FRunner:TRunnerAnimation;
-    FBreakout:TBreakoutAnimation;
-    FRace:TRaceAnimation;FBombAction:TBombActionAnimation;
-    FFighting:TFightingAnimation;FMining:TMiningAnimation;FTrain:TTrainAnimation;FNaval:TNavalAnimation;
+    FChild:TAnimationScene;FOps:TStyleOperations;
+    FPresentation:TRhythmPresentationScene;
+    FPrimaryRef:TRhythmPlanRef;FEqualizerMode:Integer;
+    FWasComposite,FCompositeD2D,FHasAlpha:Boolean;
+    FLayers:TRhythmLayerBlend;FOverlay:TRhythmOverlay;
     FStyle:TRhythmStyle;
     FChoices:TRhythmDesigns;
     FUseD2D:Boolean;
@@ -29,51 +27,40 @@ type
   public
     constructor Create;
     destructor Destroy;override;
-    procedure ConfigureStyle(Style:TRhythmStyle;const Plan:TRhythmPlanRef;BossFrequency:Integer=-1);
+    procedure ConfigureStyle(Style:TRhythmStyle;const Plan:TRhythmPlanRef;BossFrequency:Integer=-1;EqualizerMode:Integer=-1);
     procedure ApplyDesigns(const Designs:TRhythmDesigns;Force:Boolean=False);
     procedure StandardBackgroundPreview(Target:TBitmap;Direction,Layer:Integer);
     procedure Render(Target:TBitmap;Audio:TRhythmAudio;Time:Double;Direction:Integer;
-      const MessageText:string='';Zoom:Double=1;OffsetX:Double=0;OffsetY:Double=0);
+      const MessageText:string='';Zoom:Double=1;OffsetX:Double=0;OffsetY:Double=0;OffsetSeconds:Double=0);
     property AssetCount:Integer read GetAssetCount;
     property DesignWarning:string read GetWarning;
     property UseD2D:Boolean read GetUseD2D write SetUseD2D;
     property LastUsedD2D:Boolean read GetLastD2D;
+    property OutputHasAlpha:Boolean read FHasAlpha;
   end;
 function PlayerAt(Time:Double):TRhythmPoint;
 function EnemyAt(const Hit:TRhythmHit;Time:Double):TRhythmPoint;
 function BulletAt(const Hit:TRhythmHit;Time:Double):TRhythmPoint;
 function ExplosionOpacity(Age,Lifetime:Double):Double;
 implementation
-uses RhythmShootingAssets,RhythmImageBank,RhythmProduct;
+uses RhythmShootingScene,RhythmImageBank,RhythmProduct,RhythmSettings,RhythmEqualizer,RhythmTiming,System.SysUtils,System.Math;
 constructor TRhythmRenderer.Create;
-begin inherited;FBossFrequency:=100;FUseD2D:=True;CreateStyle(ProductDefaultStyle);end;
+begin inherited;FEqualizerMode:=-1;FBossFrequency:=100;FUseD2D:=True;CreateStyle(ProductDefaultStyle);end;
 procedure TRhythmRenderer.CreateStyle(Style:TRhythmStyle);
-var Images:TAnimationImageBank;Scene:TAnimationScene;NewRenderer:TAnimationRenderer;Shooting:TShootingAnimation;Ball:TBallAnimation;Fireworks:TFireworksAnimation;Runner:TRunnerAnimation;Breakout:TBreakoutAnimation;Race:TRaceAnimation;BombAction:TBombActionAnimation;Fighting:TFightingAnimation;Mining:TMiningAnimation;Train:TTrainAnimation;Naval:TNavalAnimation;
+var Images:TAnimationImageBank;Child,Presented:TAnimationScene;NewRenderer:TAnimationRenderer;Ops:TStyleOperations;
 begin
-  Shooting:=nil;Ball:=nil;Fireworks:=nil;Runner:=nil;Breakout:=nil;Race:=nil;BombAction:=nil;Fighting:=nil;Mining:=nil;Train:=nil;Naval:=nil;
-  if Style=rsShooting then begin Shooting:=TShootingAnimation.Create;Scene:=Shooting;
-    try Images:=TShootingImageBank.Create;except Scene.Free;raise;end;
-  end else begin
-    if Style=rsFireworks then begin Fireworks:=TFireworksAnimation.Create;Scene:=Fireworks;end
-    else if Style=rsRunner then begin Runner:=TRunnerAnimation.Create;Scene:=Runner;end
-    else if Style=rsBreakout then begin Breakout:=TBreakoutAnimation.Create;Scene:=Breakout;end
-    else if Style=rsRace then begin Race:=TRaceAnimation.Create;Scene:=Race;end
-    else if Style=rsBombAction then begin BombAction:=TBombActionAnimation.Create;Scene:=BombAction;end
-    else if Style=rsFighting then begin Fighting:=TFightingAnimation.Create;Scene:=Fighting;end
-    else if Style=rsMining then begin Mining:=TMiningAnimation.Create;Scene:=Mining;end
-    else if Style=rsTrain then begin Train:=TTrainAnimation.Create;Scene:=Train;end
-    else if Style=rsNaval then begin Naval:=TNavalAnimation.Create;Scene:=Naval;end
-    else begin Ball:=TBallAnimation.Create;Scene:=Ball;end;
-    try if Style=rsBreakout then Images:=TShootingImageBank.Create else Images:=TAnimationImageBank.Create([],0);except Scene.Free;raise;end;
-  end;
-  NewRenderer:=TAnimationRenderer.Create(Scene,Images);
-  try NewRenderer.UseD2D:=FUseD2D;if Style in [rsShooting,rsBreakout] then NewRenderer.ApplyChoices(FChoices);except NewRenderer.Free;raise;end;
-  FRenderer.Free;FRenderer:=NewRenderer;FShooting:=Shooting;FBall:=Ball;FFireworks:=Fireworks;FRunner:=Runner;FBreakout:=Breakout;FRace:=Race;FBombAction:=BombAction;FFighting:=Fighting;FMining:=Mining;FTrain:=Train;FNaval:=Naval;FStyle:=Style;
+  Ops:=StyleOperations(Style);Child:=Ops.CreateScene;
+  try Images:=Ops.CreateImages;except Child.Free;raise;end;
+  try Presented:=TRhythmPresentationScene.Create(Child,Ops.Activity);except Images.Free;Child.Free;raise;end;
+  NewRenderer:=TAnimationRenderer.Create(Presented,Images);
+  try NewRenderer.UseD2D:=FUseD2D;if StyleHas(Style,sfAssets) then NewRenderer.ApplyChoices(FChoices);except NewRenderer.Free;raise;end;
+  FRenderer.Free;FRenderer:=NewRenderer;FChild:=Child;FOps:=Ops;
+  FPresentation:=TRhythmPresentationScene(Presented);FStyle:=Style;
 end;
-procedure TRhythmRenderer.ConfigureStyle(Style:TRhythmStyle;const Plan:TRhythmPlanRef;BossFrequency:Integer);
-begin FBossFrequency:=BossFrequency;if FBossFrequency<0 then FBossFrequency:=BossFrequencyFromVariant(Plan.Variant);if Style<>FStyle then CreateStyle(Style);if FBall<>nil then FBall.SetReference(Plan);if FFireworks<>nil then FFireworks.SetReference(Plan);if FRunner<>nil then FRunner.SetReference(Plan);if FBreakout<>nil then FBreakout.SetReference(Plan);if FRace<>nil then FRace.SetReference(Plan);if FBombAction<>nil then FBombAction.SetReference(Plan);if FFighting<>nil then FFighting.SetReference(Plan);if FMining<>nil then FMining.SetReference(Plan);if FTrain<>nil then FTrain.SetReference(Plan);if FNaval<>nil then FNaval.SetReference(Plan);end;
+procedure TRhythmRenderer.ConfigureStyle(Style:TRhythmStyle;const Plan:TRhythmPlanRef;BossFrequency,EqualizerMode:Integer);
+begin FBossFrequency:=BossFrequency;if FBossFrequency<0 then FBossFrequency:=BossFrequencyFromVariant(Plan.Variant);if Style<>FStyle then CreateStyle(Style);FPrimaryRef:=Plan;FEqualizerMode:=EqualizerMode;FOps.SetReference(FChild,Plan);end;
 destructor TRhythmRenderer.Destroy;
-begin FRenderer.Free;inherited;end;
+begin FOverlay.Free;FLayers.Free;FRenderer.Free;inherited;end;
 function TRhythmRenderer.GetAssetCount:Integer;
 begin Result:=FRenderer.AssetCount;end;
 function TRhythmRenderer.GetWarning:string;
@@ -83,18 +70,49 @@ begin Result:=FRenderer.UseD2D;end;
 procedure TRhythmRenderer.SetUseD2D(Value:Boolean);
 begin FUseD2D:=Value;FRenderer.UseD2D:=Value;end;
 function TRhythmRenderer.GetLastD2D:Boolean;
-begin Result:=FRenderer.LastUsedD2D;end;
+begin if FWasComposite then Result:=FCompositeD2D else Result:=FRenderer.LastUsedD2D;end;
 procedure TRhythmRenderer.ApplyDesigns(const Designs:TRhythmDesigns;Force:Boolean);
-begin FChoices:=Designs;if FStyle in [rsShooting,rsBreakout] then FRenderer.ApplyChoices(Designs,Force);end;
+begin FChoices:=Designs;if StyleHas(FStyle,sfAssets) then FRenderer.ApplyChoices(Designs,Force);end;
 procedure TRhythmRenderer.StandardBackgroundPreview(Target:TBitmap;Direction,Layer:Integer);
-begin if FStyle=rsShooting then FRenderer.StandardBackgroundPreview(Target,Direction,Layer) else begin Target.Canvas.Brush.Color:=clBlack;Target.Canvas.FillRect(Target.Canvas.ClipRect);end;end;
+begin if StyleHas(FStyle,sfDesigns) then FRenderer.StandardBackgroundPreview(Target,Direction,Layer) else begin Target.Canvas.Brush.Color:=clBlack;Target.Canvas.FillRect(Target.Canvas.ClipRect);end;end;
 procedure TRhythmRenderer.Render(Target:TBitmap;Audio:TRhythmAudio;Time:Double;Direction:Integer;
-  const MessageText:string;Zoom,OffsetX,OffsetY:Double);
-var Text:string;
+  const MessageText:string;Zoom,OffsetX,OffsetY,OffsetSeconds:Double);
+var Text:string;EQ:Boolean;Frame:TAnimationFrame;Activity:TEqualizerActivity;OldColor:TColor;Row:Integer;
 begin
-  if (FStyle=rsShooting) and (Audio<>nil) then Audio.SetBossFrequency(FBossFrequency);
-  if FShooting<>nil then FShooting.Audio:=Audio;if FBall<>nil then FBall.Audio:=Audio;if FFireworks<>nil then FFireworks.Audio:=Audio;if FRunner<>nil then FRunner.Audio:=Audio;if FBreakout<>nil then FBreakout.Audio:=Audio;if FRace<>nil then FRace.Audio:=Audio;if FBombAction<>nil then FBombAction.Audio:=Audio;if FFighting<>nil then FFighting.Audio:=Audio;if FMining<>nil then FMining.Audio:=Audio;if FTrain<>nil then FTrain.Audio:=Audio;if FNaval<>nil then FNaval.Audio:=Audio;Text:='';if Audio=nil then Text:=MessageText;
-  FRenderer.Render(Target,Time,Direction,Text,Zoom,OffsetX,OffsetY);
+  FHasAlpha:=False;FWasComposite:=False;if (Target.Width<1) or (Target.Height<1) then Exit;
+  // オフセットは全種類/EQ/透明合成の前に一度だけ適用。音声再生・Plan・カメラの保存値は変更しない。
+  Time:=AnimationTime(Time,OffsetSeconds);
+  if (Audio<>nil) and (Time<0) then begin
+    Target.PixelFormat:=pf32bit;for Row:=0 to Target.Height-1 do FillChar(Target.ScanLine[Row]^,Target.Width*4,0);
+    FHasAlpha:=True;FWasComposite:=True;FCompositeD2D:=False;Exit;
+  end;
+  FOps.SetAudio(FChild,Audio,FBossFrequency);
+  FPresentation.Audio:=Audio;Text:='';if Audio=nil then Text:=MessageText;
+  EQ:=EqualizerEnabled(FEqualizerMode,FStyle,FPrimaryRef.Version);
+  if Audio=nil then begin FRenderer.Render(Target,Time,Direction,Text,Zoom,OffsetX,OffsetY);Exit;end;
+  if StyleHas(FStyle,sfTransparent) then begin
+    if FOverlay=nil then FOverlay:=TRhythmOverlay.Create;FOverlay.Resize(Target.Width,Target.Height);
+    OldColor:=FRenderer.ClearColor;FOps.Transparency(FChild,True);FPresentation.IncludeEqualizer:=EQ;
+    try
+      FRenderer.ClearColor:=clBlack;FRenderer.Render(FOverlay.Black,Time,Direction);
+      FCompositeD2D:=FRenderer.LastUsedD2D;
+      FRenderer.ClearColor:=clWhite;FRenderer.Render(FOverlay.White,Time,Direction);
+      FCompositeD2D:=FCompositeD2D and FRenderer.LastUsedD2D;
+    finally FOps.Transparency(FChild,False);FPresentation.IncludeEqualizer:=False;FRenderer.ClearColor:=OldColor;end;
+    FOverlay.Resolve(Target,Zoom,OffsetX,OffsetY);FHasAlpha:=True;FWasComposite:=True;Exit;
+  end;
+  if not EQ then begin FRenderer.Render(Target,Time,Direction,Text,Zoom,OffsetX,OffsetY);Exit;end;
+  // 従来11種の共通EQだけを保持。同じ種類の背景抽出であり、別種類の二重描画はしない。
+  if FLayers=nil then FLayers:=TRhythmLayerBlend.Create;
+  FLayers.Resize(Target.Width,Target.Height,True,True);
+  Frame:=Default(TAnimationFrame);Frame.Time:=Max(0.0,Time);Frame.Width:=Target.Width;Frame.Height:=Target.Height;Frame.Direction:=EnsureRange(Direction,0,1);
+  FPresentation.Prepare(Frame);Activity:=FPresentation.Activity(Frame.Time);
+  FLayers.BeginBase(Target,Activity,True,FUseD2D);FWasComposite:=True;FCompositeD2D:=FLayers.LastUsedD2D;
+  FRenderer.Render(FLayers.Image,Time,Direction);FCompositeD2D:=FCompositeD2D and FRenderer.LastUsedD2D;
+  FRenderer.BackgroundOnly:=True;
+  try FRenderer.Render(FLayers.Backdrop,Time,Direction);finally FRenderer.BackgroundOnly:=False;end;
+  FCompositeD2D:=FCompositeD2D and FRenderer.LastUsedD2D;
+  FLayers.ImageOver(Target);FLayers.Transform(Target,Zoom,OffsetX,OffsetY);
 end;
 function PlayerAt(Time:Double):TRhythmPoint;
 begin Result:=RhythmShootingScene.PlayerAt(Time);end;

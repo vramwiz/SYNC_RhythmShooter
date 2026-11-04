@@ -10,7 +10,7 @@ type
 // Drawing-only joints keep the score's impact point and fixed limb lengths.
 function RunnerSwordArmAt(Plan:TRunnerActionPlan;Time:Double;out Arm:TRunnerSwordArm):Boolean;
 // 任意フレームを同じ型付き計画／描画面から復元する。
-procedure RenderRunnerPixels(Plan:TRunnerActionPlan;Surface:TAnimationRenderSurface;Time:Double;Width,Height:Integer);
+procedure RenderRunnerPixels(Plan:TRunnerActionPlan;Surface:TAnimationRenderSurface;Time:Double;Width,Height:Integer;BackgroundOnly:Boolean=False);
 implementation
 uses System.SysUtils,System.Math,Winapi.Windows,Vcl.Graphics;
 
@@ -60,7 +60,7 @@ begin
   Result:=True;
 end;
 
-procedure RenderRunnerPixels(Plan:TRunnerActionPlan;Surface:TAnimationRenderSurface;Time:Double;Width,Height:Integer);
+procedure RenderRunnerPixels(Plan:TRunnerActionPlan;Surface:TAnimationRenderSurface;Time:Double;Width,Height:Integer;BackgroundOnly:Boolean);
 const
   CameraEase=0.24;
   Skin=$00B8DFFF;
@@ -286,6 +286,7 @@ begin
     Box(Camera,RA_GROUND,Camera+1.8,RA_GROUND+0.010,RGB(70,134,90));
     Box(Camera,RA_GROUND+0.014,Camera+1.8,RA_GROUND+0.021,RGB(211,218,151));
   end;
+  if BackgroundOnly then begin R.DrawViewportMatte(L,Top,Width,Height,RGB(207,231,232));Exit;end;
   First:=Max(0,P.PadBefore(T-7)-1);
   Last:=Min(High(P.Pads),P.PadBefore(T+7)+2);
   Drawn:=0;

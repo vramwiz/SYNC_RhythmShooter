@@ -201,6 +201,7 @@ var Audio:TRhythmAudio;Schedule:TRhythmStageSchedule;I,J,First,Last,BossIndex,Wi
 begin
   Audio:=FAudio;Schedule:=FSchedule;Time:=Frame.Time;Width:=Frame.Width;Height:=Frame.Height;Direction:=Frame.Direction;
   DrawParallax(Surface.Canvas,Surface.Images,Surface.D2D,Surface.D2DActive,Time,Width,Height,Direction,-1,False,False);
+  if Frame.BackgroundOnly then Exit;
   if Audio<>nil then
   begin
     for Enemy in FFlybys do if (Time>=Enemy.Launch) and (Time<Enemy.Finish) and ((Direction<>0) or (Time<Schedule.ClearTime)) then

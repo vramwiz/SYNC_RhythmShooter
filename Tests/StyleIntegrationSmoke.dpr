@@ -3,14 +3,14 @@
 uses Winapi.Windows,System.SysUtils,System.Math,System.Classes,System.Hash,System.IOUtils,System.JSON,
   Vcl.Graphics,Vcl.Imaging.pngimage,AviUtl2FilterTypes,RhythmAudio,RhythmStyles,RhythmProduct,RhythmPlanRef,RhythmSettings,
   RhythmPrepare,RhythmScene,RhythmBallPlan,RhythmFireworksPlan,RhythmRunnerPlan,RhythmBreakoutPlan,
-  RhythmPaths,RhythmMotion,RhythmRacePlan,RhythmBombPlan,RhythmFightingPlan,RhythmMiningPlan,RhythmTrainPlan,RhythmNavalPlan;
+  RhythmPaths,RhythmMotion,RhythmRacePlan,RhythmBombPlan,RhythmFightingPlan,RhythmMiningPlan,RhythmTrainPlan,RhythmNavalPlan,RhythmGamePlan;
 type TInitPlugin=function(Version:DWORD):Byte;cdecl;
  TDonePlugin=procedure;cdecl;
  TGetPlugin=function:PFILTER_PLUGIN_TABLE;cdecl;
 var Captured:TBytes;CapturedWidth,CapturedHeight:Integer;
 var Root,Source,Revision,Expected,Actual:string;Stamp:TWin32FileAttributeData;Style:TRhythmStyle;
   Audio,Cold:TRhythmAudio;Worker:TRhythmPrepareThread;Ref:TRhythmPlanRef;Renderer:TRhythmRenderer;
-  Image:TBitmap;Race:TRacePlan;Settings,Restored:TRhythmSettings;Backend,J,Checks,HostChecks,MusicChecks:Integer;T:Double;PNG:TPngImage;
+  Image:TBitmap;Race:TRacePlan;Settings,Restored:TRhythmSettings;Backend,J,Checks,HostChecks,MusicChecks,OffsetChecks:Integer;T,Shift:Double;PNG:TPngImage;
 procedure Need(V:Boolean;const S:string);begin if not V then raise Exception.Create(S);end;
 function MakeAudio:TRhythmAudio;
 var I:Integer;Time,Gap:Double;
@@ -47,36 +47,41 @@ begin
  rsMining:Result:=TMiningPlan.LoadAudioMetadata(Ref,Source,0);
  rsTrain:Result:=TTrainPlan.LoadAudioMetadata(Ref,Source,0);
  rsNaval:Result:=TNavalPlan.LoadAudioMetadata(Ref,Source,0);
+ rsRhythmGame:Result:=TGamePlan.LoadAudioMetadata(Ref,Source,0);
  else raise Exception.Create('Unknown cold style');end;
 end;
 function ImageHash:string;
 var S:TMemoryStream;B:TBytes;H:THashSHA2;
 begin S:=TMemoryStream.Create;try Image.SaveToStream(S);SetLength(B,S.Size);S.Position:=0;S.ReadBuffer(B[0],Length(B));H:=THashSHA2.Create;H.Update(B);Result:=H.HashAsString;finally S.Free;end;end;
 function ProductForStyle:string;
-begin case Style of rsBall:Result:='SYNC_RhythmBall';rsFireworks:Result:='SYNC_RhythmFireworks';rsRunner:Result:='SYNC_RhythmRunner';rsBreakout:Result:='SYNC_RhythmBreakout';rsRace:Result:='SYNC_RhythmRace';rsBombAction:Result:='SYNC_RhythmBombAction';rsFighting:Result:='SYNC_RhythmFighting';rsMining:Result:='SYNC_RhythmMining';rsTrain:Result:='SYNC_RhythmTrain';rsNaval:Result:='SYNC_RhythmNaval';else Result:='SYNC_RhythmShooter';end;end;
+begin case Style of rsBall:Result:='SYNC_RhythmBall';rsFireworks:Result:='SYNC_RhythmFireworks';rsRunner:Result:='SYNC_RhythmRunner';rsBreakout:Result:='SYNC_RhythmBreakout';rsRace:Result:='SYNC_RhythmRace';rsBombAction:Result:='SYNC_RhythmBombAction';rsFighting:Result:='SYNC_RhythmFighting';rsMining:Result:='SYNC_RhythmMining';rsTrain:Result:='SYNC_RhythmTrain';rsNaval:Result:='SYNC_RhythmNaval';rsRhythmGame:Result:='SYNC_RhythmGame';else Result:='SYNC_RhythmShooter';end;end;
 procedure CaptureHost(Buffer:PPIXEL_RGBA;W,H:Integer);cdecl;
 begin CapturedWidth:=W;CapturedHeight:=H;SetLength(Captured,W*H*4);Move(Buffer^,Captured[0],Length(Captured));end;
 procedure VerifyHost;
 var Lib:HMODULE;Init:TInitPlugin;Done:TDonePlugin;GetTable:TGetPlugin;Table:PFILTER_PLUGIN_TABLE;
- Json:PFILTER_ITEM_STRING;Music:PFILTER_ITEM_FILE;Item:Pointer;I,X,Y,K,Rules:Integer;
- Kind,JsonText,MusicText,Path,Config,FirstHash,SecondHash,OriginalJSON:string;
+ Json:PFILTER_ITEM_STRING;Music:PFILTER_ITEM_FILE;Offset:PFILTER_ITEM_TRACK;Item:Pointer;I,X,Y,K,Rules:Integer;
+ Kind,JsonText,MusicText,Path,Config,FirstHash,SecondHash,OriginalJSON,ModeHash:string;SavedEqualizer,Mode:Integer;
  Scene:TSCENE_INFO;Obj:TOBJECT_INFO;Video:TFILTER_PROC_VIDEO;Hash:THashSHA2;Row:PByte;
  Expected,OriginalSource:TBytes;FileHandle:THandle;SavedStamp:TWin32FileAttributeData;
  procedure FindItems(Modern:Boolean);
- var MusicIndex,GroupIndex,N:Integer;Name:string;
+ var MusicIndex,GroupIndex,OffsetIndex,N:Integer;Name:string;
  begin
-  Json:=nil;Music:=nil;Rules:=0;MusicIndex:=-1;GroupIndex:=99;
+  Json:=nil;Music:=nil;Offset:=nil;Rules:=0;MusicIndex:=-1;GroupIndex:=99;OffsetIndex:=-1;
   for N:=0 to 12 do begin
    Item:=PPointer(NativeUInt(Table.Items)+NativeUInt(N*SizeOf(Pointer)))^;if Item=nil then Break;
    Kind:=string(PWideChar(PPointer(Item)^));Name:=string(PWideChar(PPointer(NativeUInt(Item)+SizeOf(Pointer))^));
+   Need((Kind<>'select') and (Name<>'スクロール方向') and (Name<>'小分類') and (Name<>'解析感度'),'Removed host settings still registered');
+   if (Kind='track') and (Name='オフセット') then begin Offset:=PFILTER_ITEM_TRACK(Item);OffsetIndex:=N;end;
    if Kind='string' then Json:=PFILTER_ITEM_STRING(Item);
    if Kind='file' then begin Music:=PFILTER_ITEM_FILE(Item);MusicIndex:=N;Need(Name='音楽ファイル','SDK file label');end;
    if Kind='group' then GroupIndex:=N;
    if Kind='hiderule' then begin Inc(Rules);Need(Name<>'音楽ファイル','Music must remain visible');end;
   end;
-  Need((Json<>nil) and (Music<>nil),'DLL JSON/file items');
+  Need((Json<>nil) and (Music<>nil) and (Offset<>nil),'DLL JSON/file/offset items');
+  Need((Offset.S=-1) and (Offset.E=1) and (Abs(Offset.Step-0.01)<1E-12),'Offset range or unit');
+  Need((OffsetIndex<GroupIndex) and (OffsetIndex>=5),'Offset must remain visible');
   Need((MusicIndex=3) and (MusicIndex<GroupIndex),'Music visible before legacy group');
-  if Modern then Need(Rules=3,'Modern hidden compatibility values') else Need(Rules=0,'Legacy host fallback');
+  if Modern then Need(Rules=1,'Only JSON is hidden') else Need(Rules=0,'Legacy host fallback');
  end;
  procedure Frame(const LabelText:string;Blank:Boolean);
  var B:Byte;
@@ -88,6 +93,16 @@ var Lib:HMODULE;Init:TInitPlugin;Done:TDonePlugin;GetTable:TGetPlugin;Table:PFIL
  end;
  function CapturedHash:string;
  begin Hash:=THashSHA2.Create;Hash.Update(Captured);Result:=Hash.HashAsString;end;
+ function PreviewHash:string;
+ var X,Y:Integer;
+ begin
+   Renderer.ConfigureStyle(Style,Ref,100,Settings.EqualizerMode);
+   Renderer.UseD2D:=True;Renderer.Render(Image,Cold,Obj.Time,0,'',1,0,0,Offset.Value);SetLength(Expected,Image.Width*Image.Height*4);K:=0;
+   for Y:=0 to Image.Height-1 do begin Row:=Image.ScanLine[Y];for X:=0 to Image.Width-1 do begin
+     Expected[K]:=Row[2];Expected[K+1]:=Row[1];Expected[K+2]:=Row[0];if Renderer.OutputHasAlpha then Expected[K+3]:=Row[3] else Expected[K+3]:=255;Inc(K,4);Inc(Row,4);
+   end;end;
+   Hash:=THashSHA2.Create;Hash.Update(Expected);Result:=Hash.HashAsString;
+ end;
 begin
  if ParamCount=0 then Exit;
  if (ParamCount>2) and (StyleId(Style)<>ParamStr(3)) then Exit;
@@ -99,16 +114,34 @@ begin
   Need(Assigned(Init) and Assigned(Done) and Assigned(GetTable),'DLL exports');Need(Init(2011500)=1,'DLL initialization');
   try
    Table:=GetTable();Need((Table<>nil) and Assigned(Table.Func_Proc_Video),'DLL filter callback');FindItems(True);
-   Settings.HostMusic:=True;JsonText:=Settings.ToJSON;OriginalJSON:=JsonText;Json.Value:=PWideChar(JsonText);
+   // Host track wins over the Preview-only JSON snapshot. Changing it must not reprepare or alter the plan.
+   Settings.HostMusic:=True;Settings.OffsetSeconds:=0.41;Offset.Value:=0;JsonText:=Settings.ToJSON;OriginalJSON:=JsonText;Json.Value:=PWideChar(JsonText);
    MusicText:=Source;Music.Value:=PWideChar(MusicText);
    FillChar(Scene,SizeOf(Scene),0);Scene.Width:=Image.Width;Scene.Height:=Image.Height;Scene.Rate:=60;Scene.Scale:=1;
    FillChar(Obj,SizeOf(Obj),0);Obj.Width:=Image.Width;Obj.Height:=Image.Height;Obj.Time:=32.3;
    FillChar(Video,SizeOf(Video),0);Video.Scene:=@Scene;Video.Object_:=@Obj;Video.SetImageData:=CaptureHost;
-   Renderer.UseD2D:=True;Renderer.Render(Image,Cold,Obj.Time,0);SetLength(Expected,Image.Width*Image.Height*4);K:=0;
-   for Y:=0 to Image.Height-1 do begin Row:=Image.ScanLine[Y];for X:=0 to Image.Width-1 do begin
-    Expected[K]:=Row[2];Expected[K+1]:=Row[1];Expected[K+2]:=Row[0];Expected[K+3]:=255;Inc(K,4);Inc(Row,4);end;end;
-   Hash:=THashSHA2.Create;Hash.Update(Expected);FirstHash:=Hash.HashAsString;
+   FirstHash:=PreviewHash;
    Frame('DLL cold frame',False);SecondHash:=CapturedHash;Need(FirstHash=SecondHash,'DLL/preview pixel mismatch '+StyleId(Style));
+   // Scrambled offsets also exercise a backwards seek and both clip boundaries for every actual DLL.
+   for I:=0 to 6 do begin
+     case I of 0:Offset.Value:=1;1:Offset.Value:=-0.01;2:Offset.Value:=-1;3:Offset.Value:=0.25;4:Offset.Value:=0;5:Offset.Value:=0.01;6:Offset.Value:=-0.25;end;
+     ModeHash:=PreviewHash;Frame('Offset DLL/preview '+IntToStr(I),False);Need(CapturedHash=ModeHash,'Offset not shared by host and Preview');Inc(OffsetChecks);
+     Need(string(Json.Value)=OriginalJSON,'Render changed settings or plan for an offset');
+   end;
+   Offset.Value:=1;Obj.Time:=0;Frame('Delay before first source frame',True);Inc(OffsetChecks);
+   Obj.Time:=0.999;Frame('Delay just before boundary',True);Inc(OffsetChecks);
+   Obj.Time:=1;ModeHash:=PreviewHash;Frame('Delay exact start',False);Need(CapturedHash=ModeHash,'Delayed start time');Inc(OffsetChecks);
+   Obj.Time:=100;ModeHash:=PreviewHash;Frame('Delay near source end',False);Need(CapturedHash=ModeHash,'Delayed end time');Inc(OffsetChecks);
+   Offset.Value:=-1;Obj.Time:=0;ModeHash:=PreviewHash;Frame('Advance at object start',False);Need(CapturedHash=ModeHash,'Advanced start time');Inc(OffsetChecks);
+   Obj.Time:=100;ModeHash:=PreviewHash;Frame('Advance after source end',False);Need(CapturedHash=ModeHash,'Advanced end time');Inc(OffsetChecks);
+   Obj.Time:=32.3;Offset.Value:=0;Frame('Offset reset',False);Need(CapturedHash=SecondHash,'Offset reset or backwards seek drift');Inc(OffsetChecks);
+   SavedEqualizer:=Settings.EqualizerMode;
+   for Mode:=0 to 1 do begin Settings.EqualizerMode:=Mode;JsonText:=Settings.ToJSON;Json.Value:=PWideChar(JsonText);ModeHash:=PreviewHash;
+     Frame('Equalizer toggle '+IntToStr(Mode),False);Need(CapturedHash=ModeHash,'Equalizer DLL/preview mismatch');
+     Need(Settings.Plan.Key=Ref.Key,'View toggle changed analysis plan');
+   end;
+   Settings.EqualizerMode:=SavedEqualizer;JsonText:=OriginalJSON;Json.Value:=PWideChar(JsonText);ModeHash:=PreviewHash;
+   Frame('Equalizer original restored',False);Need((CapturedHash=SecondHash) and (ModeHash=SecondHash),'Equalizer toggle return drift');
    Obj.Time:=63.1;Frame('DLL other frame',False);Obj.Time:=32.3;Frame('DLL return seek',False);Need(CapturedHash=SecondHash,'DLL seek drift');
    MusicText:=Source+'.different';Music.Value:=PWideChar(MusicText);Frame('Changed file with old plan',True);
    MusicText:='';Music.Value:=PWideChar(MusicText);Frame('Cleared host file',True);
@@ -139,12 +172,13 @@ begin
 end;
 
 begin
- Audio:=nil;Cold:=nil;Worker:=nil;Renderer:=nil;Image:=nil;Race:=nil;PNG:=nil;Checks:=0;HostChecks:=0;MusicChecks:=0;
+ Audio:=nil;Cold:=nil;Worker:=nil;Renderer:=nil;Image:=nil;Race:=nil;PNG:=nil;Checks:=0;HostChecks:=0;MusicChecks:=0;OffsetChecks:=0;
  try
   Root:=TPath.Combine(ExtractFileDir(ParamStr(0)),'Evidence');ForceDirectories(Root);Source:=TPath.Combine(Root,'shared-source.identity');TFile.WriteAllText(Source,'Synthetic events only. No sound playback.',TEncoding.UTF8);
   Need(GetFileAttributesEx(PChar(Source),GetFileExInfoStandard,@Stamp),'Source stat');Revision:=IntToHex(Stamp.nFileSizeHigh,8)+IntToHex(Stamp.nFileSizeLow,8)+'-'+IntToHex(Stamp.ftLastWriteTime.dwHighDateTime,8)+IntToHex(Stamp.ftLastWriteTime.dwLowDateTime,8);
   Image:=TBitmap.Create;Image.PixelFormat:=pf32bit;Image.SetSize(960,540);
   for Style:=Low(TRhythmStyle) to High(TRhythmStyle) do begin
+   if (ParamCount>=3) and (ParamStr(3)<>StyleId(Style)) then Continue;
    ConfigureRhythmProduct(ProductForStyle,'Shared integration',Style);
    Worker:=TRhythmPrepareThread.Create(Source,50,0,Style,False,MakeAudio,Ord(Style)+1,StyleVariant(Style,70,100));Worker.Start;Worker.WaitFor;
    Need(Worker.Error='','Prepare '+StyleId(Style)+': '+Worker.Error);Ref:=Worker.Plan;Audio:=Worker.TakeAudio;WriteLn(StyleId(Style),' v',Ref.Version,': ',Worker.Summary);FreeAndNil(Worker);
@@ -159,6 +193,10 @@ begin
     Renderer.UseD2D:=Backend=1;
     for J:=0 to 7 do begin
      T:=0.5+((J*19) mod 91);Renderer.Render(Image,Audio,T,0);Expected:=ImageHash;Renderer.Render(Image,Cold,99-T,0);Renderer.Render(Image,Cold,T,0);Actual:=ImageHash;Need(Actual=Expected,'Warm/cold/seek '+StyleId(Style)+' backend '+IntToStr(Backend));Inc(Checks);
+    end;
+    for J:=-2 to 2 do begin Shift:=J*0.5;
+     Renderer.Render(Image,Cold,32.3-Shift,0);Expected:=ImageHash;
+     Renderer.Render(Image,Cold,32.3,0,'',1,0,0,Shift);Need(ImageHash=Expected,'Offset renderer source time '+StyleId(Style));Inc(OffsetChecks);
     end;
     if Backend=1 then Need(Renderer.LastUsedD2D,'D2D backend unavailable '+StyleId(Style));
    end;
@@ -175,7 +213,7 @@ begin
    end;
    FreeAndNil(Renderer);FreeAndNil(Cold);FreeAndNil(Audio);
   end;
-  TFile.WriteAllText(TPath.Combine(Root,'result.json'),Format('{"styles":11,"warmColdSeekChecks":%d,"hostDLLChecks":%d,"hostMusicChecks":%d,"backends":["GDI","Direct2D"],"audioPlayback":false}',[Checks,HostChecks,MusicChecks]),TEncoding.UTF8);WriteLn('Shared preparation/factory/settings/cold/seek PASS: ',Checks);
+  TFile.WriteAllText(TPath.Combine(Root,'result.json'),Format('{"styles":%d,"warmColdSeekChecks":%d,"hostDLLChecks":%d,"hostMusicChecks":%d,"offsetChecks":%d,"backends":["GDI","Direct2D"],"audioPlayback":false}',[12-Ord(ParamCount>=3)*11,Checks,HostChecks,MusicChecks,OffsetChecks]),TEncoding.UTF8);WriteLn('Shared preparation/factory/settings/cold/seek PASS: ',Checks);
  except on E:Exception do begin WriteLn(E.ClassName,': ',E.Message);ExitCode:=1;end;end;
  PNG.Free;Race.Free;Renderer.Free;Worker.Free;Cold.Free;Audio.Free;Image.Free;
 end.

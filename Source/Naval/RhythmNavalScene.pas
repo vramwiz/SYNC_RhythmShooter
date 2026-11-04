@@ -303,6 +303,7 @@ begin
   end;
   SplashBudget:=96;
   Background;
+  if Frame.BackgroundOnly then begin Surface.DrawViewportMatte(Left,Top,Frame.Width,Frame.Height,RGB(8,39,58));Exit;end;
   if FPlan<>nil then begin
     First:=Max(0,FPlan.ShipBefore(Clock-1.5));
     Last:=Min(FPlan.ShipCount-1,FPlan.ShipBefore(Clock+6.1));

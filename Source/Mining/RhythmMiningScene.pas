@@ -256,6 +256,7 @@ begin
     X:=0.29+Frac(I*0.381)*1.04;
     Line(X,Y,X+0.025,Y+0.018,Mix(Edge,Shadow,0.75),0.002);
   end;
+  if Frame.BackgroundOnly then begin Surface.DrawViewportMatte(Left,Top,Frame.Width,Frame.Height,Shadow);Exit;end;
   if (FPlan=nil) or (FPlan.EndTime<=0) then Exit;
   // Ahead: connected rock faces are consumed by the broad, visible cutting edge.
   A:=Max(0,FPlan.HitBefore(Clock-0.50));

@@ -2,7 +2,7 @@
 // 事前計画を絶対時刻で描画する。任意シークで状態を進めたり音時刻を変えたりしない。
 interface
 uses RhythmFightingDuel,RhythmRenderSurface;
-procedure DrawFightingDuel(Plan:TFightingDuel;Surface:TAnimationRenderSurface;Time:Double;Width,Height:Integer);
+procedure DrawFightingDuel(Plan:TFightingDuel;Surface:TAnimationRenderSurface;Time:Double;Width,Height:Integer;BackgroundOnly:Boolean=False);
 implementation
 uses System.Math,System.SysUtils,Winapi.Windows,Vcl.Graphics;
 
@@ -11,7 +11,7 @@ begin U:=EnsureRange(U,0.0,1.0);
   Result:=RGB(Round(GetRValue(A)*(1-U)+GetRValue(B)*U),Round(GetGValue(A)*(1-U)+GetGValue(B)*U),Round(GetBValue(A)*(1-U)+GetBValue(B)*U));
 end;
 
-procedure DrawFightingDuel(Plan:TFightingDuel;Surface:TAnimationRenderSurface;Time:Double;Width,Height:Integer);
+procedure DrawFightingDuel(Plan:TFightingDuel;Surface:TAnimationRenderSurface;Time:Double;Width,Height:Integer;BackgroundOnly:Boolean);
 var
   Scale,Left,Top,Clock,CX,CY,Zoom,X,Y,Age,U,A,Health:Double;
   I,J,First,Last,Theme:Integer;
@@ -174,6 +174,7 @@ begin
   Line(CX-2,DUEL_FLOOR,CX+2,DUEL_FLOOR,RGB(120,151,162),0.006);
   First:=Floor((CX-1.6)/0.16);
   for I:=First to First+22 do Line(I*0.16,DUEL_FLOOR,I*0.16-0.15,1.05,RGB(61,80,97),0.002);
+  if BackgroundOnly then begin Surface.DrawViewportMatte(Left,Top,Width,Height,RGB(9,16,29));Exit;end;
   First:=Max(0,Plan.EnemyBefore(Clock-1)+1);
   Last:=Min(High(Plan.Enemies),Min(Plan.EnemyBefore(Clock+2),First+95));
   for I:=Last downto First do begin E:=Plan.Enemies[I];

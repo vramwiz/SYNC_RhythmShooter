@@ -13,7 +13,7 @@ type
     FStarTrailBrush:ID2D1SolidColorBrush;
   public
     constructor Create(const Assets:array of TBitmap;const ColorKeys:TArray<Boolean> = nil);
-    function BeginFrame(Target:TBitmap):Boolean;
+    function BeginFrame(Target:TBitmap;ClearColor:TColor=$001D0D07):Boolean;
     function EndFrame:Boolean;
     procedure DrawAsset(Index:Integer;const Bounds:TRect;Opacity:Single=1);
     procedure Ring(X,Y,Radius:Single);
@@ -76,12 +76,12 @@ begin
   Color.r:=60/255;Color.g:=100/255;Color.b:=153/255;Color.a:=0.45;
   if FTarget.CreateSolidColorBrush(Color,nil,FStarTrailBrush)<0 then raise Exception.Create('D2D star trail brush unavailable');
 end;
-function TRhythmD2D.BeginFrame(Target:Vcl.Graphics.TBitmap):Boolean;
+function TRhythmD2D.BeginFrame(Target:Vcl.Graphics.TBitmap;ClearColor:TColor):Boolean;
 var Color:TD2D1ColorF;
 begin
   Result:=FTarget.BindDC(Target.Canvas.Handle,Rect(0,0,Target.Width,Target.Height))>=0;
   if not Result then Exit;
-  FTarget.BeginDraw;Color.r:=7/255;Color.g:=13/255;Color.b:=29/255;Color.a:=1;FTarget.Clear(Color);
+  FTarget.BeginDraw;ClearColor:=ColorToRGB(ClearColor);Color.r:=(ClearColor and 255)/255;Color.g:=((ClearColor shr 8) and 255)/255;Color.b:=((ClearColor shr 16) and 255)/255;Color.a:=1;FTarget.Clear(Color);
 end;
 function TRhythmD2D.EndFrame:Boolean;
 begin Result:=FTarget.EndDraw()>=0;end;

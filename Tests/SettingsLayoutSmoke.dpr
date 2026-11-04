@@ -31,7 +31,7 @@ begin
         if Control is TRhythmDesignFrame then CheckLayout(Control);
         if not (Control is TButton) and not (Control is TEdit) and
           not (Control is TComboBox) and not (Control is TTrackBar) and
-          not (Control is TLabel) then Continue;
+          not (Control is TLabel) and not (Control is TCheckBox) then Continue;
         if (Control.Parent = nil) or not VisibleHierarchy(Control) then Continue;
         if (Control.Left < 0) or (Control.Top < 0) or
           (Control.BoundsRect.Right > Control.Parent.ClientWidth) or
@@ -100,15 +100,23 @@ begin
     Settings:=TRhythmSettings.Defaults;Settings.Style:=Style;Settings.BossFrequency:=50;Settings.FireworksRichness:=100;Form.ConfigureState(Settings,320,180);
     Form.Position:=poDesigned;Form.Left:=-32000;Form.Top:=-32000;Form.Show;ScaleTestForm(Form,DPIs[D]);
     for K:=0 to Form.ComponentCount-1 do if Form.Components[K] is TPanel then if TPanel(Form.Components[K]).Caption<>'' then raise Exception.Create('Internal panel caption visible');
-    Combo:=TComboBox(Form.FindComponent('AnimationStyle'));if (Combo.Items.Count<>Ord(High(TRhythmStyle))+1) or (Combo.ItemIndex<>Ord(Style)) or (Form.Snapshot.Style<>Style) then raise Exception.Create('Style registration/restore');
+    Combo:=TComboBox(Form.FindComponent('AnimationStyle'));if (Combo.Items.Count<>GroupStyleCount(StyleInfo(Style).Group)) or (Combo.ItemIndex<>GroupStyleIndex(Style)) or (Form.Snapshot.Style<>Style) then raise Exception.Create('Classified style registration/restore');
+    if TComboBox(Form.FindComponent('AnimationCategory')).ItemIndex<>Ord(StyleInfo(Style).Group) then raise Exception.Create('Major category restore');
+    if TComboBox(Form.FindComponent('ScrollDirection')).Items.Count<>StyleSmallCount(Style) then raise Exception.Create('Small category restore');
+    if Form.FindComponent('MovieLayerStyle')<>nil then raise Exception.Create('Duplicate middle selection');
+    if (Form.FindComponent('RhythmLayerVisible')<>nil) or (Form.FindComponent('MovieLayerVisible')<>nil) then raise Exception.Create('Obsolete layer controls');
     if TTrackBar(Form.FindComponent('BossFrequency')).Parent.Visible<>(Style in [rsShooting,rsRunner,rsBreakout,rsRace,rsBombAction,rsFighting,rsMining,rsTrain,rsNaval]) then raise Exception.Create('Boss frequency visibility');
+    if TTrackBar(Form.FindComponent('GameThreshold')).Parent.Visible<>(Style=rsRhythmGame) then raise Exception.Create('Game threshold visibility');
+    if Style=rsRhythmGame then CheckOptionCaption(Form,'GameThresholdCaption','GameThreshold');
+    if (Form.FindComponent('EqualizerVisible')=nil) or not TCheckBox(Form.FindComponent('EqualizerVisible')).Visible then raise Exception.Create('Equalizer option missing');
+    if TCheckBox(Form.FindComponent('EqualizerVisible')).Checked<>EqualizerEnabled(-1,Style,0) then raise Exception.Create('Equalizer migration default');
     if Form.FindComponent('PreviewPause')<>nil then raise Exception.Create('Separate pause button');
     if TButton(Form.FindComponent('PreviewPlay')).Caption<>'再生' then raise Exception.Create('Idle play toggle');
     for W:=0 to 2 do begin
      case W of 0:LogicalWidth:=1100;1:LogicalWidth:=850;else LogicalWidth:=600;end;
      Form.Constraints.MinWidth:=0;Form.ClientWidth:=MulDiv(LogicalWidth,DPIs[D],96);Form.ClientHeight:=MulDiv(760,DPIs[D],96);
      Form.Repaint;Application.ProcessMessages;CheckLayout(Form);
-     CheckOptionCaption(Form,'StyleCaption','AnimationStyle');CheckOptionCaption(Form,'SensitivityCaption','Sensitivity');
+     CheckOptionCaption(Form,'CategoryCaption','AnimationCategory');CheckOptionCaption(Form,'StyleCaption','AnimationStyle');CheckOptionCaption(Form,'DirectionCaption','ScrollDirection');CheckOptionCaption(Form,'SensitivityCaption','Sensitivity');
      if Style=rsFireworks then CheckOptionCaption(Form,'RichnessCaption','FireworksRichness');
      if W=1 then begin Bitmap:=Form.GetFormImage;PNG:=TPngImage.Create;try PNG.Assign(Bitmap);PNG.SaveToFile(TPath.Combine(Folder,StyleId(Style)+'-'+IntToStr(DPIs[D])+'.png'));finally PNG.Free;Bitmap.Free;end;end;
      if (W=2) and (Style in [rsShooting,rsFireworks]) and (TControl(Form.FindComponent('AnimationOptions')).Height<=MulDiv(44,DPIs[D],96)) then raise Exception.Create('Narrow option rows did not wrap');
@@ -118,6 +126,6 @@ begin
     WriteLn('LAYOUT ',StyleId(Style),' requested=',DPIs[D],' actual=',Form.CurrentPPI,' PASS');
    finally Form.Free;end;
   end;
-  WriteLn('SETTINGS_LAYOUT_OK: 11 styles x 4 PPIs x 3 widths');
+  WriteLn('SETTINGS_LAYOUT_OK: 12 animation choices x 4 PPIs x 3 widths');
  except on E:Exception do begin WriteLn(E.ClassName,': ',E.Message);ExitCode:=1;end;end;
 end.

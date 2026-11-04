@@ -144,6 +144,7 @@ begin
   Clock:=0;
   if FPlan<>nil then Clock:=Min(Frame.Time,FPlan.EndTime);
   Background;
+  if Frame.BackgroundOnly then Exit;
   if (FPlan=nil) or (Frame.Time>=FPlan.EndTime) then Exit;
   FPlan.VisibleRange(Frame.Time,First,Last);
   Remaining:=800+FPlan.Richness*24;

@@ -50,7 +50,7 @@ end;
 
 procedure TFightingAnimation.Draw(Surface:TAnimationRenderSurface;const Frame:TAnimationFrame);
 begin
-  if (FPlan<>nil) and (FPlan.Action<>nil) then begin DrawFightingDuel(FPlan.Action,Surface,Frame.Time,Frame.Width,Frame.Height);
+  if (FPlan<>nil) and (FPlan.Action<>nil) then begin DrawFightingDuel(FPlan.Action,Surface,Frame.Time,Frame.Width,Frame.Height,Frame.BackgroundOnly);
     Exit;
   end;
   DrawFightingLegacy(FPlan,Surface,Frame);

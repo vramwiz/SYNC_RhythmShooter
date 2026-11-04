@@ -20,7 +20,8 @@ type
     // Takes ownership of Images; the scene never owns rendering resources.
     constructor Create(Images:TAnimationImageBank);
     destructor Destroy;override;
-    procedure BeginFrame(Target:TBitmap);
+    procedure BeginFrame(Target:TBitmap;ClearColor:TColor=$001D0D07);
+    procedure DrawViewportMatte(Left,Top:Double;W,H:Integer;Color:TColor);
     function EndFrame:Boolean;
     procedure DrawAsset(Index:Integer;const Center:TPoint;W,H:Integer;
       Opacity:Double=1;ForceAlpha:Boolean=False;Bucket:Integer=0);
@@ -63,11 +64,15 @@ begin
 end;
 function TAnimationRenderSurface.GetCanvas:TCanvas;
 begin Result:=FTarget.Canvas;end;
-procedure TAnimationRenderSurface.BeginFrame(Target:Vcl.Graphics.TBitmap);
+procedure TAnimationRenderSurface.BeginFrame(Target:Vcl.Graphics.TBitmap;ClearColor:TColor);
 begin
   FTarget:=Target;FLastD2D:=False;
-  FD2DActive:=FUseD2D and (FD2D<>nil) and FD2D.BeginFrame(Target);
-  if not FD2DActive then begin Canvas.Brush.Color:=RGB(7,13,29);Canvas.FillRect(Rect(0,0,Target.Width,Target.Height));end;
+  FD2DActive:=FUseD2D and (FD2D<>nil) and FD2D.BeginFrame(Target,ClearColor);
+  if not FD2DActive then begin Canvas.Brush.Color:=ClearColor;Canvas.FillRect(Rect(0,0,Target.Width,Target.Height));end;
+end;
+procedure TAnimationRenderSurface.DrawViewportMatte(Left,Top:Double;W,H:Integer;Color:TColor);
+begin if Left>0 then begin FillRect(0,0,Left,H,Color);FillRect(W-Left,0,W,H,Color);end;
+  if Top>0 then begin FillRect(0,0,W,Top,Color);FillRect(0,H-Top,W,H,Color);end;
 end;
 function TAnimationRenderSurface.EndFrame:Boolean;
 begin

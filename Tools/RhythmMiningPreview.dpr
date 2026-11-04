@@ -1,5 +1,17 @@
 ﻿program RhythmMiningPreview;
 uses
+  RhythmOrbitGuide in '..\Source\RhythmGame\RhythmOrbitGuide.pas',
+  RhythmOrbitMarks in '..\Source\RhythmGame\RhythmOrbitMarks.pas',
+  RhythmOrbitAudio in '..\Source\RhythmGame\RhythmOrbitAudio.pas',
+  RhythmOrbitShow in '..\Source\RhythmGame\RhythmOrbitShow.pas',
+  RhythmGameLegacyPlan in '..\Source\RhythmGame\RhythmGameLegacyPlan.pas',
+  RhythmGameLegacyScene in '..\Source\RhythmGame\RhythmGameLegacyScene.pas',
+  RhythmOrbitTypes in '..\Source\RhythmGame\RhythmOrbitTypes.pas',
+  RhythmOrbitCodec in '..\Source\RhythmGame\RhythmOrbitCodec.pas',
+  RhythmOrbitPlan in '..\Source\RhythmGame\RhythmOrbitPlan.pas',
+  RhythmOrbitScene in '..\Source\RhythmGame\RhythmOrbitScene.pas',
+  RhythmGamePlan in '..\Source\RhythmGame\RhythmGamePlan.pas',
+  RhythmGameScene in '..\Source\RhythmGame\RhythmGameScene.pas',
   RhythmRaceTrafficPlan in '..\Source\Race\RhythmRaceTrafficPlan.pas',
   RhythmRaceImpact in '..\Source\Race\RhythmRaceImpact.pas',
   // 共通データ／版別描画／計画責務をIDEから辿れる明示参照。
@@ -61,9 +73,13 @@ RhythmNavalScene in '..\Source\Naval\RhythmNavalScene.pas', Vcl.Forms,
   RhythmRenderSurface in '..\Source\Shared\Render\RhythmRenderSurface.pas',
   RhythmParallax in '..\Source\Shared\Render\RhythmParallax.pas',
   RhythmAnimation in '..\Source\Shared\Render\RhythmAnimation.pas',
+  RhythmEqualizer in '..\Source\Shared\Render\RhythmEqualizer.pas',
   RhythmShootingScene in '..\Source\Shooting\RhythmShootingScene.pas',
   RhythmAudioAnalysis in '..\Source\Shared\Audio\RhythmAudioAnalysis.pas',
   RhythmScene in '..\Source\Composition\RhythmScene.pas',
+  RhythmPresentation in '..\Source\Composition\RhythmPresentation.pas',
+  RhythmLayerBlend in '..\Source\Composition\RhythmLayerBlend.pas',
+  RhythmOverlay in '..\Source\Composition\RhythmOverlay.pas',
   RhythmPaths in '..\Source\Shared\Common\RhythmPaths.pas',
   MimiChildProcess in '..\Source\Lib\Process\MimiChildProcess.pas';
 var Preview:TFormRhythmShooterSettings;

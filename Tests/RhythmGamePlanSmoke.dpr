@@ -1,0 +1,172 @@
+﻿program RhythmGamePlanSmoke;
+{$APPTYPE CONSOLE}
+uses Winapi.Windows,System.SysUtils,System.Math,System.Classes,System.Hash,System.IOUtils,System.JSON,
+  Vcl.Graphics,Vcl.Imaging.pngimage,RhythmAudio,RhythmGamePlan,RhythmGameScene,RhythmGameLegacyScene,
+  RhythmOrbitPlan,RhythmOrbitTypes,RhythmStyles,RhythmProduct,RhythmPlanRef,RhythmPreparedData,RhythmSettings,
+  RhythmAnimation,RhythmImageBank,RhythmPaths;
+var
+  Audio,Meta:TRhythmAudio;Plan,Cold,Again:TOrbitPlan;Facade:TGamePlan;Ref,BadRef:TRhythmPlanRef;
+  Scene:TGameAnimation;Renderer:TAnimationRenderer;Image:TBitmap;PNG:TPngImage;
+  Stamp:TWin32FileAttributeData;Source,Folder,Revision,Hash:string;C,I,J,K,Backend,Threshold:Integer;
+  Notes,OrbitHits,FlightHits,Planets,Transfers,Samples,Seeks,Frames,Rejected:Integer;
+  Time,Gap,Duration,Error,MaxError,MinSpan,MaxSpan,Aspect,BoundaryError:Double;
+  Tap:TOrbitTap;Leg:TOrbitLeg;Body:TOrbitBody;P,Q:TOrbitPoint;Cam,Other:TOrbitCamera;
+  Settings,Loaded:TRhythmSettings;Failed:Boolean;
+procedure Need(OK:Boolean;const S:string);
+begin if not OK then raise Exception.Create(S);end;
+function ImageHash:string;
+var M:TMemoryStream;Bytes:TBytes;H:THashSHA2;
+begin M:=TMemoryStream.Create;
+  try Image.SaveToStream(M);SetLength(Bytes,M.Size);M.Position:=0;M.ReadBuffer(Bytes[0],Length(Bytes));H:=THashSHA2.Create;H.Update(Bytes);Result:=H.HashAsString;
+  finally M.Free;end;
+end;
+procedure Snapshot(const Name:string;T:Double);
+begin Renderer.Render(Image,T,0);Need(Scene.Notice='','Scene '+Scene.Notice);PNG:=TPngImage.Create;
+  try PNG.Assign(Image);PNG.SaveToFile(TPath.Combine(Folder,Name+'.png'));finally FreeAndNil(PNG);end;Inc(Frames);
+end;
+procedure Legacy;
+var Root:TJSONObject;Meta:TRhythmAudio;P:TGamePlan;R:TRhythmPlanRef;S:TRhythmSettings;
+  Wrapped:TGameAnimation;Direct:TLegacyGameAnimation;A,B:TAnimationRenderer;First:string;I,J:Integer;
+begin
+  Root:=TJSONObject.ParseJSONValue(TFile.ReadAllText('Tests/Fixtures/RhythmGame-v1.json',TEncoding.UTF8)) as TJSONObject;
+  Meta:=nil;P:=nil;A:=nil;B:=nil;
+  try
+    R:=NewPlanRef(Root.GetValue<string>('source'),50,0,rsRhythmGame,0);R.Version:=1;R.Key:=Root.GetValue<string>('key');R.SourceRevision:=Revision;WritePreparedData(Root,R);
+    Meta:=TGamePlan.LoadAudioMetadata(R,Source,0);P:=TGamePlan.Load(R,Meta,0);Need((P.Orbit=nil) and (P.Count>0),'v1 facade restore');
+    S:=TRhythmSettings.Defaults;S.Style:=rsRhythmGame;S.Music:=Source;S.Plan:=R;
+    Need(TRhythmSettings.TryJSON(S.ToJSON,Loaded) and (Loaded.Plan.Version=1) and (Loaded.Plan.Key=R.Key),'v1 settings migration');
+    Wrapped:=TGameAnimation.Create;Wrapped.Audio:=Meta;Wrapped.SetReference(R);A:=TAnimationRenderer.Create(Wrapped,TAnimationImageBank.Create([],0));
+    Direct:=TLegacyGameAnimation.Create;Direct.Audio:=Meta;Direct.SetReference(R);B:=TAnimationRenderer.Create(Direct,TAnimationImageBank.Create([],0));
+    for I:=0 to 1 do begin A.UseD2D:=I=1;B.UseD2D:=I=1;
+      for J:=0 to 3 do begin A.Render(Image,14.4+J*0.08,0);First:=ImageHash;B.Render(Image,14.4+J*0.08,0);Need(ImageHash=First,'v1 pixels changed');Inc(Seeks);end;
+    end;
+  finally B.Free;A.Free;P.Free;Meta.Free;Root.Free;end;
+end;
+procedure LegacyV2;
+var Root:TJSONObject;R:TRhythmPlanRef;M:TRhythmAudio;P:TOrbitPlan;S:TRhythmSettings;J,K:Integer;L:TOrbitLeg;
+begin
+  Root:=TJSONObject.ParseJSONValue(TFile.ReadAllText('Tests/Fixtures/RhythmGame-v2.json',TEncoding.UTF8)) as TJSONObject;M:=nil;P:=nil;
+  try
+    R:=NewPlanRef(Root.GetValue<string>('source'),50,0,rsRhythmGame,21);R.Version:=2;R.Key:=Root.GetValue<string>('key');R.SourceRevision:=Revision;WritePreparedData(Root,R);
+    M:=TOrbitPlan.LoadAudioMetadata(R,Source,0);P:=TOrbitPlan.Load(R,M,0);Need((P.Version=2) and (P.Count=160),'v2 restore');
+    S:=TRhythmSettings.Defaults;S.Style:=rsRhythmGame;S.Music:=Source;S.Plan:=R;
+    Need(TRhythmSettings.TryJSON(S.ToJSON,Loaded) and (Loaded.Plan.Key=R.Key),'v2 settings compatibility');
+    Scene:=TGameAnimation.Create;Scene.Audio:=M;Scene.SetReference(R);Renderer:=TAnimationRenderer.Create(Scene,TAnimationImageBank.Create([],0));
+    for K:=0 to 1 do begin Renderer.UseD2D:=K=1;
+      L:=P.Legs[0];Snapshot('v2-orbit-close-'+IntToStr(K),(L.Start+L.Finish)/2);
+      L:=P.Legs[1];for J:=0 to 4 do Snapshot('v2-transfer-'+IntToStr(K)+'-'+IntToStr(J),L.Start+(L.Finish-L.Start)*J/4);
+      Snapshot('v2-tap-before-'+IntToStr(K),P.Taps[24].Time-0.05);Snapshot('v2-tap-hit-'+IntToStr(K),P.Taps[24].Time);Snapshot('v2-tap-fade-'+IntToStr(K),P.Taps[24].Time+0.16);
+    end;
+  finally FreeAndNil(Renderer);P.Free;M.Free;Root.Free;end;
+end;
+procedure BadInput;
+var B:TRhythmAudio;P:TOrbitPlan;
+  procedure Reject(const S:string);
+  begin P:=nil;Failed:=False;try P:=TOrbitPlan.Build(B,20);except on E:Exception do Failed:=True;end;P.Free;Need(Failed,'Accepted '+S);Inc(Rejected);end;
+begin B:=TRhythmAudio.Create;
+  try B.Duration:=0;Reject('zero duration');B.Duration:=10;B.SoundEnd:=11;Reject('bad audible end');
+    B.SoundEnd:=10;SetLength(B.Hits,2);B.Hits[0].Time:=3;B.Hits[1].Time:=2;Reject('unordered');B.Hits[0].Time:=-1;Reject('negative');
+    B.Hits[0].Time:=NaN;Reject('nan');B.Hits[0].Time:=1;B.Hits[1].Time:=2;B.Hits[1].Strength:=Infinity;Reject('infinity');
+    SetLength(B.Hits,ORBIT_MAX_EVENTS+1);Reject('capacity');
+  finally B.Free;end;
+end;
+begin
+  Audio:=nil;Meta:=nil;Plan:=nil;Cold:=nil;Again:=nil;Facade:=nil;Renderer:=nil;Image:=nil;PNG:=nil;
+  Notes:=0;OrbitHits:=0;FlightHits:=0;Planets:=0;Transfers:=0;Samples:=0;Seeks:=0;Frames:=0;Rejected:=0;MaxError:=0;BoundaryError:=0;MinSpan:=1E30;MaxSpan:=0;
+  try
+    ConfigureRhythmProduct('SYNC_RhythmGame','Music Sync Orbit Game',rsRhythmGame);
+    Need((Ord(rsRhythmGame)=11) and (StylePlanVersion(rsRhythmGame)=3) and CompatiblePlanVersion(rsRhythmGame,1),'Version registration');
+    Need((StyleVariant(rsRace,50,100)=101) and (StyleVariant(rsRhythmGame,50,100,20)=121),'Variant separation');
+    Folder:=TPath.Combine(ExtractFileDir(ParamStr(0)),'OrbitEvidence');ForceDirectories(Folder);Source:=TPath.Combine(Folder,'events.identity');TFile.WriteAllText(Source,'Synthetic orbit events; no playback.',TEncoding.UTF8);
+    Need(GetFileAttributesEx(PChar(Source),GetFileExInfoStandard,@Stamp),'Source stamp');Revision:=IntToHex(Stamp.nFileSizeHigh,8)+IntToHex(Stamp.nFileSizeLow,8)+'-'+IntToHex(Stamp.ftLastWriteTime.dwHighDateTime,8)+IntToHex(Stamp.ftLastWriteTime.dwLowDateTime,8);
+    Image:=TBitmap.Create;Image.PixelFormat:=pf32bit;Image.SetSize(960,540);
+    for C:=0 to 16 do begin
+      Audio:=TRhythmAudio.Create;Audio.Source:=Source;Audio.SourceRevision:=Revision;Audio.Sensitivity:=50;Audio.Key:=THashSHA2.GetHashString('orbit-v2-'+IntToStr(C));
+      Duration:=96;Gap:=0.42;Threshold:=20;
+      case C of
+        0:begin Duration:=0.21;Gap:=1;end;
+        1:begin Duration:=8;Gap:=0.11;end;
+        2:begin Duration:=96;Gap:=0.6;end;
+        3:begin Duration:=96;Gap:=0.08;end;
+        4:begin Duration:=8;Gap:=0.001;end;
+        5:begin Duration:=3000;Gap:=0.44;end;
+        6:begin Duration:=32;Gap:=0.12;end;
+        7:begin Duration:=20;Gap:=2.8;end;
+        8:begin Duration:=1;Gap:=1;end;
+        9:begin Duration:=96;Gap:=0.4;end;
+        10:begin Duration:=32;Gap:=0.04;end;
+        11:begin Duration:=3000;Gap:=0.031;end;
+        12:begin Duration:=0.1;Gap:=0.01;end;
+        13:Threshold:=0;14:Threshold:=50;15:Threshold:=90;16:Threshold:=100;
+      end;
+      Audio.Duration:=Duration;Audio.SoundEnd:=Duration;K:=Floor((Duration-0.01)/Gap)+1;SetLength(Audio.Hits,K);
+      for I:=0 to K-1 do begin Audio.Hits[I].Time:=I*Gap;Audio.Hits[I].Strength:=0.3+(I mod 8)*0.1;
+        if C=6 then Audio.Hits[I].Time:=(I div 3)*Gap;end;
+      if C=8 then begin Audio.Hits:=nil;Audio.SoundEnd:=0;end;if C=9 then Audio.SoundEnd:=52;
+      Plan:=TOrbitPlan.Build(Audio,Threshold);Again:=TOrbitPlan.Build(Audio,Threshold);
+      Ref:=NewPlanRef(Audio.Key,50,0,rsRhythmGame,Threshold+101);Ref.SourceRevision:=Revision;Plan.Save(Ref,Audio);Hash:=Ref.Digest;Again.Save(Ref,Audio);Need(Ref.Digest=Hash,'Plan nondeterministic');FreeAndNil(Again);
+      Need(Plan.Count+Plan.Excluded=Length(Audio.Hits),'Source coverage');Meta:=TOrbitPlan.LoadAudioMetadata(Ref,Source,0);Cold:=TOrbitPlan.Load(Ref,Meta,0);
+      Need((Length(Meta.PCM)=0) and (Length(Meta.Envelope)=0) and (Cold.Count=Plan.Count),'PCM-free restore');
+      Need((Meta.Duration=Audio.Duration) and (Meta.SoundEnd=Audio.SoundEnd),'Exact duration');
+      Facade:=TGamePlan.Load(Ref,Meta,0);Need((Facade.Orbit<>nil) and (Facade.Count=Plan.Count),'Facade v2');FreeAndNil(Facade);
+      Inc(Planets,Plan.BodyCount);
+      for I:=0 to Plan.LegCount-1 do begin Leg:=Plan.Legs[I];if Leg.ToBody<>Leg.FromBody then Inc(Transfers);
+        if I>0 then for J:=0 to 2 do begin Aspect:=16/9;if J=1 then Aspect:=9/16;if J=2 then Aspect:=1;
+          Cam:=Plan.CameraAt(Leg.Start-0.000001,Aspect);Other:=Plan.CameraAt(Leg.Start+0.000001,Aspect);
+          Error:=Hypot(Cam.Center.X-Other.Center.X,Cam.Center.Y-Other.Center.Y)+Abs(Cam.Span-Other.Span);BoundaryError:=Max(BoundaryError,Error);Need(Error<0.0001,Format('Camera jump case%d leg%d delta%.9f at%.6f',[C,I,Error,Leg.Start]));
+        end;
+        for J:=0 to 32 do begin Time:=Max(0.0,Leg.Start+(Leg.Finish-Leg.Start)*J/32);
+          P:=Plan.CursorAt(Time);Q:=Cold.CursorAt(Time);Need((P.X=Q.X) and (P.Y=Q.Y),'Cold world path');
+          Cam:=Plan.CameraAt(Time,16/9);Other:=Cold.CameraAt(Time,16/9);Need((Cam.Span=Other.Span) and (Cam.Center.X=Other.Center.X) and (Cam.Center.Y=Other.Center.Y),'Cold camera');
+          MinSpan:=Min(MinSpan,Cam.Span);MaxSpan:=Max(MaxSpan,Cam.Span);
+          for K:=0 to 2 do begin Aspect:=16/9;if K=1 then Aspect:=9/16;if K=2 then Aspect:=1;
+            Cam:=Plan.CameraAt(Time,Aspect);Q:=OrbitProject(P,Cam,Aspect);
+            Need((Q.X>=0.04) and (Q.X<=0.96) and (Q.Y>=0.04) and (Q.Y<=0.96),Format('Ship lost case%d leg%d time%.6f aspect%.3f xy%.6f %.6f',[C,I,Time,Aspect,Q.X,Q.Y]));Inc(Samples);
+          end;
+        end;
+      end;
+      for I:=0 to Plan.Count-1 do begin Tap:=Plan.Taps[I];P:=Plan.CursorAt(Tap.Time);Error:=Hypot(P.X-Tap.P.X,P.Y-Tap.P.Y);MaxError:=Max(MaxError,Error);
+        Need(Error=0,'Audio contact miss');Need(Tap.Time=Audio.Hits[Tap.Source].Time,'Audio time shifted');Need(Audio.Hits[Tap.Source].Strength>=Threshold/100,'Weak accent adopted');
+        Leg:=Plan.Legs[Tap.Leg];if Leg.Kind=0 then begin Inc(OrbitHits);Body:=Plan.Bodies[Leg.FromBody];
+          P:=OrbitBodyAt(Body,Body.Phase+(Tap.Time-Body.Entry)*Body.Speed);Need(Hypot(P.X-Tap.P.X,P.Y-Tap.P.Y)<1E-9,'Tap not on orbit');
+        end else Inc(FlightHits);Inc(Notes);
+      end;
+      Settings:=TRhythmSettings.Defaults;Settings.Style:=rsRhythmGame;Settings.Music:=Source;Settings.HostMusic:=True;Settings.GameThreshold:=Threshold;Settings.Plan:=Ref;
+      Need(TRhythmSettings.TryJSON(Settings.ToJSON,Loaded) and (Loaded.GameThreshold=Threshold) and (Loaded.Plan.Digest=Ref.Digest),'Threshold settings roundtrip');
+      if C=2 then begin
+        Settings.GameThreshold:=51;Need(TRhythmSettings.TryJSON(Settings.ToJSON,Loaded) and (Loaded.Plan.Key=''),'Changed threshold kept stale plan');
+        BadRef:=Ref;BadRef.Digest:=StringOfChar('0',64);Failed:=False;try Again:=TOrbitPlan.Load(BadRef,Meta,0);except on E:Exception do Failed:=True;end;Need(Failed,'Corrupt digest');Inc(Rejected);FreeAndNil(Again);
+        BadRef:=NewPlanRef(Audio.Key,50,1,rsRhythmGame,Threshold+101);BadRef.SourceRevision:=Revision;Plan.Save(BadRef,Audio);Again:=TOrbitPlan.Load(BadRef,Meta,1);Need(Again.Count=Plan.Count,'Direction1');FreeAndNil(Again);
+      end;
+      Scene:=TGameAnimation.Create;Scene.Audio:=Meta;Scene.SetReference(Ref);Renderer:=TAnimationRenderer.Create(Scene,TAnimationImageBank.Create([],0));
+      if ParamStr(1)<>'GeometryOnly' then for Backend:=0 to 1 do begin Renderer.UseD2D:=Backend=1;
+        for J:=0 to 11 do begin Time:=Duration*((J*7) mod 13)/13;Renderer.Render(Image,Time,0);Need(Scene.Notice='','Render '+Scene.Notice);Hash:=ImageHash;
+          Renderer.Render(Image,Duration-Time,0);Renderer.Render(Image,Time,0);Need(ImageHash=Hash,'Frame seek drift');Inc(Seeks);end;
+        if Backend=1 then Need(Renderer.LastUsedD2D,'D2D unavailable');
+        if C=2 then begin
+          Snapshot('intro-wide-'+IntToStr(Backend),0);Snapshot('intro-speed-'+IntToStr(Backend),Plan.Stages[0]*0.5);
+          Snapshot('intro-arrival-'+IntToStr(Backend),Plan.Stages[0]);
+          Snapshot('depart-start-'+IntToStr(Backend),Plan.Stages[1]);
+          Snapshot('depart-flight-'+IntToStr(Backend),(Plan.Stages[1]+Plan.Stages[2])*0.5);
+          Snapshot('depart-portal-'+IntToStr(Backend),Plan.Stages[2]);Snapshot('clear-'+IntToStr(Backend),Duration-0.01);
+          Leg:=Plan.Legs[1];Snapshot('orbit-close-'+IntToStr(Backend),(Leg.Start+Leg.Finish)/2);
+          Leg:=Plan.Legs[2];for J:=0 to 4 do Snapshot('transfer-'+IntToStr(Backend)+'-'+IntToStr(J),Leg.Start+(Leg.Finish-Leg.Start)*J/4);
+          Tap:=Plan.Taps[24];Snapshot('tap-before-'+IntToStr(Backend),Tap.Time-0.05);Snapshot('tap-hit-'+IntToStr(Backend),Tap.Time);Snapshot('tap-fade-'+IntToStr(Backend),Tap.Time+0.16);
+          P:=OrbitProject(Tap.P,Plan.CameraAt(Tap.Time,16/9),16/9);Renderer.Render(Image,Tap.Time,0);
+          Need(GetRValue(ColorToRGB(Image.Canvas.Pixels[Round(P.X*960),Round(P.Y*540)]))>200,'Raster contact missing');
+        end;
+        if C=3 then for J:=0 to 3 do Snapshot('roll-'+IntToStr(Backend)+'-'+IntToStr(J),8.1+J*0.05);
+        if C=7 then begin Image.SetSize(540,960);Snapshot('portrait-'+IntToStr(Backend),5.2);Image.SetSize(960,540);end;
+        if C=8 then Snapshot('silence-'+IntToStr(Backend),0.5);
+      end;
+      FreeAndNil(Renderer);Scene:=nil;FreeAndNil(Cold);FreeAndNil(Plan);FreeAndNil(Meta);FreeAndNil(Audio);WriteLn('CASE ',C,' PASS');Flush(Output);
+    end;
+    Need((Transfers>0) and (FlightHits>0) and (OrbitHits>0) and (MaxSpan/MinSpan>1.4),'Space/zoom variety');if ParamStr(1)<>'GeometryOnly' then begin Legacy;LegacyV2;end;BadInput;
+    Need((OrbitFade(-0.001)=0) and (OrbitFade(0)=1) and (OrbitFade(ORBIT_EFFECT_LIFE)=0),'Effect timing');
+    Audio:=TRhythmAudio.Create;Audio.Duration:=1;Audio.SoundEnd:=1;Failed:=False;
+    try Again:=TOrbitPlan.Build(Audio,20,function:Boolean begin Result:=True;end);except on E:EAbort do Failed:=True;end;Need(Failed,'Cancel ignored');Inc(Rejected);FreeAndNil(Audio);
+    TFile.WriteAllText(TPath.Combine(Folder,ParamStr(1)+'result.json'),Format('{"cases":17,"contacts":%d,"orbitHits":%d,"flightHits":%d,"planets":%d,"transfers":%d,"projectionSamples":%d,"seekFrames":%d,"savedFrames":%d,"rejected":%d,"maxContactError":%.16f,"maxCameraBoundaryDelta":%.12f,"minSpan":%.9f,"maxSpan":%.9f}',[Notes,OrbitHits,FlightHits,Planets,Transfers,Samples,Seeks,Frames,Rejected,MaxError,BoundaryError,MinSpan,MaxSpan],TFormatSettings.Invariant),TEncoding.UTF8);
+    WriteLn('Orbit v3 PASS contacts=',Notes,' orbit=',OrbitHits,' flight=',FlightHits,' planets=',Planets,' transfers=',Transfers,' cameraSamples=',Samples,' seek=',Seeks,' maxError=',MaxError:0:12);
+  except on E:Exception do begin WriteLn(E.ClassName,': ',E.Message);ExitCode:=1;end;end;
+  PNG.Free;Renderer.Free;Facade.Free;Again.Free;Cold.Free;Plan.Free;Meta.Free;Audio.Free;Image.Free;
+end.

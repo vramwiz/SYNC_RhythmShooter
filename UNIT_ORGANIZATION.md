@@ -1,4 +1,95 @@
-﻿# ユニット構成と整理結果（2026-11-02）
+## 2026-11-04：共通描画時刻
+
+RhythmTimingを追加し、解析と独立した秒オフセットを純粋関数へ分離。RhythmSceneの入口で全種類/EQ/カメラへ同じ補正を一度だけ適用する。ホストとPreviewの呼出側は秒値を渡し、個別Scene/Planや登録は変更しない。全115ユニット、最大1442行、循環・フィールド順違反0。所有/借用・符号・開始前透明・ホストtrackとPreviewコピーの正をコメント。全30ビルドと各構成288オフセット実描画比較が成功。HOST_TIMING.md参照。以下は過去時点の記録。
+
+## 2026-11-04：種類カタログと専用アダプター
+
+設定画面の種類選択を大・中・小の3段に整理。ピンボールとブロック崩しをボールアクションへまとめ、宇宙シューティングの縦／横を小分類へ配置した。12種類の生成・準備・保存後読戻し・PCMなし復元・描画接続を専用アダプターへ移し、RhythmStyleRegistryの登録表から一括で分岐する。
+
+| 共通ユニット | 行数 | 場所 |
+|---|---:|---|
+| `RhythmStyles` | 108 | `Source/Shared/Settings/RhythmStyles.pas` |
+| `RhythmStyleSelection` | 37 | `Source/Shared/Settings/RhythmStyleSelection.pas` |
+| `RhythmStyleOps` | 42 | `Source/Composition/RhythmStyleOps.pas` |
+| `RhythmStyleRegistry` | 34 | `Source/Composition/RhythmStyleRegistry.pas` |
+| `RhythmPrepare` | 102 | `Source/Composition/RhythmPrepare.pas` |
+| `RhythmScene` | 120 | `Source/Composition/RhythmScene.pas` |
+| `RhythmPresentation` | 40 | `Source/Composition/RhythmPresentation.pas` |
+| `SYNC_RhythmShooter_SettingsForm` | 1225 | `Source/Shared/Host/SYNC_RhythmShooter_SettingsForm.pas` |
+| `SYNC_RhythmShooter_FilterPlugin` | 456 | `Source/Shared/Host/SYNC_RhythmShooter_FilterPlugin.pas` |
+
+各種類は既存ディレクトリの専用Styleユニット（29〜51行）へ接続処理を分離。共通契約・登録・選択モデルを含め15ユニット追加、全114ユニット。最大1442行、循環・フィールド順・1500行超0。目的・所有・キャンセル・保存契約をコメント。詳細と全12対応表はSTYLE_CATALOG.md。全30ビルド、各構成2,638分類照合と実DLL192/228照合、全12種15PNG開始時不変。以下は過去時点の記録。
+
+## 2026-11-04：MV重ねの一種類へ整理
+
+音ゲーをMVへ重ねる単独種類へ戻し、種類リストは従来11＋リズムゲームの12種。前面／中層専用UI、別種類の同時描画・二重準備を撤去。黒背景を省き、黒い不透明記号・半透明の光を保つ乗算済みRGBAと透明余白を出力。Previewは同じRGBAを市松背景へ合成。共通EQは白文字チェックでON/OFFでき、表示だけの変更で計画は無効化しない。
+
+| ユニット | 行数 |
+|---|---:|
+| RhythmOverlay | 81 |
+| RhythmScene | 142 |
+| RhythmPrepare | 342 |
+| RhythmSettings | 217 |
+| RhythmLayerBlend | 67 |
+| RhythmPresentation | 41 |
+
+旧RhythmLayerDataは製品usesから除外してTests/Supportへ移動。RhythmOverlayにalpha復元・透明変換・Previewを分離し、RhythmLayerBlendは一種類の共通EQ用の背景合成に限定。全99ユニット、最大1442行、循環・宣言順・1500行超過なし。目的・所有・alpha契約・透明余白・旧JSON移行の理由をコメント。以下は過去時点の記録。
+
+## 2026-11-04 三層合成と表示部品
+
+99ユニット、最大1442行。新規部品を音反応／所有窓口／中層データ復元／画素合成／音ゲー記号へ分離し、RhythmSceneを三層の制御窓口にする。各スタイルは通常背景の直後に背景抽出専用パスを設け、単独の演出・物理計画は変更しない。RhythmPrepareは共通Audioで二計画を準備／読戻し検証。新オプションはSettingsへ保存し、ホストとPreviewの共通Rendererへ渡す。
+
+| ユニット | 行数 |
+|---|---:|
+| RhythmLayerBlend | 84 |
+| RhythmOrbitMarks | 68 |
+| RhythmEqualizer | 58 |
+| RhythmLayerData | 46 |
+| RhythmPresentation | 38 |
+
+目的・所有／借用・二色マット・背景抽出・alpha・上限・計画と表示の独立をコメント。全30ビルド、各構成11中層229照合・全12実DLL・98描画比較、元11種14PNG不変を確認。循環参照／宣言順／1500行超過なし。THREE_LAYER_COMPOSITION.mdとVerification/OrbitPresentation-20261104/handoff.json参照。以下は過去時点の記録。
+
+---
+
+## 2026-11-04 宇宙軌道v3の解析と演出を分離
+
+全94ユニット、最大1442行。Game専用の細粒度候補抽出／重複・品質をRhythmOrbitAudio、導入／ゲート／クリア描画をRhythmOrbitShowへ分離。共通音解析は変更せず、GamePlanが一時スナップショットを作りPlanへ渡す。Codecはv2/v3を区別し、元音声と専用イベント数が違うv3もPCMなしで復元。保存曲線と時刻を描画が参照し、再生履歴を持たない。
+
+| ユニット | 行数 |
+|---|---:|
+| RhythmOrbitPlan | 281 |
+| RhythmOrbitScene | 253 |
+| RhythmOrbitAudio | 145 |
+| RhythmOrbitCodec | 116 |
+| RhythmOrbitShow | 72 |
+
+全製品／Previewに明示登録。循環参照／宣言順違反／1500行超過なし。最終30ビルドと密度／計画／描画／旧版／全12実DLL回帰、本人AUP2と他11種の不変を確認。RHYTHM_GAME_STYLE.mdとVerification/OrbitFinale-20261104/handoff.json参照。以下は過去時点の記録。
+
+---
+
+## 2026-11-04 未来ガイドの読み取りを分離
+
+現在は92ユニット、最大1442行。新規RhythmOrbitGuideは保存済みの実移動の未来サンプル、時間窓の密度/強度/反応を純粋な関数で読む。OrbitSceneはその結果を連続線/階層付き予告/背景へ描く。計画、採用音、カメラ、最低強度、Codecは変更しない。全製品/PreviewへGuideを明示登録。全30ビルド、両構成Guideと宇宙17入力、全12実DLL、旧11種14画像/保存v2計画18個の不変を確認。以下は各時点の構成記録。最新詳細はVerification/OrbitGuide-20261104/handoff.json。
+
+---
+
+## 2026-11-04 宇宙リズムv2の責務分離
+
+現在は全12スタイル・91ユニット、最大1442行。RhythmGamePlan/Sceneはv2/v1の切替窓口へ変更。新規RhythmOrbitTypes（世界座標/保存型/純粋曲線）、RhythmOrbitPlan（採用/周回/飛行/連続カメラ）、RhythmOrbitCodec（binary64保存と復元）、RhythmOrbitScene（宇宙描画）へ分離し、旧v1はRhythmGameLegacyPlan/Sceneに保持した。新製品や列挙は増やさず、既存11スタイルの演出・保存版・識別順を維持。全製品/Previewへ明示登録。最低強度の状態は共通Settings/UIに置き、音声解析自体は既存経路を使う。
+
+循環参照・宣言順違反・1500行超過なし。全30ビルドと両構成の全12実DLL照合、17入力の世界位置/音時刻/カメラ/強度/v1互換試験を通過。以下は各時点の構成記録で、その時点の行数・総数を含む。最新詳細はRHYTHM_GAME_STYLE.mdとVerification/OrbitGame-20261103/handoff.json。
+
+---
+
+## 2026-11-03 リズムゲーム風の追加
+
+現在は全12スタイル・85ユニット、最大1442行。新規 RhythmGamePlan（302行）は全曲計画・絶対時刻の位置・保存検証、RhythmGameScene（162行）は判定マーク/軌道/カーソル/接触演出を担当。新規スタイルIDを列挙末尾へ追加し、既存の識別順・JSON版・演出は維持する。共通Prepare/Scene/Host/Settingsは新スタイルへの委譲を追加。既存全製品とPreviewにユニットを明示登録し、新SYNC_RhythmGame製品・Previewを追加した。GUIや配備は行わない。
+
+全12 DLL両構成24ビルド＋代表Preview6コンパイル、各構成12実DLLの描画/ホスト音楽入力/PCMなし復元/seekを通過。旧14PNGは開始コミットを同条件で再コンパイルした画像と一致。詳細は [RHYTHM_GAME_STYLE.md](RHYTHM_GAME_STYLE.md) と Verification/RhythmGame-20261103/handoff.json。以下は2026-11-02の構造整理時点の記録であり、そこでの版・行数・総数は当時の値。
+
+---
+
+# ユニット構成と整理結果（2026-11-02）
 
 Race v9の修正を保存・ビルド・試験した後、その状態を基準に構造だけを整理した。比較基準は Verification/RaceTruck-20261102/before-refactor.json。既存の呼出窓口と保存型名は薄い委譲や型エイリアスで保持し、計算実装は重複させない。
 

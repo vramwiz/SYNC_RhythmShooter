@@ -289,6 +289,7 @@ begin
     Line(X,Y,X+0.025,RailY(X+0.025),RGB(180,190,185),0.006);
     Line(X,Y+0.043,X+0.025,RailY(X+0.025)+0.043,RGB(116,132,140),0.006);
   end;
+  if Frame.BackgroundOnly then begin Surface.DrawViewportMatte(Left,Top,Frame.Width,Frame.Height,RGB(10,18,29));Exit;end;
   if FPlan=nil then Exit;
   for I:=-1 to 18 do begin X:=I*0.11-Frac(Travel/0.11)*0.11;
     Line(X-0.032,0.326,X+0.032,0.347,MixColor(Back,RGB(98,108,111),0.65),0.006);

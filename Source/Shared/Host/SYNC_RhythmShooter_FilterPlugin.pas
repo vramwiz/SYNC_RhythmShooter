@@ -7,11 +7,9 @@ procedure FinalizeRhythmShooterPlugin;
 function GetRhythmShooterFilterTable:PFILTER_PLUGIN_TABLE;
 implementation
 uses System.SysUtils, System.IOUtils, System.Hash, RhythmPaths, System.Math, System.UITypes, System.Generics.Collections, Vcl.Forms, Vcl.Dialogs, Vcl.Graphics,
-PluginFilterTable, RhythmAudio, RhythmFireworksPlan, RhythmBallPlan, RhythmRunnerPlan, RhythmBreakoutPlan, RhythmRacePlan, RhythmBombPlan, RhythmFightingPlan, RhythmMiningPlan, RhythmTrainPlan, RhythmNavalPlan, RhythmScene, RhythmSettings,RhythmDesignTypes,RhythmStyles,RhythmProduct, SYNC_RhythmShooter_SettingsForm;
+PluginFilterTable, RhythmAudio, RhythmStyleRegistry, RhythmScene, RhythmSettings,RhythmDesignTypes,RhythmStyles,RhythmProduct,RhythmTiming, SYNC_RhythmShooter_SettingsForm;
 const
   MUSIC_NAME:PWideChar=#$97F3#$697D#$30D5#$30A1#$30A4#$30EB;
-  DIRECTION_NAME:PWideChar=#$30B9#$30AF#$30ED#$30FC#$30EB#$65B9#$5411;
-  SENSITIVITY_NAME:PWideChar=#$89E3#$6790#$611F#$5EA6;
 type
   // Additive local ABI from the installed 2.1.15 SDK. Shared SDK stays intact.
   TRhythmHideRule=record
@@ -22,12 +20,10 @@ var
   GEffectTitle,GEffectInformation:string;
   EFFECT_NAME:PWideChar;
   MusicItem:TFILTER_ITEM_FILE;
-  DirectionItem:TFILTER_ITEM_SELECT;
-  Directions:array[0..2] of TFILTER_ITEM_SELECT_ITEM;
-  SensitivityItem:TFILTER_ITEM_TRACK;
+  OffsetItem:TFILTER_ITEM_TRACK;
   SettingsButton:TFILTER_ITEM_BUTTON;
   AllItems:array[0..12] of Pointer;
-  HideRules:array[0..2] of TRhythmHideRule;
+  JsonHideRule:TRhythmHideRule;
   GHostVersion:DWORD;
   JsonItem:TFILTER_ITEM_STRING;
   InternalGroup:TFILTER_ITEM_GROUP;
@@ -53,11 +49,12 @@ begin
   if JsonItem.Value<>nil then Text:=string(JsonItem.Value);
   if not TRhythmSettings.TryJSON(Text,Result) then
   begin Result:=TRhythmSettings.Defaults;
-    if not (ProductDefaultStyle in [rsBombAction,rsFighting,rsMining,rsTrain,rsNaval]) then Result.BossFrequency:=100;
+    if not StyleHas(ProductDefaultStyle,sfDefaultBoss50) then Result.BossFrequency:=100;
     if MusicItem.Value<>nil then Result.Music:=string(MusicItem.Value);
-    Result.Direction:=DirectionItem.Value;
-    Result.Sensitivity:=Round(SensitivityItem.Value);
+    // 削除した旧track/selectからは読まない。JSONなしの旧物件は初期値から明示的に再準備する。
   end;
+  // ホストが現在フレームの値へ更新するtrackを正とし、JSONのPreview用コピーで上書きしない。
+  Result.OffsetSeconds:=NormalizeRenderOffset(OffsetItem.Value);
   Result.Zoom:=ZoomItem.Value;
   Result.X:=XItem.Value;
   Result.Y:=YItem.Value;
@@ -80,11 +77,11 @@ var
 begin
   if (Settings.Style=rsShooting) and (ProductDefaultStyle=rsShooting) and (DesignKey(Settings.Designs)='') and (Settings.Plan.Variant=0) and (Settings.BossFrequency=100) then Exit(GRenderer);
   Key:=StyleId(Settings.Style)+'|'+DesignKey(Settings.Designs)+'|'+Settings.Plan.Key+'|'+Settings.Plan.Digest;
-  if Settings.Style in [rsShooting,rsRunner,rsBreakout,rsRace,rsBombAction,rsFighting,rsMining,rsTrain,rsNaval] then Key:=Key+'|boss='+IntToStr(Settings.BossFrequency);
+  if StyleHas(Settings.Style,sfBoss) then Key:=Key+'|boss='+IntToStr(Settings.BossFrequency);
   if GDesignRenderers.TryGetValue(Key,Result) then Exit;
   Created:=TRhythmRenderer.Create;
   try
-    Created.ConfigureStyle(Settings.Style,Settings.Plan,Settings.BossFrequency);
+    Created.ConfigureStyle(Settings.Style,Settings.Plan,Settings.BossFrequency,Settings.EqualizerMode);
     Created.ApplyDesigns(Settings.Designs);
     if GDesignRenderers.Count>=4 then GDesignRenderers.Clear;
     GDesignRenderers.Add(Key,Created);
@@ -94,7 +91,7 @@ begin
   end;
 end;
 
-function BallRestorationRevision(const Settings:TRhythmSettings):string;
+function PreparedRestorationRevision(const Settings:TRhythmSettings):string;
   function Stamp(const Path:string):string;
   var
     Info:TWin32FileAttributeData;
@@ -141,10 +138,10 @@ begin
     GError:='ボス頻度を変更しました。設定画面で再準備・適用してください。';
     Exit;
   end;
-  if Settings.Style in [rsBall,rsFireworks,rsRunner,rsBreakout,rsRace,rsBombAction,rsFighting,rsMining,rsTrain,rsNaval] then Key:='prepared-'+StyleId(Settings.Style)+'|'+Key+'|'+Settings.Plan.Key+'|'+Settings.Plan.Digest+'|'+Settings.Plan.SourceRevision+'|'+IntToStr(Settings.Direction);
-  if (GRequest=Key) and (Settings.Style in [rsBall,rsFireworks,rsRunner,rsBreakout,rsRace,rsBombAction,rsFighting,rsMining,rsTrain,rsNaval]) and (GAudio=nil) and (GError<>'') and (GetTickCount64>=GBallProbeAt) then begin
+  if StyleHas(Settings.Style,sfPrepared) then Key:='prepared-'+StyleId(Settings.Style)+'|'+Key+'|'+Settings.Plan.Key+'|'+Settings.Plan.Digest+'|'+Settings.Plan.SourceRevision+'|'+IntToStr(Settings.Direction);
+  if (GRequest=Key) and (StyleHas(Settings.Style,sfPrepared)) and (GAudio=nil) and (GError<>'') and (GetTickCount64>=GBallProbeAt) then begin
     GBallProbeAt:=GetTickCount64+1000;
-    Revision:=BallRestorationRevision(Settings);
+    Revision:=PreparedRestorationRevision(Settings);
     if Revision<>GFailedBallRevision then begin GRequest:='';
       GColdRetryKey:='';
     end
@@ -169,18 +166,7 @@ begin
     // attempts require a file revision change, never per-frame preparation.
     Loaded:=nil;
     try
-      if Settings.Style=rsBall then Loaded:=TRhythmBallPlan.LoadAudioMetadata(Settings.Plan,Source,Settings.Direction)
-      else if Settings.Style=rsFireworks then Loaded:=TFireworksPlan.LoadAudioMetadata(Settings.Plan,Source,Settings.Direction)
-      else if Settings.Style=rsRunner then Loaded:=TRunnerPlan.LoadAudioMetadata(Settings.Plan,Source,Settings.Direction)
-      else if Settings.Style=rsBreakout then Loaded:=TBreakoutPlan.LoadAudioMetadata(Settings.Plan,Source,Settings.Direction)
-      else if Settings.Style=rsRace then Loaded:=TRacePlan.LoadAudioMetadata(Settings.Plan,Source,Settings.Direction)
-      else if Settings.Style=rsBombAction then Loaded:=TBombActionPlan.LoadAudioMetadata(Settings.Plan,Source,Settings.Direction)
-      else if Settings.Style=rsFighting then Loaded:=TFightingPlan.LoadAudioMetadata(Settings.Plan,Source,Settings.Direction)
-      else if Settings.Style=rsMining then Loaded:=TMiningPlan.LoadAudioMetadata(Settings.Plan,Source,Settings.Direction)
-      else if Settings.Style=rsTrain then Loaded:=TTrainPlan.LoadAudioMetadata(Settings.Plan,Source,Settings.Direction)
-      else if Settings.Style=rsNaval then Loaded:=TNavalPlan.LoadAudioMetadata(Settings.Plan,Source,Settings.Direction)
-      else if Settings.Style=rsShooting then Loaded:=LoadCachedRhythmAudio(Source,Sensitivity,False)
-      else Loaded:=LoadCachedRhythmAudio(Source,Sensitivity);
+      Loaded:=LoadStyleAudio(Settings.Style,Settings.Plan,Source,Settings.Direction);
       if Loaded=nil then begin GError:='設定画面で音楽を解析して適用してください（解析キャッシュ未準備）。';
         Exit;
       end;
@@ -199,7 +185,7 @@ begin
     except on E:Exception do begin
         Loaded.Free;
         GError:=E.Message;
-        if Settings.Style in [rsBall,rsFireworks,rsRunner,rsBreakout,rsRace,rsBombAction,rsFighting,rsMining,rsTrain,rsNaval] then begin GFailedBallRevision:=BallRestorationRevision(Settings);
+        if StyleHas(Settings.Style,sfPrepared) then begin GFailedBallRevision:=PreparedRestorationRevision(Settings);
           GBallProbeAt:=GetTickCount64+1000;
         end;
       end;
@@ -247,8 +233,8 @@ begin
       if GError<>'' then MessageText:=GError else MessageText:='設定から WAV / MP3 を選択';
       if (GBitmap.Width<>W) or (GBitmap.Height<>H) then GBitmap.SetSize(W,H);
       Renderer:=RendererFor(Settings);
-      Renderer.ConfigureStyle(Settings.Style,Settings.Plan,Settings.BossFrequency);
-      Renderer.Render(GBitmap,GAudio,Time,Settings.Direction,MessageText,Settings.Zoom/100,Settings.X,Settings.Y);
+      Renderer.ConfigureStyle(Settings.Style,Settings.Plan,Settings.BossFrequency,Settings.EqualizerMode);
+      Renderer.Render(GBitmap,GAudio,Time,Settings.Direction,MessageText,Settings.Zoom/100,Settings.X,Settings.Y,Settings.OffsetSeconds);
       if Length(GRgba)<>W*H*4 then SetLength(GRgba,W*H*4);
       Dest:=@GRgba[0];
       for Y:=0 to H-1 do
@@ -258,7 +244,7 @@ begin
         for X:=0 to W-1 do begin Dest[0]:=Row[2];
           Dest[1]:=Row[1];
           Dest[2]:=Row[0];
-          Dest[3]:=255;
+          if Renderer.OutputHasAlpha then Dest[3]:=Row[3] else Dest[3]:=255;
           Inc(Row,4);
           Inc(Dest,4);
         end;
@@ -389,20 +375,12 @@ begin
     MusicItem.Name:=MUSIC_NAME;
     MusicItem.Value:='';
     MusicItem.FileFilter:='WAV / MP3 (*.wav;*.mp3)'#0'*.wav;*.mp3'#0;
-    Directions[0].Name:=#$7E26;
-    Directions[0].Value:=0;
-    Directions[1].Name:=#$6A2A;
-    Directions[1].Value:=1;
-    DirectionItem.ItemType:='select';
-    DirectionItem.Name:=DIRECTION_NAME;
-    DirectionItem.Value:=0;
-    DirectionItem.List:=@Directions[0];
-    SensitivityItem.ItemType:='track';
-    SensitivityItem.Name:=SENSITIVITY_NAME;
-    SensitivityItem.Value:=50;
-    SensitivityItem.S:=1;
-    SensitivityItem.E:=100;
-    SensitivityItem.Step:=1;
+    OffsetItem.ItemType:='track';
+    OffsetItem.Name:='オフセット';
+    OffsetItem.Value:=0;
+    OffsetItem.S:=-1;
+    OffsetItem.E:=1;
+    OffsetItem.Step:=0.01;
     SettingsButton.ItemType:='button';
     SettingsButton.Name:=#$8A2D#$5B9A;
     SettingsButton.Callback:=SettingsButtonCallback;
@@ -435,10 +413,8 @@ begin
     AllItems[2]:=@YItem;
     AllItems[3]:=@MusicItem;
     AllItems[4]:=@SettingsButton;
-    for I:=0 to 2 do HideRules[I].ItemType:='hiderule';
-    HideRules[0].Name:='設定JSON';
-    HideRules[1].Name:=DIRECTION_NAME;
-    HideRules[2].Name:=SENSITIVITY_NAME;
+    JsonHideRule.ItemType:='hiderule';
+    JsonHideRule.Name:='設定JSON';
     SetupPluginTable(FILTER_FLAG_VIDEO or FILTER_FLAG_FILTER,EFFECT_NAME,'SYNC',
     PWideChar(GEffectInformation),
     ProcessVideo,nil);
@@ -447,18 +423,16 @@ begin
   if GHostVersion>=2011500 then
   begin
     AllItems[5]:=@JsonItem;
-    AllItems[6]:=@DirectionItem;
-    AllItems[7]:=@SensitivityItem;
-    // Rules follow every value item (the SDK documents an older ordering bug).
-    for I:=0 to 2 do AllItems[8+I]:=@HideRules[I];
+    AllItems[6]:=@OffsetItem;
+    // 既存JSONの名前/型を保ち、値の後へ無条件の非表示規則を置く。
+    AllItems[7]:=@JsonHideRule;
   end else
   begin
-    // Old hosts cannot hide values without changing their storage type. Keep
-    // old object data intact, collapsed, rather than silently discarding it.
-    AllItems[5]:=@InternalGroup;
-    AllItems[6]:=@JsonItem;
-    AllItems[7]:=@DirectionItem;
-    AllItems[8]:=@SensitivityItem;
+    // 非対応ホストでもオフセットは通常表示。内部JSONだけを閉じたグループへ置く。
+    // 小分類/感度の旧ホスト項目は再登録せず、設定画面のJSONを唯一の入力にする。
+    AllItems[5]:=@OffsetItem;
+    AllItems[6]:=@InternalGroup;
+    AllItems[7]:=@JsonItem;
   end;
   GTable.Items:=@AllItems[0];
   Result:=@GTable;

@@ -375,6 +375,7 @@ begin
   CameraX:=Past.X-Frame.Width/UnitScale*0.5+EnsureRange(Shake,-0.025,0.025);
   CameraY:=Hero.Y*0.18+EnsureRange(Shake*0.6,-0.015,0.015);
   DrawBackdrop;
+  if Frame.BackgroundOnly then Exit;
   if FPlan=nil then begin P:=Screen(Hero);
     DrawHero(Surface,P.X,P.Y,UnitScale,0,0,0);
     Exit;

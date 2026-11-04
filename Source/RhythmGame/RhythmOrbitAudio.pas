@@ -1,0 +1,144 @@
+﻿unit RhythmOrbitAudio;
+// 宇宙専用の細粒度候補。共通180ms解析とキャッシュを変更せず、元ピークを保持する。
+{$POINTERMATH ON}
+interface
+uses System.SysUtils,RhythmAudio;
+type
+  TOrbitAudioStats=record
+    Legacy,Peaks,Qualified,SelectedExtra,NoiseRejected,Merged,Capped:Integer;
+  end;
+  TOrbitCandidate=record
+    Hit:TRhythmHit;
+    Quality,Score:Double;
+  end;
+  TOrbitCandidatePool=class
+  private
+    FLegacy:TArray<TRhythmHit>;
+    FExtras:TArray<TOrbitCandidate>;
+    FStats:TOrbitAudioStats;
+  public
+    class function Analyze(Audio:TRhythmAudio;const Cancel:TFunc<Boolean> = nil):TOrbitCandidatePool;static;
+    // Value<0は追加候補の品質閾値。固定候補集合なので左ほど採用数が単調に増える。
+    function Select(Audio:TRhythmAudio;Value:Integer;out Stats:TOrbitAudioStats):TRhythmAudio;
+  end;
+function PrepareOrbitAudio(Audio:TRhythmAudio;Value:Integer;out Stats:TOrbitAudioStats;
+  const Cancel:TFunc<Boolean> = nil):TRhythmAudio;
+implementation
+uses System.Math,System.Generics.Collections,System.Generics.Defaults;
+type
+  TBandValues=array[0..2] of Double;
+  TOrbitFrame=record
+    Band:TBandValues;
+    Envelope,Score:Double;
+  end;
+function Snapshot(Audio:TRhythmAudio):TRhythmAudio;
+begin
+  Result:=TRhythmAudio.Create;Result.Source:=Audio.Source;Result.Key:=Audio.Key;Result.SourceRevision:=Audio.SourceRevision;
+  Result.Sensitivity:=Audio.Sensitivity;Result.Duration:=Audio.Duration;Result.SoundEnd:=Audio.SoundEnd;Result.CacheReused:=True;
+end;
+class function TOrbitCandidatePool.Analyze(Audio:TRhythmAudio;const Cancel:TFunc<Boolean>):TOrbitCandidatePool;
+const Hop=220;Gap=0.032;LegacyGuard=0.025;
+var
+  Frames:TArray<TOrbitFrame>;Prefix:array[0..2] of TArray<Double>;ScorePrefix:TArray<Double>;
+  Samples:PSmallInt;Count,N,I,J,K,F,First,Last,Near,Capacity:Integer;
+  A250,A2500,X,Low,Mid,High,Total,Global,Mean,Ratio,MaxContrast,Second,MidHigh,Contrast,Q,Strength:Double;
+  LP250,LP2500:array[0..1] of Double;Sum,Peak,Prior:TBandValues;
+  List:TList<TOrbitCandidate>;C:TOrbitCandidate;Extra:TArray<TOrbitCandidate>;
+  procedure Check;
+  begin if Assigned(Cancel) and Cancel() then Abort;end;
+begin
+  // PCMは借用し、サンプルや元Hitsには書き込まない。
+  if (Audio=nil) or (Length(Audio.PCM)<4) or (Length(Audio.PCM) mod 4<>0) then raise Exception.Create('追加の音検出には音声PCMが必要です。音源から再準備してください。');
+  Result:=TOrbitCandidatePool.Create;List:=nil;
+  try
+    try
+    Result.FLegacy:=Copy(Audio.Hits);Result.FStats.Legacy:=Length(Audio.Hits);
+    Count:=Length(Audio.PCM) div 4;N:=(Count+Hop-1) div Hop;SetLength(Frames,N);Samples:=PSmallInt(Audio.PCM);
+    FillChar(LP250,SizeOf(LP250),0);FillChar(LP2500,SizeOf(LP2500),0);FillChar(Peak,SizeOf(Peak),0);
+    A250:=1-Exp(-2*Pi*250/RHYTHM_RATE);A2500:=1-Exp(-2*Pi*2500/RHYTHM_RATE);Global:=0;
+    for I:=0 to N-1 do begin
+      if I mod 128=0 then Check;FillChar(Sum,SizeOf(Sum),0);Total:=0;First:=I*Hop;Last:=Min(Count,First+Hop);
+      for F:=First to Last-1 do for J:=0 to 1 do begin
+        X:=Samples[F*2+J]/32768.0;LP250[J]:=LP250[J]+A250*(X-LP250[J]);LP2500[J]:=LP2500[J]+A2500*(X-LP2500[J]);
+        Low:=LP250[J];Mid:=LP2500[J]-Low;High:=X-LP2500[J];
+        Sum[0]:=Sum[0]+Low*Low;Sum[1]:=Sum[1]+Mid*Mid;Sum[2]:=Sum[2]+High*High;Total:=Total+X*X;
+      end;
+      Frames[I].Envelope:=Sqrt(Total/Max(1,2*(Last-First)));Global:=Max(Global,Frames[I].Envelope);
+      for K:=0 to 2 do begin Frames[I].Band[K]:=Sqrt(Sum[K]/Max(1,2*(Last-First)));Peak[K]:=Max(Peak[K],Frames[I].Band[K]);end;
+    end;
+    for K:=0 to 2 do SetLength(Prefix[K],N+1);SetLength(ScorePrefix,N+1);FillChar(Prior,SizeOf(Prior),0);
+    for I:=0 to N-1 do begin
+      Frames[I].Score:=0;
+      for K:=0 to 2 do begin
+        Q:=0.20;if K=1 then Q:=0.35;if K=2 then Q:=0.45;
+        Frames[I].Score:=Frames[I].Score+Q*Max(0.0,Frames[I].Band[K]-Prior[K])/Max(0.0006,Peak[K]*0.20);
+        Prior[K]:=Prior[K]*0.65+Frames[I].Band[K]*0.35;Prefix[K][I+1]:=Prefix[K][I]+Frames[I].Band[K];
+      end;
+      ScorePrefix[I+1]:=ScorePrefix[I]+Frames[I].Score;
+    end;
+    List:=TList<TOrbitCandidate>.Create;Near:=0;
+    for I:=0 to N-1 do begin
+      if I mod 1024=0 then Check;
+      if (I>0) and (Frames[I].Score<Frames[I-1].Score) then Continue;
+      if (I<N-1) and (Frames[I].Score<=Frames[I+1].Score) then Continue;Inc(Result.FStats.Peaks);
+      C:=Default(TOrbitCandidate);C.Hit.Time:=I*Hop/RHYTHM_RATE;
+      if C.Hit.Time>Audio.SoundEnd then Continue;
+      while (Near<Length(Audio.Hits)) and (Audio.Hits[Near].Time<C.Hit.Time-LegacyGuard) do Inc(Near);
+      if (Near<Length(Audio.Hits)) and (Abs(Audio.Hits[Near].Time-C.Hit.Time)<=LegacyGuard) then begin Inc(Result.FStats.Merged);Continue;end;
+      First:=Max(0,I-40);Last:=Min(N,I+41);Mean:=(ScorePrefix[Last]-ScorePrefix[First])/Max(1,Last-First);
+      Ratio:=Frames[I].Score/Max(0.005,Mean);MaxContrast:=0;Second:=0;MidHigh:=0;
+      for K:=0 to 2 do begin
+        First:=Max(0,I-10);Q:=(Prefix[K][I]-Prefix[K][First])/Max(1,I-First);
+        Contrast:=(Frames[I].Band[K]-Q)/Max(Q,Peak[K]*0.006+0.00005);
+        if K>0 then MidHigh:=Max(MidHigh,Contrast);
+        if Contrast>MaxContrast then begin Second:=MaxContrast;MaxContrast:=Contrast;end else Second:=Max(Second,Contrast);
+      end;
+      if (Frames[I].Envelope<Max(0.0006,Global*0.008)) or (Frames[I].Score<0.02) or (Ratio<1.25) or
+      not (((MidHigh>=0.45) and (Second>=0.20)) or (MidHigh>=0.85)) then begin Inc(Result.FStats.NoiseRejected);Continue;end;
+      Q:=0.45*EnsureRange(Ratio/5,0.0,1.0)+0.30*EnsureRange(MaxContrast/2,0.0,1.0)+0.25*EnsureRange(Second/0.7,0.0,1.0);
+      Strength:=EnsureRange(0.12+0.50*EnsureRange(Ratio/5,0.0,1.0)+0.38*EnsureRange(MaxContrast/2,0.0,1.0),0.06,1.0);
+      C.Hit.Strength:=Strength;C.Hit.Lane:=0.5;C.Quality:=Q*100;C.Score:=Frames[I].Score;
+      // 同じ立上りの細かな山は品質と無関係に先に統合し、設定値による時刻移動を防ぐ。
+      if (List.Count>0) and (C.Hit.Time-List[List.Count-1].Hit.Time<Gap) then begin
+        if C.Score>List[List.Count-1].Score then List[List.Count-1]:=C;Inc(Result.FStats.Merged);
+      end else List.Add(C);
+    end;
+    Extra:=List.ToArray;Capacity:=Max(0,100000-Length(Audio.Hits));Result.FStats.Qualified:=Length(Extra);
+    if Length(Extra)>Capacity then begin
+      Result.FStats.Capped:=Length(Extra)-Capacity;
+      TArray.Sort<TOrbitCandidate>(Extra,TComparer<TOrbitCandidate>.Construct(function(const A,B:TOrbitCandidate):Integer
+        begin Result:=CompareValue(B.Quality,A.Quality);if Result=0 then Result:=CompareValue(A.Hit.Time,B.Hit.Time);end));
+      SetLength(Extra,Capacity);
+    end;
+    TArray.Sort<TOrbitCandidate>(Extra,TComparer<TOrbitCandidate>.Construct(function(const A,B:TOrbitCandidate):Integer begin Result:=CompareValue(A.Hit.Time,B.Hit.Time);end));
+    Result.FExtras:=Extra;
+    except Result.Free;raise;end;
+  finally List.Free;end;
+end;
+function TOrbitCandidatePool.Select(Audio:TRhythmAudio;Value:Integer;out Stats:TOrbitAudioStats):TRhythmAudio;
+var I,J:Integer;List:TList<TRhythmHit>;Cut:Double;
+begin
+  if Audio=nil then raise EArgumentNilException.Create('Audio');
+  if (Value< -100) or (Value>100) then raise EArgumentOutOfRangeException.Create('音要素');
+  Result:=Snapshot(Audio);Stats:=FStats;List:=TList<TRhythmHit>.Create;
+  try
+    try
+      I:=0;J:=0;Cut:=100+Value;
+      while (I<Length(FLegacy)) or (J<Length(FExtras)) do begin
+        if (I<Length(FLegacy)) and ((J>=Length(FExtras)) or (FLegacy[I].Time<FExtras[J].Hit.Time)) then begin List.Add(FLegacy[I]);Inc(I);end
+        else begin if (Value<0) and (FExtras[J].Quality>=Cut) then begin List.Add(FExtras[J].Hit);Inc(Stats.SelectedExtra);end;Inc(J);end;
+      end;
+      Result.Hits:=List.ToArray;
+    except Result.Free;raise;end;
+  finally List.Free;end;
+end;
+function PrepareOrbitAudio(Audio:TRhythmAudio;Value:Integer;out Stats:TOrbitAudioStats;const Cancel:TFunc<Boolean>):TRhythmAudio;
+var Pool:TOrbitCandidatePool;
+begin
+  if (Value< -100) or (Value>100) then raise EArgumentOutOfRangeException.Create('音要素');
+  if Audio=nil then raise EArgumentNilException.Create('Audio');
+  if Value>=0 then begin Stats:=Default(TOrbitAudioStats);Stats.Legacy:=Length(Audio.Hits);Result:=Snapshot(Audio);Result.Hits:=Copy(Audio.Hits);Exit;end;
+  Pool:=TOrbitCandidatePool.Analyze(Audio,Cancel);
+  try Result:=Pool.Select(Audio,Value,Stats);finally Pool.Free;end;
+end;
+end.

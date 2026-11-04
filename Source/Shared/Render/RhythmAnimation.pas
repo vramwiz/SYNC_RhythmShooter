@@ -6,6 +6,7 @@ type
   TAnimationFrame=record
     Time:Double;
     Width,Height,Direction:Integer;
+    BackgroundOnly:Boolean; // 合成の背景抽出パス。通常はFalse。
   end;
   TAnimationScene=class
   public
@@ -19,7 +20,7 @@ type
   private
     FScene:TAnimationScene;
     FSurface:TAnimationRenderSurface;
-    FTransform:TBitmap;
+    FTransform:TBitmap;FBackgroundOnly:Boolean;FClearColor:TColor;
     function GetAssetCount:Integer;
     function GetWarning:string;
     function GetUseD2D:Boolean;
@@ -33,6 +34,8 @@ type
       Zoom:Double=1;OffsetX:Double=0;OffsetY:Double=0);
     procedure ApplyChoices(const Choices:array of TRhythmDesign;Force:Boolean=False);
     procedure StandardBackgroundPreview(Target:TBitmap;Direction,Layer:Integer);
+    property BackgroundOnly:Boolean read FBackgroundOnly write FBackgroundOnly;
+    property ClearColor:TColor read FClearColor write FClearColor;
     property AssetCount:Integer read GetAssetCount;
     property DesignWarning:string read GetWarning;
     property UseD2D:Boolean read GetUseD2D write SetUseD2D;
@@ -44,7 +47,7 @@ function TAnimationScene.Notice:string;
 begin Result:='';end;
 constructor TAnimationRenderer.Create(Scene:TAnimationScene;Images:TAnimationImageBank);
 begin
-  inherited Create;FScene:=Scene;FSurface:=TAnimationRenderSurface.Create(Images);
+  inherited Create;FClearColor:=RGB(7,13,29);FScene:=Scene;FSurface:=TAnimationRenderSurface.Create(Images);
   if FScene=nil then raise EArgumentNilException.Create('Scene');
   FTransform:=Vcl.Graphics.TBitmap.Create;FTransform.PixelFormat:=pf32bit;
 end;
@@ -76,8 +79,8 @@ begin
     Target.Canvas.StretchDraw(Rect(I,J,I+Round(Width*Zoom),J+Round(Height*Zoom)),FTransform);Exit;
   end;
   Frame.Time:=Max(0.0,Time);Frame.Direction:=EnsureRange(Direction,0,1);
-  Frame.Width:=Width;Frame.Height:=Height;FScene.Prepare(Frame);
-  FSurface.BeginFrame(Target);FScene.Draw(FSurface,Frame);
+  Frame.Width:=Width;Frame.Height:=Height;Frame.BackgroundOnly:=FBackgroundOnly;FScene.Prepare(Frame);
+  FSurface.BeginFrame(Target,FClearColor);FScene.Draw(FSurface,Frame);
   if not FSurface.EndFrame then begin Render(Target,Time,Direction,MessageText);Exit;end;
   C:=Target.Canvas;
   C.Font.Name:='Segoe UI';C.Font.Size:=Max(9,Round(Min(Width,Height)/60));C.Font.Color:=RGB(184,212,235);C.Brush.Style:=bsClear;

@@ -110,7 +110,8 @@ begin
   Line(BallPoint(0.003,0.997),BallPoint(CIRCUIT_WIDTH-0.003,0.997),RGB(69,127,164),0.004);
   Line(BallPoint(0.003,0.003),BallPoint(0.003,0.997),RGB(69,127,164),0.004);
   Line(BallPoint(CIRCUIT_WIDTH-0.003,0.003),BallPoint(CIRCUIT_WIDTH-0.003,0.997),RGB(69,127,164),0.004);
-  if (Plan=nil) or (Plan.EndTime<=0) then Exit;
+    if Frame.BackgroundOnly then Exit;
+if (Plan=nil) or (Plan.EndTime<=0) then Exit;
   Current:=Plan.SegmentAt(Clock);
   FromRoute:=Max(0,Current-2);
   ToRoute:=Min(Plan.SegmentCount-1,Current+4);

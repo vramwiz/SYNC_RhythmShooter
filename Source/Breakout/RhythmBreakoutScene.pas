@@ -185,6 +185,10 @@ begin
   Line(0,0,0,0.94,RGB(95,149,174),0.005);
   Line(1.6,0,1.6,0.94,RGB(95,149,174),0.005);
   Line(0,0,1.6,0,RGB(95,149,174),0.005);
+  if Frame.BackgroundOnly then begin
+    if Left>0 then begin Surface.Line(Left/2,0,Left/2,Frame.Height,RGB(10,17,31),Left+1);Surface.Line(Frame.Width-Left/2,0,Frame.Width-Left/2,Frame.Height,RGB(10,17,31),Left+1);end;
+    if Top>0 then begin Surface.Line(0,Top/2,Frame.Width,Top/2,RGB(10,17,31),Top+1);Surface.Line(0,Frame.Height-Top/2,Frame.Width,Frame.Height-Top/2,RGB(10,17,31),Top+1);end;Exit;
+  end;
   PaddleHalf:=BREAK_PADDLE_HALF_NEW;
   if FPlan<>nil then PaddleHalf:=FPlan.PaddleHalf;
   PaddleX:=BREAK_WIDTH/2;

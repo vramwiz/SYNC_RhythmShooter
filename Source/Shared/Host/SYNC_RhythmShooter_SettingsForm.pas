@@ -2,15 +2,18 @@
 // 設定と単体Previewの準備UI。ホスト音源は読取専用とし、描画側では解析しない。
 interface
 uses System.Classes, System.SysUtils, Winapi.Messages, Vcl.Controls, Vcl.ExtCtrls, Vcl.Forms,
-Vcl.Graphics, Vcl.StdCtrls, Vcl.ComCtrls, Vcl.Dialogs, RhythmAudio, RhythmPlayback, RhythmScene, RhythmWaveView, RhythmSettings,RhythmDesignFrame,RhythmControls,RhythmStyles,RhythmPlanRef,RhythmPrepare;
+Vcl.Graphics, Vcl.StdCtrls, Vcl.ComCtrls, Vcl.Dialogs, RhythmAudio, RhythmPlayback, RhythmScene, RhythmWaveView, RhythmSettings,RhythmDesignFrame,RhythmOverlay,RhythmControls,RhythmStyles,RhythmStyleSelection,RhythmPlanRef,RhythmPrepare;
 type
   TFormRhythmShooterSettings = class(TForm)
   private
     FFile:TEdit;
-    FDirection,FStyle:TComboBox;
-    FSensitivity,FSeek,FFireworksRichness,FBossFrequency:TTrackBar;
-    FOptionsHeader,FOptionsBar,FStylePanel,FDirectionPanel,FSensitivityPanel,FFireworksRow,FBossRow:TPanel;
-    FStyleLabel,FSensitivityLabel,FRichnessLabel,FBossLabel,FBossValue:TLabel;
+    FEqualizer:TCheckBox;FEqualizerRow:TPanel;
+    FDirection,FStyle,FCategory:TComboBox;
+    FCategoryPanel:TPanel;FCategoryLabel:TLabel;
+    FSelection:TStyleSelection;FPreparing:Boolean;
+    FSensitivity,FSeek,FFireworksRichness,FBossFrequency,FGameThreshold:TTrackBar;
+    FOptionsHeader,FOptionsBar,FStylePanel,FDirectionPanel,FSensitivityPanel,FFireworksRow,FBossRow,FGameRow:TPanel;
+    FStyleLabel,FSensitivityLabel,FRichnessLabel,FBossLabel,FBossValue,FGameLabel,FGameValue:TLabel;
     FLayoutBusy,FLayoutReady,FDpiChanging:Boolean;
     FNavigation,FMusicRow,FBottom,FTransport,FTransportButtons,FAnimationBody:TPanel;
     FAnimationScroll:TScrollBox;
@@ -46,6 +49,7 @@ type
     procedure FitToWorkArea;
     procedure SetBusy(Value:Boolean);
     procedure UpdateStyleControls;
+    procedure RefreshSelection;
     procedure CancelLoad;
     function SelectedStyle:TRhythmStyle;
     function SelectedVariant:Integer;
@@ -140,7 +144,7 @@ begin
   ClientHeight:=Min(S(760),Max(1,WorkArea.Height-S(24)-(Height-ClientHeight)));
   Constraints.MinWidth:=Min(S(520),Width);
   Constraints.MinHeight:=Min(S(360),Height);
-  FState:=TRhythmSettings.Defaults;
+  FState:=TRhythmSettings.Defaults;FSelection:=TStyleSelection.FromSaved(FState.Style,FState.Direction);
   FViewWidth:=1280;
   FViewHeight:=720;
   FPlayer:=TRhythmPlayback.Create;
@@ -214,33 +218,26 @@ begin
   FOptionsBar:=Panel(Top,alTop,44);
   FOptionsBar.Name:='AnimationOptions';
   FOptionsBar.Top:=S(44);
+  FCategoryPanel:=Panel(FOptionsBar,alNone,44);FCategoryPanel.Name:='CategoryOptions';
+  FCategoryLabel:=LabelAt(FCategoryPanel,'大分類',alNone,56);FCategoryLabel.Name:='CategoryCaption';
+  FCategory:=TRhythmComboBox.Create(Self);FCategory.Parent:=FCategoryPanel;FCategory.Name:='AnimationCategory';
+  for PanelIndex:=Ord(Low(TRhythmStyleGroup)) to Ord(High(TRhythmStyleGroup)) do FCategory.Items.Add(StyleGroupTitle(TRhythmStyleGroup(PanelIndex)));
+  FCategory.ItemIndex:=Ord(FSelection.Group);FCategory.OnChange:=SettingChange;FCategoryLabel.FocusControl:=FCategory;
   FStylePanel:=Panel(FOptionsBar,alNone,44);
   FStylePanel.Name:='StyleOptions';
-  FStyleLabel:=LabelAt(FStylePanel,'スタイル',alNone,56);
+  FStyleLabel:=LabelAt(FStylePanel,'中分類',alNone,56);
   FStyleLabel.Name:='StyleCaption';
   FStyle:=TRhythmComboBox.Create(Self);
   FStyle.Parent:=FStylePanel;
   FStyle.Name:='AnimationStyle';
   FStyle.Width:=S(160);
   FStyle.ShowHint:=True;
-  FStyle.Hint:='スタイル変更時は動作計画を再準備します。音声キャッシュは再利用します。';
-  FStyle.Items.Add(StyleTitle(rsShooting));
-  FStyle.Items.Add(StyleTitle(rsBall));
-  FStyle.Items.Add(StyleTitle(rsFireworks));
-  FStyle.Items.Add(StyleTitle(rsRunner));
-  FStyle.Items.Add(StyleTitle(rsBreakout));
-  FStyle.Items.Add(StyleTitle(rsRace));
-  FStyle.Items.Add(StyleTitle(rsBombAction));
-  FStyle.Items.Add(StyleTitle(rsFighting));
-  FStyle.Items.Add(StyleTitle(rsMining));
-  FStyle.Items.Add(StyleTitle(rsTrain));
-  FStyle.Items.Add(StyleTitle(rsNaval));
-  FStyle.ItemIndex:=Ord(FState.Style);
+  FStyle.Hint:='種類変更時は計画を再準備します。リズムゲームはMVに重ねる透明映像として出力します。';
   FStyle.OnChange:=SettingChange;
   FStyleLabel.FocusControl:=FStyle;
   FDirectionPanel:=Panel(FOptionsBar,alNone,44);
   FDirectionPanel.Name:='DirectionOptions';
-  FDirectionLabel:=LabelAt(FDirectionPanel,'方向',alNone,40);
+  FDirectionLabel:=LabelAt(FDirectionPanel,'小分類',alNone,40);
   FDirectionLabel.Name:='DirectionCaption';
   FDirection:=TRhythmComboBox.Create(Self);
   FDirection.Parent:=FDirectionPanel;
@@ -303,6 +300,22 @@ begin
   FBossLabel.FocusControl:=FBossFrequency;
   FBossValue:=LabelAt(FBossRow,BossFrequencyText(BOSS_DEFAULT_FREQUENCY),alNone,144);
   FBossValue.Alignment:=taRightJustify;
+  FGameRow:=Panel(FOptionsBar,alNone,44);
+  FGameRow.Name:='GameThresholdOptions';
+  FGameLabel:=LabelAt(FGameRow,'音要素（多←→少）',alNone,128);
+  FGameLabel.Name:='GameThresholdCaption';
+  FGameThreshold:=TRhythmTrackBar.Create(Self);
+  FGameThreshold.Parent:=FGameRow;FGameThreshold.Name:='GameThreshold';
+  FGameThreshold.Min:=-100;FGameThreshold.Max:=100;FGameThreshold.Position:=20;
+  FGameThreshold.TickStyle:=tsNone;FGameThreshold.Frequency:=10;
+  FGameThreshold.ShowHint:=True;
+  FGameThreshold.Hint:='左ほど音要素を多く採用。-100:細かい候補も追加 / 0:従来の全音 / 右:強い音のみ。変更後は再準備が必要。音時刻は移動しません。';
+  FGameThreshold.OnChange:=SettingChange;FGameLabel.FocusControl:=FGameThreshold;
+  FGameValue:=LabelAt(FGameRow,'20',alNone,32);FGameValue.Alignment:=taRightJustify;
+  FEqualizerRow:=Panel(FOptionsBar,alNone,44);FEqualizerRow.Name:='EqualizerOptions';
+  FEqualizer:=TRhythmCheckBox.Create(Self);FEqualizer.Parent:=FEqualizerRow;FEqualizer.Name:='EqualizerVisible';
+  FEqualizer.Caption:='イコライザーを表示';FEqualizer.ShowHint:=True;
+  FEqualizer.Hint:='音に反応するバーを表示します。全スタイル対応。再準備は不要です。';FEqualizer.OnClick:=SettingChange;
   FOptionsBar.OnResize:=LayoutOptions;
   Bottom:=Panel(Self,alBottom,52);
   FBottom:=Bottom;
@@ -372,9 +385,10 @@ begin
   end;
   FState.HostMusic:=False;
   // Standalone Preview always owns its file picker.
-  FStyle.ItemIndex:=Ord(FState.Style);
+  FSelection:=TStyleSelection.FromSaved(FState.Style,FDirection.ItemIndex);RefreshSelection;
   FFireworksRichness.Position:=FState.FireworksRichness;
   FBossFrequency.Position:=FState.BossFrequency;
+  FGameThreshold.Position:=FState.GameThreshold;
   FFile.OnChange:=SettingChange;
   if (FFile.Text<>'') and FileExists(FFile.Text) then FReloadAt:=GetTickCount64+100;
   FDesignEditor.Designs:=FState.Designs;
@@ -414,8 +428,8 @@ end;
 
 procedure TFormRhythmShooterSettings.LayoutOptions(Sender:TObject);
 var
-  Groups:array[0..4] of TPanel;
-  Widths,CaptionWidths:array[0..4] of Integer;
+  Groups:array[0..7] of TPanel;
+  Widths,CaptionWidths:array[0..7] of Integer;
   I,Pass,W,H,X,Y,Gap,Total,Extra,Numbers,BarHeight,TextHeight,ButtonHeight,SavedScrollY:Integer;
   MusicCaptionWidth,BrowseWidth,AnalyzeWidth,PlayWidth,StopWidth,ClockWidth,ValueWidth,BossValueWidth:Integer;
   function S(Value:Integer):Integer;
@@ -497,16 +511,15 @@ begin
     ClockWidth:=Max(S(240),TextWidth(FClock.Caption,FClock.Font)+S(8));
     ValueWidth:=Max(S(32),TextWidth('100',FLevel.Font)+S(4));
     BossValueWidth:=Max(S(144),TextWidth('100 / 約135秒',FBossValue.Font)+S(4));
-    Groups[0]:=FStylePanel;
-    Groups[1]:=FDirectionPanel;
-    Groups[2]:=FSensitivityPanel;
-    Groups[3]:=FFireworksRow;
-    Groups[4]:=FBossRow;
-    CaptionWidths[0]:=LabelWidth(FStyleLabel,56);
-    CaptionWidths[1]:=LabelWidth(FDirectionLabel,40);
-    CaptionWidths[2]:=LabelWidth(FSensitivityLabel,56);
-    CaptionWidths[3]:=LabelWidth(FRichnessLabel,56);
-    CaptionWidths[4]:=LabelWidth(FBossLabel,110);
+    Groups[0]:=FCategoryPanel;Groups[1]:=FStylePanel;Groups[2]:=FDirectionPanel;
+    Groups[3]:=FSensitivityPanel;Groups[4]:=FFireworksRow;Groups[5]:=FBossRow;
+    Groups[6]:=FGameRow;Groups[7]:=FEqualizerRow;
+    CaptionWidths[0]:=LabelWidth(FCategoryLabel,56);
+    CaptionWidths[1]:=LabelWidth(FStyleLabel,56);
+    CaptionWidths[2]:=LabelWidth(FDirectionLabel,40);
+    CaptionWidths[3]:=LabelWidth(FSensitivityLabel,56);
+    CaptionWidths[4]:=LabelWidth(FRichnessLabel,56);
+    CaptionWidths[5]:=LabelWidth(FBossLabel,110);
     // Re-evaluate from full width so a previous wrap cannot retain a needless
     // scrollbar. Restore the user's scroll position once the final range exists.
     FAnimationBody.Height:=FAnimationScroll.ClientHeight;
@@ -528,27 +541,32 @@ begin
         Place(FBrowse,W-AnalyzeWidth-Gap-BrowseWidth,H+S(6),BrowseWidth,ButtonHeight);
         FMusicRow.Height:=2*H;
       end;
-      Widths[0]:=CaptionWidths[0]+S(6)+ComboWidth(FStyle,160);
-      Widths[1]:=CaptionWidths[1]+S(6)+ComboWidth(FDirection,130);
-      Widths[2]:=Max(S(170),CaptionWidths[2]+ValueWidth+S(80));
+      Widths[0]:=CaptionWidths[0]+S(6)+ComboWidth(FCategory,160);
+      Widths[1]:=CaptionWidths[1]+S(6)+ComboWidth(FStyle,160);
+      Widths[2]:=CaptionWidths[2]+S(6)+ComboWidth(FDirection,130);
       Widths[3]:=Max(S(170),CaptionWidths[3]+ValueWidth+S(80));
-      Widths[4]:=CaptionWidths[4]+BossValueWidth+S(88);
+      Widths[4]:=Max(S(170),CaptionWidths[4]+ValueWidth+S(80));
+      Widths[5]:=CaptionWidths[5]+BossValueWidth+S(88);
+      Widths[6]:=CaptionWidths[6]+ValueWidth+S(90);
+      Widths[7]:=TextWidth(FEqualizer.Caption,FEqualizer.Font)+S(32);
       W:=Max(1,FOptionsBar.ClientWidth);
       Total:=0;
       Numbers:=1;
       if FFireworksRow.Visible then Inc(Numbers);
       if FBossRow.Visible then Inc(Numbers);
-      for I:=0 to 4 do if Groups[I].Visible then begin if Total>0 then Inc(Total,Gap);
+      if FGameRow.Visible then Inc(Numbers);
+      for I:=0 to 7 do if Groups[I].Visible then begin if Total>0 then Inc(Total,Gap);
         Inc(Total,Widths[I]);
       end;
       if W>Total then begin Extra:=(W-Total) div Numbers;
-        Inc(Widths[2],Extra);
-        if FFireworksRow.Visible then Inc(Widths[3],Extra);
-        if FBossRow.Visible then Inc(Widths[4],Extra);
+        Inc(Widths[3],Extra);
+        if FFireworksRow.Visible then Inc(Widths[4],Extra);
+        if FBossRow.Visible then Inc(Widths[5],Extra);
+        if FGameRow.Visible then Inc(Widths[6],Extra);
       end;
       X:=0;
       Y:=0;
-      for I:=0 to 4 do if Groups[I].Visible then begin
+      for I:=0 to 7 do if Groups[I].Visible then begin
         if (X>0) and (X+Widths[I]>W) then begin X:=0;
           Inc(Y,H);
         end;
@@ -559,11 +577,14 @@ begin
       FOptionsBar.Height:=BarHeight;
       FOptionsBar.Top:=FMusicRow.Top+FMusicRow.Height;
       FOptionsHeader.Height:=FMusicRow.Height+BarHeight+S(8);
-      Combo(FStyleLabel,FStyle,CaptionWidths[0]);
-      Combo(FDirectionLabel,FDirection,CaptionWidths[1]);
-      Slider(FSensitivityLabel,FLevel,FSensitivity,CaptionWidths[2],ValueWidth);
-      Slider(FRichnessLabel,FRichnessLevel,FFireworksRichness,CaptionWidths[3],ValueWidth);
-      Slider(FBossLabel,FBossValue,FBossFrequency,CaptionWidths[4],BossValueWidth);
+      Combo(FCategoryLabel,FCategory,CaptionWidths[0]);
+      Combo(FStyleLabel,FStyle,CaptionWidths[1]);
+      Combo(FDirectionLabel,FDirection,CaptionWidths[2]);
+      Slider(FSensitivityLabel,FLevel,FSensitivity,CaptionWidths[3],ValueWidth);
+      Slider(FRichnessLabel,FRichnessLevel,FFireworksRichness,CaptionWidths[4],ValueWidth);
+      Slider(FBossLabel,FBossValue,FBossFrequency,CaptionWidths[5],BossValueWidth);
+      Slider(FGameLabel,FGameValue,FGameThreshold,CaptionWidths[6],ValueWidth);
+      Place(FEqualizer,0,Max(0,(H-Max(S(24),TextHeight+S(6))) div 2),FEqualizerRow.ClientWidth,Max(S(24),TextHeight+S(6)));
       W:=Max(1,FTransportButtons.ClientWidth);
       Place(FPlay,0,S(6),PlayWidth,ButtonHeight);
       Place(FStop,PlayWidth+Gap,S(6),StopWidth,ButtonHeight);
@@ -656,7 +677,7 @@ begin
   FPlayer.SetAudio(nil);
   FWave.SetAudio(nil);
   FreeAndNil(FAudio);
-  FState:=State;
+  FState:=State;FPreparing:=False;FSelection:=TStyleSelection.FromSaved(State.Style,State.Direction);
   FHostMusicMode:=HostMusicMode;
   FState.HostMusic:=HostMusicMode;
   FFile.ReadOnly:=HostMusicMode;
@@ -667,12 +688,12 @@ begin
   FViewHeight:=Max(1,ViewHeight);
   FDesignEditor.Designs:=State.Designs;
   FUpdating:=True;
-  try FStyle.ItemIndex:=Ord(State.Style);
+  try RefreshSelection;
     FFile.Text:=State.Music;
-    FDirection.ItemIndex:=EnsureRange(State.Direction,0,1);
     FSensitivity.Position:=EnsureRange(State.Sensitivity,1,100);
     FFireworksRichness.Position:=EnsureRange(State.FireworksRichness,0,100);
     FBossFrequency.Position:=EnsureRange(State.BossFrequency,0,100);
+    FGameThreshold.Position:=EnsureRange(State.GameThreshold,-100,100);
   finally FUpdating:=False;
   end;
   UpdateStyleControls;
@@ -682,7 +703,7 @@ begin
     else if State.Plan.Key='' then SetStatus('未解析です。この画面で準備・解析してから適用してください。')
     else SetStatus('指定ファイルの解析済みデータを読み込みます。');
   end;
-  if (State.Style<>rsShooting) and (State.Plan.Version<>StylePlanVersion(State.Style)) then
+  if StyleHas(State.Style,sfPrepared) and (State.Plan.Version<>StylePlanVersion(State.Style)) then
   FStatus.Caption:='このスタイルの計画を更新します。解析キャッシュを再利用して再準備します。';
   FReloadAt:=0;
   if (State.Music<>'') and FileExists(State.Music) then FReloadAt:=GetTickCount64+100;
@@ -697,38 +718,58 @@ begin
   Result.Sensitivity:=DetectionSensitivity;
   Result.FireworksRichness:=FFireworksRichness.Position;
   Result.BossFrequency:=FBossFrequency.Position;
+  Result.GameThreshold:=FGameThreshold.Position;
   Result.Designs:=FDesignEditor.Designs;
-  if not CanApplyPrepared then Result.Plan:=Default(TRhythmPlanRef);
+  if not CanApplyPrepared then begin Result.Plan:=Default(TRhythmPlanRef);end;
 end;
 
 procedure TFormRhythmShooterSettings.SetBusy(Value:Boolean);
 var
   I:Integer;
 begin
+  FPreparing:=Value;
   for I:=0 to ComponentCount-1 do
   if (Components[I] is TButton) or (Components[I] is TEdit) or (Components[I] is TComboBox) or (Components[I] is TTrackBar) then
   TControl(Components[I]).Enabled:=not Value;
-  if FDesignEditor<>nil then FDesignEditor.Enabled:=not Value and (SelectedStyle=rsShooting);
+  if FDesignEditor<>nil then FDesignEditor.Enabled:=not Value and StyleHas(SelectedStyle,sfDesigns);
   UpdateStyleControls;
   if Value then begin SetStatus('解析・動作計画を準備中...');
     FStatus.Update;
   end;
 end;
 
-function TFormRhythmShooterSettings.SelectedStyle:TRhythmStyle;
-begin Result:=ProductDefaultStyle;
-  if (FStyle<>nil) and (FStyle.ItemIndex>=Ord(Low(TRhythmStyle))) and (FStyle.ItemIndex<=Ord(High(TRhythmStyle))) then Result:=TRhythmStyle(FStyle.ItemIndex);
+procedure TFormRhythmShooterSettings.RefreshSelection;
+var I:Integer;WasUpdating,Available:Boolean;Style:TRhythmStyle;
+begin
+  if (FCategory=nil) or (FStyle=nil) or (FDirection=nil) then Exit;
+  WasUpdating:=FUpdating;FUpdating:=True;
+  try
+    FCategory.ItemIndex:=Ord(FSelection.Group);FStyle.Items.BeginUpdate;
+    try FStyle.Items.Clear;
+      for I:=0 to GroupStyleCount(FSelection.Group)-1 do begin Style:=GroupStyleAt(FSelection.Group,I);FStyle.Items.Add(StyleInfo(Style).MiddleTitle);end;
+      FStyle.ItemIndex:=FSelection.MiddleIndex;
+    finally FStyle.Items.EndUpdate;end;
+    FDirection.Items.BeginUpdate;
+    try FDirection.Items.Clear;for I:=0 to StyleSmallCount(FSelection.Style)-1 do FDirection.Items.Add(StyleSmallTitle(FSelection.Style,I));
+      FDirection.ItemIndex:=FSelection.SmallIndex;
+    finally FDirection.Items.EndUpdate;end;
+    Available:=not FPreparing and not ((FDesignEditor<>nil) and FDesignEditor.Busy);
+    FCategory.Enabled:=Available;FStyle.Enabled:=Available and (GroupStyleCount(FSelection.Group)>1);
+    FDirection.Enabled:=Available and (StyleSmallCount(FSelection.Style)>1);
+  finally FUpdating:=WasUpdating;end;
 end;
+function TFormRhythmShooterSettings.SelectedStyle:TRhythmStyle;
+begin Result:=FSelection.Style;end;
 
 function TFormRhythmShooterSettings.SelectedVariant:Integer;
-begin Result:=StyleVariant(SelectedStyle,FFireworksRichness.Position,FBossFrequency.Position);
+begin Result:=StyleVariant(SelectedStyle,FFireworksRichness.Position,FBossFrequency.Position,FGameThreshold.Position);
 end;
 
 function TFormRhythmShooterSettings.Ready:Boolean;
 begin
   Result:=(FAudio<>nil) and (FWorker=nil) and (FReloadAt=0);
   if Result then Result:=SameFileName(FAudio.Source,ExpandFileName(MusicFile)) and FState.Plan.Matches(FAudio.Key,DetectionSensitivity,ScrollDirection,SelectedStyle,SelectedVariant);
-  if Result and (SelectedStyle<>rsShooting) then Result:=ValidDigest(FState.Plan.Digest);
+  if Result and StyleHas(SelectedStyle,sfPrepared) then Result:=ValidDigest(FState.Plan.Digest);
 end;
 
 function TFormRhythmShooterSettings.CanApplyPrepared:Boolean;
@@ -755,42 +796,30 @@ end;
 
 procedure TFormRhythmShooterSettings.UpdateStyleControls;
 var
-  I,DirectionIndex:Integer;
+  I:Integer;
   IsReady,WasUpdating:Boolean;
   Control:TControl;
-  VerticalText,HorizontalText:string;
 begin
-  FState.Style:=SelectedStyle;
+  RefreshSelection;
+  FState.Style:=SelectedStyle;FState.Sensitivity:=DetectionSensitivity;FState.Direction:=ScrollDirection;
+  WasUpdating:=FUpdating;FUpdating:=True;
+  try FEqualizer.Checked:=EqualizerEnabled(FState.EqualizerMode,SelectedStyle,FState.Plan.Version);
+  finally FUpdating:=WasUpdating;end;
   FState.FireworksRichness:=FFireworksRichness.Position;
+  FState.GameThreshold:=FGameThreshold.Position;
   FState.BossFrequency:=FBossFrequency.Position;
-  FBossRow.Visible:=SelectedStyle in [rsShooting,rsRunner,rsBreakout,rsRace,rsBombAction,rsFighting,rsMining,rsTrain,rsNaval];
+  FBossRow.Visible:=StyleHas(SelectedStyle,sfBoss);
   FBossValue.Caption:=BossFrequencyText(FBossFrequency.Position);
-  FFireworksRow.Visible:=SelectedStyle=rsFireworks;
-  FDirectionPanel.Visible:=not (SelectedStyle in [rsRunner,rsBreakout,rsRace,rsBombAction,rsFighting,rsMining,rsTrain,rsNaval]);
+  FFireworksRow.Visible:=StyleHas(SelectedStyle,sfRichness);
+  FGameRow.Visible:=StyleHas(SelectedStyle,sfThreshold);
+  FGameValue.Caption:=IntToStr(FGameThreshold.Position);
+  FDirectionPanel.Visible:=True;
   FRichnessLevel.Caption:=IntToStr(FFireworksRichness.Position);
   if FFireworksRichness.Position<35 then FRichnessLevel.Hint:='控えめ' else if FFireworksRichness.Position<70 then FRichnessLevel.Hint:='標準' else FRichnessLevel.Hint:='華やか';
   UpdatePlayCaption;
-  if SelectedStyle=rsFireworks then begin VerticalText:='縦構図';
-    HorizontalText:='横構図';
-  end
-  else begin VerticalText:='縦スクロール';
-    HorizontalText:='横スクロール';
-  end;
-  if (FDirection<>nil) and (FDirection.Items.Count=2) and (FDirection.Items[0]<>VerticalText) then begin
-    WasUpdating:=FUpdating;
-    DirectionIndex:=FDirection.ItemIndex;
-    FUpdating:=True;
-    try FDirection.Items[0]:=VerticalText;
-      FDirection.Items[1]:=HorizontalText;
-      FDirection.ItemIndex:=DirectionIndex;
-    finally FUpdating:=WasUpdating;
-    end;
-  end;
-  if FDirectionLabel<>nil then begin if SelectedStyle=rsFireworks then FDirectionLabel.Caption:='構図' else FDirectionLabel.Caption:='方向';
-  end;
-  if FDesignTab<>nil then FDesignTab.Enabled:=(SelectedStyle=rsShooting) and (FWorker=nil);
-  if FDesignEditor<>nil then FDesignEditor.Enabled:=(SelectedStyle=rsShooting) and (FWorker=nil);
-  if (SelectedStyle<>rsShooting) and (FPages<>nil) then begin FPages.ActivePageIndex:=0;
+  if FDesignTab<>nil then FDesignTab.Enabled:=(StyleHas(SelectedStyle,sfDesigns)) and (FWorker=nil);
+  if FDesignEditor<>nil then FDesignEditor.Enabled:=(StyleHas(SelectedStyle,sfDesigns)) and (FWorker=nil);
+  if (not StyleHas(SelectedStyle,sfDesigns)) and (FPages<>nil) then begin FPages.ActivePageIndex:=0;
     PageChanged(Self);
   end;
   IsReady:=Ready;
@@ -802,7 +831,7 @@ begin
     Control:=TControl(Components[I]);
     if (Control.Name='PreviewPlay') or (Control.Name='PreviewStop') or (Control.Name='Timeline') then Control.Enabled:=IsReady;
     if (Control.Name='MusicAnalyze') and (Control is TButton) then begin
-      if SelectedStyle<>rsShooting then TButton(Control).Caption:='準備/再試行'
+      if StyleHas(SelectedStyle,sfPrepared) then TButton(Control).Caption:='準備/再試行'
       else TButton(Control).Caption:='解析';
     end;
   end;
@@ -836,6 +865,7 @@ begin
   end;
   if FDesignEditor.Busy then FStatus.Caption:='AI作成中... カスタムデザインの「取消」で中止できます。'
   else FStatus.Caption:='画像は候補を採用した後、この画面の「適用して閉じる」で保存します。';
+  RefreshSelection;
 end;
 
 function TFormRhythmShooterSettings.MusicFile:string;
@@ -843,7 +873,7 @@ begin Result:=Trim(FFile.Text);
 end;
 
 function TFormRhythmShooterSettings.ScrollDirection:Integer;
-begin Result:=FDirection.ItemIndex;
+begin Result:=FSelection.Direction;
 end;
 
 function TFormRhythmShooterSettings.DetectionSensitivity:Integer;
@@ -908,7 +938,7 @@ begin
 end;
 
 procedure TFormRhythmShooterSettings.LoadClick(Sender:TObject);
-begin BeginLoad(SelectedStyle=rsShooting);
+begin BeginLoad(not StyleHas(SelectedStyle,sfPrepared));
 end;
 
 procedure TFormRhythmShooterSettings.UpdatePlayCaption;
@@ -1042,11 +1072,19 @@ end;
 
 procedure TFormRhythmShooterSettings.SettingChange(Sender:TObject);
 begin
+  // 表示だけの変更なので解析・再準備・停止・保存計画の無効化を起こさない。
+  if Sender=FEqualizer then begin if FUpdating then Exit;FState.EqualizerMode:=Ord(FEqualizer.Checked);FPreview.Invalidate;Exit;end;
+  if FUpdating then Exit;
+  if Sender=FCategory then begin FSelection.ChooseGroup(TRhythmStyleGroup(FCategory.ItemIndex));RefreshSelection;end
+  else if Sender=FStyle then begin FSelection.ChooseMiddle(FStyle.ItemIndex);RefreshSelection;end
+  else if Sender=FDirection then FSelection.ChooseSmall(FDirection.ItemIndex);
+  if (Sender=FGameThreshold) and (FGameValue<>nil) then FGameValue.Caption:=IntToStr(FGameThreshold.Position);
   if (Sender=FSensitivity) and (FLevel<>nil) then FLevel.Caption:=IntToStr(FSensitivity.Position);
   if (Sender=FBossFrequency) and (FBossValue<>nil) then FBossValue.Caption:=BossFrequencyText(FBossFrequency.Position);
   if FUpdating then Exit;
   FState.BossFrequency:=FBossFrequency.Position;
   FState.FireworksRichness:=FFireworksRichness.Position;
+  FState.GameThreshold:=FGameThreshold.Position;
   FState.Plan:=Default(TRhythmPlanRef);
   UpdateStyleControls;
   FWave.SetAudio(nil);
@@ -1059,7 +1097,6 @@ begin
     FWorker.Terminate;
     FReloadAt:=GetTickCount64+100;
   end
-  else if (Sender=FStyle) or (Sender=FDirection) then BeginLoad(False)
   else FReloadAt:=GetTickCount64+500;
   FPreview.Invalidate;
 end;
@@ -1074,22 +1111,15 @@ begin
   try
     OldTime:=FTime;
     Changed:=False;
-    if (FReloadAt<>0) and (GetTickCount64>=FReloadAt) then BeginLoad;
+    // 大→中→小の操作中に中間値を準備して選択を塞がない。閉じた最後の選択で一度だけ準備する。
+    if (FReloadAt<>0) and (GetTickCount64>=FReloadAt) then begin
+      if FCategory.DroppedDown or FStyle.DroppedDown or FDirection.DroppedDown then FReloadAt:=GetTickCount64+200 else BeginLoad;
+    end;
     if (FWorker<>nil) and not FWorker.Finished then begin
       Seconds:=(GetTickCount64-FPrepareStarted) div 1000;
       case FWorker.Stage of
         2:begin
-          if SelectedStyle=rsFireworks then ProgressText:='打ち上げと開花を準備中'
-          else if SelectedStyle=rsRunner then ProgressText:='足場とジャンプ軌道を準備中'
-          else if SelectedStyle=rsBreakout then ProgressText:='破壊時刻から逆算・配置・前向き検証中'
-          else if SelectedStyle=rsRace then ProgressText:='衝突経路・一般車の回避・大型車・ボス破壊を検証中'
-          else if SelectedStyle=rsBombAction then ProgressText:='音時刻から設置・連鎖・破壊・ボス回避を逆算/検証中'
-          else if SelectedStyle=rsFighting then ProgressText:='命中・反撃・ボス・カメラを逆算/保存検証中'
-          else if SelectedStyle=rsMining then ProgressText:='命中・反撃・ボス・カメラを逆算/保存検証中'
-          else if SelectedStyle=rsTrain then ProgressText:='命中・反撃・ボス・カメラを逆算/保存検証中'
-          else if SelectedStyle=rsNaval then ProgressText:='命中・反撃・ボス・カメラを逆算/保存検証中'
-          else if SelectedStyle=rsBall then ProgressText:='障害物と軌道を準備中'
-          else ProgressText:='動作計画を準備中';
+          ProgressText:=StyleInfo(SelectedStyle).ProgressText;
         end;
         3:ProgressText:='動作計画を保存中';
         4:ProgressText:='動作計画を再読込して確認中';
@@ -1155,9 +1185,12 @@ var
   HintText:string;
 begin
   FFrame.SetSize(FViewWidth,FViewHeight);
-  FRenderer.ConfigureStyle(SelectedStyle,FState.Plan,FBossFrequency.Position);
+  FRenderer.ConfigureStyle(SelectedStyle,FState.Plan,FBossFrequency.Position,FState.EqualizerMode);
   FRenderer.ApplyDesigns(FDesignEditor.Designs);
-  if Ready then FRenderer.Render(FFrame,FAudio,FTime,ScrollDirection,'WAV / MP3 を選択してプレビュー',FState.Zoom/100,FState.X,FState.Y)
+  if Ready then begin
+    FRenderer.Render(FFrame,FAudio,FTime,ScrollDirection,'WAV / MP3 を選択してプレビュー',FState.Zoom/100,FState.X,FState.Y,FState.OffsetSeconds);
+    if FRenderer.OutputHasAlpha then OverlayPreview(FFrame);
+  end
   else begin
     HintText:='設定画面で動作計画を準備してください。設定のみの保存は可能です。';
     if FLastPreparationError<>'' then HintText:=FLastPreparationError;

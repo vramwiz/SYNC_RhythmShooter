@@ -32,6 +32,17 @@ type
     property Primary: Boolean read FPrimary write FPrimary;
   end;
 
+  // 操作とチェック状態はVCL標準のまま。テーマが文字色を上書きしない所有者描画。
+  TRhythmCheckBox = class(TCheckBox)
+  private
+    procedure CNDrawItem(var Message:TWMDrawItem); message CN_DRAWITEM;
+  protected
+    procedure CreateParams(var Params:TCreateParams); override;
+    procedure Click; override;
+  public
+    constructor Create(AOwner:TComponent); override;
+  end;
+
   TRhythmComboBox = class(TComboBox)
   private
     procedure UpdateItemMetrics;
@@ -61,6 +72,9 @@ type
     property OnPaint: TNotifyEvent read FOnPaint write FOnPaint;
   end;
 
+// 画面とheadless画素検証で共用する。有効/無効とも暗い背景上の文字を明示する。
+procedure DrawRhythmCheckBox(Canvas:TCanvas;const Bounds:TRect;const Caption:string;Font:TFont;
+  State:TCheckBoxState;Enabled,Focused,Pressed:Boolean;PPI:Integer;Background:TColor);
 procedure ApplyRhythmColors(Control: TWinControl);
 procedure ApplyRhythmTitleBar(Form: TForm);
 
@@ -122,6 +136,52 @@ begin
     C.Handle := 0; C.Free;
   end;
   Message.Result := 1;
+end;
+
+procedure DrawRhythmCheckBox(Canvas:TCanvas;const Bounds:TRect;const Caption:string;Font:TFont;
+  State:TCheckBoxState;Enabled,Focused,Pressed:Boolean;PPI:Integer;Background:TColor);
+var Box,Text,Focus:TRect;Size,Gap,Mid:Integer;
+begin
+  PPI:=Max(1,PPI);Canvas.Brush.Style:=bsSolid;Canvas.Brush.Color:=Background;Canvas.FillRect(Bounds);
+  Size:=MulDiv(14,PPI,96);Gap:=MulDiv(7,PPI,96);
+  Box:=Rect(Bounds.Left+MulDiv(2,PPI,96),Bounds.Top+(Bounds.Height-Size) div 2,0,0);
+  Box.Right:=Box.Left+Size;Box.Bottom:=Box.Top+Size;
+  Text:=Bounds;Text.Left:=Box.Right+Gap;
+  if Pressed and Enabled then begin OffsetRect(Box,1,1);OffsetRect(Text,1,1);end;
+  Canvas.Pen.Width:=1;Canvas.Pen.Color:=RhythmMuted;Canvas.Brush.Color:=RhythmInput;
+  if (State<>cbUnchecked) and Enabled then begin Canvas.Brush.Color:=TColor($00895121);Canvas.Pen.Color:=RhythmAccent;end;
+  Canvas.RoundRect(Box,Max(2,MulDiv(3,PPI,96)),Max(2,MulDiv(3,PPI,96)));
+  if Enabled then Canvas.Pen.Color:=RhythmText else Canvas.Pen.Color:=RhythmMuted;
+  Canvas.Pen.Width:=Max(1,MulDiv(2,PPI,96));Mid:=(Box.Top+Box.Bottom) div 2;
+  if State=cbChecked then Canvas.Polyline([Point(Box.Left+MulDiv(3,PPI,96),Mid),
+    Point(Box.Left+MulDiv(6,PPI,96),Box.Bottom-MulDiv(4,PPI,96)),Point(Box.Right-MulDiv(3,PPI,96),Box.Top+MulDiv(4,PPI,96))])
+  else if State=cbGrayed then begin Canvas.MoveTo(Box.Left+MulDiv(4,PPI,96),Mid);Canvas.LineTo(Box.Right-MulDiv(3,PPI,96),Mid);end;
+  Canvas.Font.Assign(Font);if Enabled then Canvas.Font.Color:=RhythmText else Canvas.Font.Color:=RhythmMuted;
+  Canvas.Brush.Style:=bsClear;
+  DrawText(Canvas.Handle,PChar(Caption),Length(Caption),Text,DT_LEFT or DT_VCENTER or DT_SINGLELINE or DT_END_ELLIPSIS);
+  if Focused and Enabled then begin Focus:=Text;InflateRect(Focus,-1,-MulDiv(2,PPI,96));Canvas.DrawFocusRect(Focus);end;
+  Canvas.Pen.Width:=1;Canvas.Brush.Style:=bsSolid;
+end;
+
+constructor TRhythmCheckBox.Create(AOwner:TComponent);
+begin inherited;ParentFont:=True;Color:=RhythmSurface;Font.Color:=RhythmText;StyleElements:=[];end;
+procedure TRhythmCheckBox.CreateParams(var Params:TCreateParams);
+begin inherited;Params.Style:=(Params.Style and not $000F) or BS_OWNERDRAW;end;
+procedure TRhythmCheckBox.Click;
+begin
+  // BS_OWNERDRAWではBM_SETCHECKだけで再描画されない。VCLのToggle後に表示を更新する。
+  inherited;Invalidate;
+end;
+procedure TRhythmCheckBox.CNDrawItem(var Message:TWMDrawItem);
+var Canvas:TCanvas;
+begin
+  Message.Result:=1;if (Message.DrawItemStruct=nil) or (Message.DrawItemStruct.hDC=0) then Exit;
+  Canvas:=TCanvas.Create;
+  try Canvas.Handle:=Message.DrawItemStruct.hDC;
+    DrawRhythmCheckBox(Canvas,Message.DrawItemStruct.rcItem,Caption,Font,State,
+      Enabled and ((Message.DrawItemStruct.itemState and ODS_DISABLED)=0),
+      (Message.DrawItemStruct.itemState and ODS_FOCUS)<>0,(Message.DrawItemStruct.itemState and ODS_SELECTED)<>0,CurrentPPI,Color);
+  finally Canvas.Handle:=0;Canvas.Free;end;
 end;
 
 constructor TRhythmComboBox.Create(AOwner: TComponent);

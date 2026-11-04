@@ -541,6 +541,7 @@ begin
       end;
     end;
   end;
+  if Frame.BackgroundOnly then begin Surface.DrawViewportMatte(Left,Top,Frame.Width,Frame.Height,RGB(13,28,39));Exit;end;
   if FPlan<>nil then begin
     if Camera<65 then Checker(0,False);
     Checker(FPlan.DistanceAt(FPlan.GoalTime),True);

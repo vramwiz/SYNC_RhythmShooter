@@ -11,7 +11,7 @@ uses System.SysUtils;
 var GId:string='SYNC_RhythmShooter';GTitle:string='リズムシューティング';GStyle:TRhythmStyle=rsShooting;
 procedure ConfigureRhythmProduct(const Id,Title:string;InitialStyle:TRhythmStyle);
 begin
-  if (Id<>'SYNC_RhythmShooter') and (Id<>'SYNC_RhythmBall') and (Id<>'SYNC_RhythmFireworks') and (Id<>'SYNC_RhythmRunner') and (Id<>'SYNC_RhythmBreakout') and (Id<>'SYNC_RhythmRace') and (Id<>'SYNC_RhythmBombAction') and (Id<>'SYNC_RhythmFighting') and (Id<>'SYNC_RhythmMining') and (Id<>'SYNC_RhythmTrain') and (Id<>'SYNC_RhythmNaval') then raise EArgumentException.Create('Unknown product identity.');
+  if (Id<>'SYNC_RhythmShooter') and (Id<>'SYNC_RhythmBall') and (Id<>'SYNC_RhythmFireworks') and (Id<>'SYNC_RhythmRunner') and (Id<>'SYNC_RhythmBreakout') and (Id<>'SYNC_RhythmRace') and (Id<>'SYNC_RhythmBombAction') and (Id<>'SYNC_RhythmFighting') and (Id<>'SYNC_RhythmMining') and (Id<>'SYNC_RhythmTrain') and (Id<>'SYNC_RhythmNaval') and (Id<>'SYNC_RhythmGame') then raise EArgumentException.Create('Unknown product identity.');
   GId:=Id;GTitle:=Title;GStyle:=InitialStyle;
 end;
 function ProductId:string;begin Result:=GId;end;
