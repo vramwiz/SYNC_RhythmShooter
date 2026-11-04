@@ -12,6 +12,8 @@ type
     destructor Destroy;override;
     procedure Resize(W,H:Integer);
     procedure Resolve(Target:TBitmap;Zoom,X,Y:Double);
+    function AlphaBuffer(W,H:Integer):TBitmap;
+    procedure TransformAlpha(Target:TBitmap;Zoom,X,Y:Double);
     property Black:TBitmap read FBlack;
     property White:TBitmap read FWhite;
   end;
@@ -29,12 +31,12 @@ begin FBlack.Free;FWhite.Free;FAlpha.Free;inherited;end;
 procedure TRhythmOverlay.Resize(W,H:Integer);
 begin
   if (W<1) or (H<1) or (W>8192) or (H>8192) then raise EArgumentOutOfRangeException.Create('Overlay size');
-  FBlack.SetSize(W,H);FWhite.SetSize(W,H);FAlpha.SetSize(W,H);
+  FBlack.SetSize(W,H);FWhite.SetSize(W,H);
 end;
 procedure TRhythmOverlay.Resolve(Target:TBitmap;Zoom,X,Y:Double);
-var I,J,C,A,T,SX,SY,W,H,DW,DH,L,Top:Integer;B,White,OutRow,Src:PByte;LeftD,TopD:Double;
+var I,J,C,A,T,W,H:Integer;B,White,OutRow:PByte;
 begin
-  W:=FBlack.Width;H:=FBlack.Height;Target.PixelFormat:=pf32bit;Target.SetSize(W,H);
+  W:=FBlack.Width;H:=FBlack.Height;FAlpha.SetSize(W,H);
   for J:=0 to H-1 do begin B:=FBlack.ScanLine[J];White:=FWhite.ScanLine[J];OutRow:=FAlpha.ScanLine[J];
     for I:=0 to W-1 do begin
       // チャンネル別の丸め差には最大の被覆率を使い、RGB<=Aを保証する。黒のRGB=0は透明判定に使わない。
@@ -43,6 +45,20 @@ begin
       Inc(B,4);Inc(White,4);Inc(OutRow,4);
     end;
   end;
+  TransformAlpha(Target,Zoom,X,Y);
+end;
+
+function TRhythmOverlay.AlphaBuffer(W,H:Integer):TBitmap;
+begin
+  FAlpha.SetSize(W,H);
+  Result:=FAlpha;
+end;
+
+procedure TRhythmOverlay.TransformAlpha(Target:TBitmap;Zoom,X,Y:Double);
+var I,J,SX,SY,W,H,DW,DH,L,Top:Integer;OutRow,Src:PByte;LeftD,TopD:Double;
+begin
+  W:=FAlpha.Width;H:=FAlpha.Height;
+  Target.PixelFormat:=pf32bit;Target.SetSize(W,H);
   if IsNan(Zoom) or IsInfinite(Zoom) or IsNan(X) or IsInfinite(X) or IsNan(Y) or IsInfinite(Y) then raise EArgumentException.Create('Non-finite overlay transform');
   DW:=Max(1,Round(W*EnsureRange(Zoom,0.01,4.0)));DH:=Max(1,Round(H*EnsureRange(Zoom,0.01,4.0)));
   LeftD:=(W-DW)/2+X;TopD:=(H-DH)/2+Y;

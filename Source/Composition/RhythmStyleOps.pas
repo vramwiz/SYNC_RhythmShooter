@@ -28,6 +28,7 @@ type
     LoadAudio:TStyleLoadAudio;
     CreateImages:TStyleCreateImages;
     Transparency:TStyleTransparency;
+    DirectAlphaFromVersion:Integer; // 0は従来の描画経路。指定版からは最初から背景を透過して描く。
     Activity:TStyleActivity;
   end;
 function EmptyStyleImages:TAnimationImageBank;

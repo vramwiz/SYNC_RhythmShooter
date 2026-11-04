@@ -32,8 +32,10 @@ procedure Prepare(const Context:TStylePrepareContext;var Prepared:TRhythmPlanRef
 var Source,Cold:TRhythmAudio;Plan:TStepPlan;Stats:TOrbitAudioStats;Threshold:Integer;
 begin
   Threshold:=Context.Variant-101;
-  Source:=PrepareOrbitAudio(Context.Audio,Threshold,Stats,Context.Cancel);
+  // 配置には実ピークだけを渡し、持続音は元PCMからロングとして別に判定する。
+  Source:=PrepareOrbitAudio(Context.Audio,Threshold,Stats,Context.Cancel,False);
   try
+    Source.PCM:=Context.Audio.PCM; // 読み取り専用。コピーも保存も行わない。
     Plan:=TStepPlan.Build(Source,Threshold,Context.Cancel);
     try
       Context.SetStage(3);
@@ -70,7 +72,8 @@ begin
   Result.SetAudio:=SetAudio;
   Result.Prepare:=Prepare;
   Result.LoadAudio:=LoadAudio;
-  Result.CreateImages:=EmptyStyleImages;
+  Result.CreateImages:=StepImages;
+  Result.DirectAlphaFromVersion:=STEP_PATTERN_VERSION;
   Result.Activity:=Activity;
 end;
 end.

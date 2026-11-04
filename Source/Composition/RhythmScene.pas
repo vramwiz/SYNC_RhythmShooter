@@ -77,7 +77,8 @@ procedure TRhythmRenderer.StandardBackgroundPreview(Target:TBitmap;Direction,Lay
 begin if StyleHas(FStyle,sfDesigns) then FRenderer.StandardBackgroundPreview(Target,Direction,Layer) else begin Target.Canvas.Brush.Color:=clBlack;Target.Canvas.FillRect(Target.Canvas.ClipRect);end;end;
 procedure TRhythmRenderer.Render(Target:TBitmap;Audio:TRhythmAudio;Time:Double;Direction:Integer;
   const MessageText:string;Zoom,OffsetX,OffsetY,OffsetSeconds:Double);
-var Text:string;EQ:Boolean;Frame:TAnimationFrame;Activity:TEqualizerActivity;OldColor:TColor;Row:Integer;
+var Text:string;EQ,DirectAlpha,Transform:Boolean;Frame:TAnimationFrame;Activity:TEqualizerActivity;OldColor:TColor;Row:Integer;
+  AlphaTarget:TBitmap;
 begin
   FHasAlpha:=False;FWasComposite:=False;if (Target.Width<1) or (Target.Height<1) then Exit;
   // オフセットは全種類/EQ/透明合成の前に一度だけ適用。音声再生・Plan・カメラの保存値は変更しない。
@@ -90,15 +91,36 @@ begin
   FPresentation.Audio:=Audio;Text:='';if Audio=nil then Text:=MessageText;
   EQ:=EqualizerEnabled(FEqualizerMode,FStyle,FPrimaryRef.Version);
   if Audio=nil then begin FRenderer.Render(Target,Time,Direction,Text,Zoom,OffsetX,OffsetY);Exit;end;
-  if StyleHas(FStyle,sfTransparent) then begin
-    if FOverlay=nil then FOverlay:=TRhythmOverlay.Create;FOverlay.Resize(Target.Width,Target.Height);
-    OldColor:=FRenderer.ClearColor;FOps.Transparency(FChild,True);FPresentation.IncludeEqualizer:=EQ;
+  DirectAlpha:=(FOps.DirectAlphaFromVersion>0) and (FPrimaryRef.Version>=FOps.DirectAlphaFromVersion);
+  if StyleHas(FStyle,sfTransparent) or DirectAlpha then begin
+    OldColor:=FRenderer.ClearColor;
+    if Assigned(FOps.Transparency) then FOps.Transparency(FChild,True);
+    FPresentation.IncludeEqualizer:=EQ;
     try
+      if DirectAlpha then begin
+        Transform:=(Zoom<>1) or (OffsetX<>0) or (OffsetY<>0);
+        AlphaTarget:=Target;
+        if Transform then begin
+          if FOverlay=nil then FOverlay:=TRhythmOverlay.Create;
+          AlphaTarget:=FOverlay.AlphaBuffer(Target.Width,Target.Height);
+        end;
+        if FRenderer.TryRenderAlpha(AlphaTarget,Time,Direction) then begin
+          if Transform then FOverlay.TransformAlpha(Target,Zoom,OffsetX,OffsetY);
+          FHasAlpha:=True;
+          Exit;
+        end;
+      end;
+      if FOverlay=nil then FOverlay:=TRhythmOverlay.Create;
+      FOverlay.Resize(Target.Width,Target.Height);
       FRenderer.ClearColor:=clBlack;FRenderer.Render(FOverlay.Black,Time,Direction);
       FCompositeD2D:=FRenderer.LastUsedD2D;
       FRenderer.ClearColor:=clWhite;FRenderer.Render(FOverlay.White,Time,Direction);
       FCompositeD2D:=FCompositeD2D and FRenderer.LastUsedD2D;
-    finally FOps.Transparency(FChild,False);FPresentation.IncludeEqualizer:=False;FRenderer.ClearColor:=OldColor;end;
+    finally
+      if Assigned(FOps.Transparency) then FOps.Transparency(FChild,False);
+      FPresentation.IncludeEqualizer:=False;
+      FRenderer.ClearColor:=OldColor;
+    end;
     FOverlay.Resolve(Target,Zoom,OffsetX,OffsetY);FHasAlpha:=True;FWasComposite:=True;Exit;
   end;
   if not EQ then begin FRenderer.Render(Target,Time,Direction,Text,Zoom,OffsetX,OffsetY);Exit;end;

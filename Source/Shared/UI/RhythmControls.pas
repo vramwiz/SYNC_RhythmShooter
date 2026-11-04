@@ -156,6 +156,7 @@ begin
   if State=cbChecked then Canvas.Polyline([Point(Box.Left+MulDiv(3,PPI,96),Mid),
     Point(Box.Left+MulDiv(6,PPI,96),Box.Bottom-MulDiv(4,PPI,96)),Point(Box.Right-MulDiv(3,PPI,96),Box.Top+MulDiv(4,PPI,96))])
   else if State=cbGrayed then begin Canvas.MoveTo(Box.Left+MulDiv(4,PPI,96),Mid);Canvas.LineTo(Box.Right-MulDiv(3,PPI,96),Mid);end;
+  Canvas.Font.PixelsPerInch:=Font.PixelsPerInch;
   Canvas.Font.Assign(Font);if Enabled then Canvas.Font.Color:=RhythmText else Canvas.Font.Color:=RhythmMuted;
   Canvas.Brush.Style:=bsClear;
   DrawText(Canvas.Handle,PChar(Caption),Length(Caption),Text,DT_LEFT or DT_VCENTER or DT_SINGLELINE or DT_END_ELLIPSIS);
@@ -164,7 +165,7 @@ begin
 end;
 
 constructor TRhythmCheckBox.Create(AOwner:TComponent);
-begin inherited;ParentFont:=True;Color:=RhythmSurface;Font.Color:=RhythmText;StyleElements:=[];end;
+begin inherited;ParentFont:=True;Color:=RhythmSurface;StyleElements:=[];end;
 procedure TRhythmCheckBox.CreateParams(var Params:TCreateParams);
 begin inherited;Params.Style:=(Params.Style and not $000F) or BS_OWNERDRAW;end;
 procedure TRhythmCheckBox.Click;
@@ -273,7 +274,8 @@ var I: Integer;
 begin
   TWindowAccess(Control).ParentBackground := False;
   TWindowAccess(Control).Color := RhythmSurface;
-  TWindowAccess(Control).Font.Color := RhythmText;
+  // 所有者描画で文字色を決めるチェックボックスは、親のフォントを継承し続ける。
+  if not (Control is TRhythmCheckBox) then TWindowAccess(Control).Font.Color := RhythmText;
   if (Control is TCustomEdit) or (Control is TComboBox) then
     TWindowAccess(Control).Color := RhythmInput;
   if Control is TEdit then TEdit(Control).BorderStyle := bsNone;

@@ -32,6 +32,7 @@ type
     destructor Destroy;override;
     procedure Render(Target:TBitmap;Time:Double;Direction:Integer;const MessageText:string='';
       Zoom:Double=1;OffsetX:Double=0;OffsetY:Double=0);
+    function TryRenderAlpha(Target:TBitmap;Time:Double;Direction:Integer):Boolean;
     procedure ApplyChoices(const Choices:array of TRhythmDesign;Force:Boolean=False);
     procedure StandardBackgroundPreview(Target:TBitmap;Direction,Layer:Integer);
     property BackgroundOnly:Boolean read FBackgroundOnly write FBackgroundOnly;
@@ -82,9 +83,29 @@ begin
   Frame.Width:=Width;Frame.Height:=Height;Frame.BackgroundOnly:=FBackgroundOnly;FScene.Prepare(Frame);
   FSurface.BeginFrame(Target,FClearColor);FScene.Draw(FSurface,Frame);
   if not FSurface.EndFrame then begin Render(Target,Time,Direction,MessageText);Exit;end;
-  C:=Target.Canvas;
-  C.Font.Name:='Segoe UI';C.Font.Size:=Max(9,Round(Min(Width,Height)/60));C.Font.Color:=RGB(184,212,235);C.Brush.Style:=bsClear;
   if DesignWarning<>'' then Text:='素材が見つからないため標準表示: '+DesignWarning else if FScene.Notice<>'' then Text:=FScene.Notice else Text:=MessageText;
-  if Text<>'' then C.TextOut(16,14,Text);C.Brush.Style:=bsSolid;
+  if Text<>'' then begin
+    C:=Target.Canvas;
+    C.Font.Name:='Segoe UI';C.Font.Size:=Max(9,Round(Min(Width,Height)/60));C.Font.Color:=RGB(184,212,235);C.Brush.Style:=bsClear;
+    C.TextOut(16,14,Text);C.Brush.Style:=bsSolid;
+  end;
+end;
+
+function TAnimationRenderer.TryRenderAlpha(Target:Vcl.Graphics.TBitmap;Time:Double;Direction:Integer):Boolean;
+var Frame:TAnimationFrame;
+begin
+  Frame.Time:=Max(0.0,Time);Frame.Direction:=EnsureRange(Direction,0,1);
+  Frame.Width:=Target.Width;Frame.Height:=Target.Height;Frame.BackgroundOnly:=False;
+  FScene.Prepare(Frame);
+  if FScene.Notice<>'' then Exit(False);
+  repeat
+    FSurface.BeginAlphaFrame(Target);
+    try
+      FScene.Draw(FSurface,Frame);
+    finally
+      Result:=FSurface.EndFrame;
+    end;
+    // Direct2DのEndDrawに失敗した場合、同じ時刻をCPUで描き直す。
+  until Result;
 end;
 end.

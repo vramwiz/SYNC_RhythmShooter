@@ -1,14 +1,16 @@
 ﻿unit RhythmRenderSurface;
 // GDIとDirect2Dの描画入口を揃え、シーン側の座標を共通化する。
 interface
-uses System.Types,Vcl.Graphics,RhythmImageBank,RhythmDesignTypes,RhythmD2D;
+uses System.Types,Vcl.Graphics,RhythmImageBank,RhythmDesignTypes,RhythmD2D,RhythmAlphaRaster;
 type
   TAnimationScaledBuckets=array[0..2] of TBitmap;
   TAnimationRenderSurface=class
   private
     FImages:TAnimationImageBank;
     FScaled:TArray<TAnimationScaledBuckets>;
-    FD2D:TRhythmD2D;
+    FD2D,FAlphaD2D,FActiveD2D:TRhythmD2D;
+    FAlphaUnavailable:Boolean;
+    FAlphaRaster:TRhythmAlphaRaster;
     FTarget:TBitmap;
     FAlphaLayer,FAlphaMask:TBitmap;
     FD2DActive,FUseD2D,FLastD2D:Boolean;
@@ -21,6 +23,7 @@ type
     constructor Create(Images:TAnimationImageBank);
     destructor Destroy;override;
     procedure BeginFrame(Target:TBitmap;ClearColor:TColor=$001D0D07);
+    procedure BeginAlphaFrame(Target:TBitmap);
     procedure DrawViewportMatte(Left,Top:Double;W,H:Integer;Color:TColor);
     function EndFrame:Boolean;
     procedure DrawAsset(Index:Integer;const Center:TPoint;W,H:Integer;
@@ -33,7 +36,7 @@ type
     procedure ApplyChoices(const Choices:array of TRhythmDesign;Force:Boolean=False);
     property Images:TAnimationImageBank read FImages;
     property Canvas:TCanvas read GetCanvas;
-    property D2D:TRhythmD2D read FD2D;
+    property D2D:TRhythmD2D read FActiveD2D;
     property D2DActive:Boolean read FD2DActive;
     property UseD2D:Boolean read FUseD2D write FUseD2D;
     property LastUsedD2D:Boolean read FLastD2D;
@@ -51,7 +54,7 @@ end;
 destructor TAnimationRenderSurface.Destroy;
 var I,J:Integer;
 begin
-  FD2D.Free;FAlphaLayer.Free;FAlphaMask.Free;
+  FD2D.Free;FAlphaD2D.Free;FAlphaLayer.Free;FAlphaMask.Free;
   for I:=0 to High(FScaled) do for J:=0 to 2 do FreeAndNil(FScaled[I][J]);
   FImages.Free;inherited;
 end;
@@ -67,23 +70,53 @@ begin Result:=FTarget.Canvas;end;
 procedure TAnimationRenderSurface.BeginFrame(Target:Vcl.Graphics.TBitmap;ClearColor:TColor);
 begin
   FTarget:=Target;FLastD2D:=False;
-  FD2DActive:=FUseD2D and (FD2D<>nil) and FD2D.BeginFrame(Target,ClearColor);
+  FActiveD2D:=FD2D;
+  FD2DActive:=FUseD2D and (FActiveD2D<>nil) and FActiveD2D.BeginFrame(Target,ClearColor);
   if not FD2DActive then begin Canvas.Brush.Color:=ClearColor;Canvas.FillRect(Rect(0,0,Target.Width,Target.Height));end;
 end;
 procedure TAnimationRenderSurface.DrawViewportMatte(Left,Top:Double;W,H:Integer;Color:TColor);
 begin if Left>0 then begin FillRect(0,0,Left,H,Color);FillRect(W-Left,0,W,H,Color);end;
   if Top>0 then begin FillRect(0,0,W,Top,Color);FillRect(0,H-Top,W,H,Color);end;
 end;
+procedure TAnimationRenderSurface.BeginAlphaFrame(Target:Vcl.Graphics.TBitmap);
+begin
+  FLastD2D:=False;
+  FD2DActive:=False;
+  FTarget:=Target;
+  Target.PixelFormat:=pf32bit;
+  if FUseD2D and not FAlphaUnavailable then begin
+    if FAlphaD2D=nil then
+      try
+        FAlphaD2D:=TRhythmD2D.Create(FImages.Images,FImages.ColorKeys,True);
+      except
+        FAlphaUnavailable:=True;
+      end;
+    if (FAlphaD2D<>nil) and FAlphaD2D.BeginFrame(Target,clBlack,True) then begin
+      FActiveD2D:=FAlphaD2D;
+      FD2DActive:=True;
+      Exit;
+    end;
+    FAlphaUnavailable:=True;
+  end;
+  FActiveD2D:=nil;
+  FAlphaRaster.BeginFrame(Target);
+end;
+
 function TAnimationRenderSurface.EndFrame:Boolean;
 begin
+  FAlphaRaster.EndFrame;
   Result:=True;if not FD2DActive then Exit;FD2DActive:=False;
-  if not FD2D.EndFrame then begin FUseD2D:=False;Exit(False);end;
+  if not FActiveD2D.EndFrame then begin
+    if FActiveD2D=FAlphaD2D then FAlphaUnavailable:=True else FUseD2D:=False;
+    Exit(False);
+  end;
   FLastD2D:=True;
 end;
 procedure TAnimationRenderSurface.Circle(X,Y,Radius:Double;Color:TColor;Filled:Boolean;Stroke,Opacity:Double);
 begin
   if (Radius<=0) or (Opacity<=0) then Exit;
-  if FD2DActive then begin FD2D.Circle(X,Y,Radius,Color,Filled,Stroke,Opacity);Exit;end;
+  if FD2DActive then begin FActiveD2D.Circle(X,Y,Radius,Color,Filled,Stroke,Opacity);Exit;end;
+  if FAlphaRaster.Active then begin FAlphaRaster.Circle(X,Y,Radius,Stroke,Color,Filled,Opacity);Exit;end;
   if Opacity<1 then begin BlendPrimitive(3-Ord(Filled),X,Y,Radius,0,Stroke,Color,Opacity);Exit;end;
   Canvas.Pen.Color:=Color;Canvas.Pen.Width:=Max(1,Round(Stroke));Canvas.Brush.Color:=Color;
   if Filled then begin Canvas.Pen.Style:=psClear;Canvas.Brush.Style:=bsSolid;end else begin Canvas.Pen.Style:=psSolid;Canvas.Brush.Style:=bsClear;end;
@@ -92,7 +125,8 @@ end;
 procedure TAnimationRenderSurface.Line(X1,Y1,X2,Y2:Double;Color:TColor;Stroke,Opacity:Double);
 begin
   if Opacity<=0 then Exit;
-  if FD2DActive then begin FD2D.Line(X1,Y1,X2,Y2,Color,Stroke,Opacity);Exit;end;
+  if FD2DActive then begin FActiveD2D.Line(X1,Y1,X2,Y2,Color,Stroke,Opacity);Exit;end;
+  if FAlphaRaster.Active then begin FAlphaRaster.Line(X1,Y1,X2,Y2,Stroke,Color,Opacity);Exit;end;
   if Opacity<1 then begin BlendPrimitive(1,X1,Y1,X2,Y2,Stroke,Color,Opacity);Exit;end;
   Canvas.Pen.Style:=psSolid;Canvas.Pen.Color:=Color;Canvas.Pen.Width:=Max(1,Round(Stroke));
   Canvas.MoveTo(Round(X1),Round(Y1));Canvas.LineTo(Round(X2),Round(Y2));Canvas.Pen.Width:=1;
@@ -100,14 +134,16 @@ end;
 procedure TAnimationRenderSurface.FillRect(X1,Y1,X2,Y2:Double;Color:TColor;Opacity:Double);
 begin
   if (X2<=X1) or (Y2<=Y1) or (Opacity<=0) then Exit;
-  if FD2DActive then begin FD2D.FillRect(X1,Y1,X2,Y2,Color,Opacity);Exit;end;
+  if FD2DActive then begin FActiveD2D.FillRect(X1,Y1,X2,Y2,Color,Opacity);Exit;end;
+  if FAlphaRaster.Active then begin FAlphaRaster.FillRect(X1,Y1,X2,Y2,Color,Opacity);Exit;end;
   if Opacity<1 then begin BlendPrimitive(0,X1,Y1,X2,Y2,1,Color,Opacity);Exit;end;
   Canvas.Brush.Style:=bsSolid;Canvas.Brush.Color:=Color;Canvas.FillRect(Rect(Round(X1),Round(Y1),Round(X2),Round(Y2)));
 end;
 procedure TAnimationRenderSurface.FillQuad(const A,B,C,D:TPointF;Color:TColor);
 var Points:array[0..3] of TPoint;
 begin
-  if FD2DActive then begin FD2D.FillQuad(A,B,C,D,Color);Exit;end;
+  if FD2DActive then begin FActiveD2D.FillQuad(A,B,C,D,Color);Exit;end;
+  if FAlphaRaster.Active then begin FAlphaRaster.FillQuad(A,B,C,D,Color);Exit;end;
   Points[0]:=Point(Round(A.X),Round(A.Y));Points[1]:=Point(Round(B.X),Round(B.Y));
   Points[2]:=Point(Round(C.X),Round(C.Y));Points[3]:=Point(Round(D.X),Round(D.Y));
   Canvas.Pen.Style:=psClear;Canvas.Brush.Style:=bsSolid;Canvas.Brush.Color:=Color;
@@ -164,16 +200,19 @@ end;
 procedure TAnimationRenderSurface.ApplyChoices(const Choices:array of TRhythmDesign;Force:Boolean);
 begin
   if not FImages.ApplyChoices(Choices,Force) then Exit;
-  ResetScaled;FreeAndNil(FD2D);
+  ResetScaled;FreeAndNil(FD2D);FreeAndNil(FAlphaD2D);FAlphaUnavailable:=False;
   try FD2D:=TRhythmD2D.Create(FImages.Images,FImages.ColorKeys);except FUseD2D:=False;end;
 end;
 
 procedure TAnimationRenderSurface.DrawAsset(Index:Integer;const Center:TPoint;
   W,H:Integer;Opacity:Double;ForceAlpha:Boolean;Bucket:Integer);
-var Scaled:Vcl.Graphics.TBitmap;Blend:TBlendFunction;Swap:Integer;Canvas:TCanvas;
+var Scaled:Vcl.Graphics.TBitmap;Blend:TBlendFunction;Swap:Integer;Canvas:TCanvas;Bounds:TRect;
 begin
-  if Opacity<=0 then Exit;Opacity:=Min(1.0,Opacity);Canvas:=GetCanvas;
-  if FD2DActive then begin FD2D.DrawAsset(Index,Rect(Center.X-W div 2,Center.Y-H div 2,Center.X+W div 2,Center.Y+H div 2),Opacity);Exit;end;
+  if Opacity<=0 then Exit;Opacity:=Min(1.0,Opacity);
+  Bounds:=Rect(Center.X-W div 2,Center.Y-H div 2,Center.X+W div 2,Center.Y+H div 2);
+  if FD2DActive then begin FActiveD2D.DrawAsset(Index,Bounds,Opacity);Exit;end;
+  if FAlphaRaster.Active then begin FAlphaRaster.DrawBitmap(FImages.AlphaImage[Index],Bounds,Opacity);Exit;end;
+  Canvas:=GetCanvas;
   if ((Opacity<1) or ForceAlpha) and not FImages.AlphaImage[Index].Empty then
   begin
     Blend.BlendOp:=AC_SRC_OVER;Blend.BlendFlags:=0;Blend.SourceConstantAlpha:=Round(Opacity*255);Blend.AlphaFormat:=AC_SRC_ALPHA;

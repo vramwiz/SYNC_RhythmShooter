@@ -199,7 +199,7 @@ begin
       if (Audio.SoundEnd<=0) or (Audio.Hits[I].Time>Audio.SoundEnd+0.011) then begin Inc(Result.FExcluded);
         Continue;
       end;
-      if Result.FSourceEvents>=20000 then raise Exception.Create('花火イベント数が上限です。設定は保存できます。');
+      if Result.FSourceEvents>=20000 then raise Exception.Create(TYPE_F_TITLE+'のイベント数が上限です。設定は保存できます。');
       Inc(Result.FSourceEvents);
       Seed:=Cardinal((UInt64(I+1)*747796405+UInt64(Direction)*2891336453+277803737) and $FFFFFFFF);
       CenterX:=0.23+Next*0.54;
@@ -439,10 +439,10 @@ begin
   Root:=nil;
   if Audio=nil then raise Exception.Create('音声が未準備です。設定画面で準備してください。');
   if (Ref.Variant<0) or (Ref.Variant>100) or not Ref.Matches(Audio.Key,Audio.Sensitivity,Direction,rsFireworks,Ref.Variant) or not ValidDigest(Ref.Digest) then
-  raise Exception.Create('花火計画を更新したか設定が変わっています。設定画面で花火・華やかさを再準備し、適用してください。');
+  raise Exception.Create(TYPE_F_TITLE+'の計画を更新したか設定が変わっています。設定画面で準備し、適用してください。');
   Path:=PlanPath(Ref.Key);
-  if not FileExists(Path) or (TFile.GetSize(Path)>64*1024*1024) then raise Exception.Create('花火計画がありません。設定画面で再準備してください。');
-  if not SameText(THashSHA2.GetHashStringFromFile(Path),Ref.Digest) then raise Exception.Create('花火計画の内容検証に失敗しました。再準備してください。');
+  if not FileExists(Path) or (TFile.GetSize(Path)>64*1024*1024) then raise Exception.Create(TYPE_F_TITLE+'の計画がありません。設定画面で再準備してください。');
+  if not SameText(THashSHA2.GetHashStringFromFile(Path),Ref.Digest) then raise Exception.Create(TYPE_F_TITLE+'の計画の内容検証に失敗しました。再準備してください。');
   try
     V:=TJSONObject.ParseJSONValue(TFile.ReadAllText(Path,TEncoding.UTF8));
     if not (V is TJSONObject) then begin V.Free;

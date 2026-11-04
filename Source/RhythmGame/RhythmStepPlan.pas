@@ -1,5 +1,6 @@
 ﻿unit RhythmStepPlan;
 // 譜面の時刻と左右のレーン割当を固定し、音声を再解析せず復元する。
+{$POINTERMATH ON}
 interface
 uses System.SysUtils,System.JSON,RhythmAudio,RhythmPlanRef;
 
@@ -8,11 +9,14 @@ const
   STEP_LOOKAHEAD=1.65; // 秒。譜面下端から判定線に達するまでの時間。
   STEP_FLASH_TIME=0.32;
   STEP_TIME_EPSILON=1E-10; // ホストの時刻−オフセットで生じる浮動小数点の丸めだけを吸収。
+  STEP_PATTERN_VERSION=3;
 
 type
+  TStepKind=(stTap,stChord,stRoll,stRollEnd,stSweep,stSweepEnd,stHold,stSlide,stSlideEnd);
   TStepNote=record
-    Time,Strength:Double;
+    Time,Strength,EndTime:Double; // EndTimeはロングの離す時刻だけに使う。
     Lanes:array[0..1] of Byte; // 左右の譜面それぞれの4レーンをビットで表す。
+    Kind:TStepKind;
   end;
 
   TStepPlan=class
@@ -22,6 +26,8 @@ type
     FThreshold,FVersion:Integer;
     function GetCount:Integer;
     function GetNote(Index:Integer):TStepNote;
+    procedure AssignPatterns(const PCM:TBytes;const Cancel:TFunc<Boolean>);
+    procedure CheckPattern(Index:Integer);
     class function ReadChart(Root:TJSONObject;const Ref:TRhythmPlanRef):TStepPlan;static;
   public
     class function Build(Audio:TRhythmAudio;Threshold:Integer;const Cancel:TFunc<Boolean>=nil):TStepPlan;static;
@@ -34,7 +40,10 @@ type
     property Notes[Index:Integer]:TStepNote read GetNote;
     property Duration:Double read FDuration;
     property SoundEnd:Double read FSoundEnd;
+    property Version:Integer read FVersion;
   end;
+
+function StepLane(Mask:Byte):Integer;
 
 implementation
 uses System.Math,System.Generics.Collections,RhythmStyles,RhythmPreparedData,RhythmOrbitAudio;
@@ -42,11 +51,33 @@ uses System.Math,System.Generics.Collections,RhythmStyles,RhythmPreparedData,Rhy
 const
   MaxNotes=100000;
   Policy='prism-step-v';
+  HoldMin=0.36;
+  HoldMax=3.2;
+  SweepGap=0.36;
+  SlideMin=0.18;
+  SlideMax=0.34;
+  Motif:array[0..1,0..15] of Byte=(
+    (0,1,3,2,1,2,0,3,2,0,1,3,1,3,2,1),
+    (2,3,1,0,3,1,2,0,1,2,3,1,0,2,0,3));
+
+function StepLane(Mask:Byte):Integer;
+begin
+  case Mask of
+    1:Result:=0;
+    2:Result:=1;
+    4:Result:=2;
+    8:Result:=3;
+  else
+    Result:=-1;
+  end;
+end;
 
 function TStepPlan.IsRoll(Index:Integer):Boolean;
 var L,R:Integer;
 begin
-  if (FVersion<2) or (FThreshold>RHYTHM_ROLL_SENSITIVITY) or (Index<0) or (Index>=Count) then Exit(False);
+  if (Index<0) or (Index>=Count) then Exit(False);
+  if FVersion>=STEP_PATTERN_VERSION then Exit(FNotes[Index].Kind in [stRoll,stRollEnd]);
+  if (FVersion<2) or (FThreshold>RHYTHM_ROLL_SENSITIVITY) then Exit(False);
   L:=Index;R:=Index;
   while (L>0) and (Index-L<2) and RollPair(FNotes[L-1].Time,FNotes[L].Time) do Dec(L);
   while (R+1<Count) and (R-L<2) and RollPair(FNotes[R].Time,FNotes[R+1].Time) do Inc(R);
@@ -95,12 +126,136 @@ begin
   end;
 end;
 
+// 先頭の立ち上がりを許容し、その直後から続く周期音だけをロングに使う。
+function HoldEnd(const PCM:TBytes;Start,Limit:Double):Double;
+const Block=RHYTHM_SUSTAIN_BLOCK_SAMPLES;MinBlocks=9;
+var First,Finish,Pos,Run,Skip:Integer;
+begin
+  Result:=0;
+  First:=Ceil(Start*RHYTHM_RATE-1E-8);
+  Finish:=Min(Length(PCM) div 4,Floor(Min(Limit,Start+HoldMax)*RHYTHM_RATE));
+  if Finish-First<MinBlocks*Block then Exit;
+  Pos:=First;
+  Run:=0;
+  Skip:=0;
+  while Pos+Block<=Finish do begin
+    if SustainedBlock(PSmallInt(PCM)+Pos*2) then Inc(Run)
+    else if (Run=0) and (Skip<2) then Inc(Skip)
+    else Break;
+    Inc(Pos,Block);
+  end;
+  if Run>=MinBlocks then Result:=Pos/RHYTHM_RATE;
+end;
+
+procedure TStepPlan.AssignPatterns(const PCM:TBytes;const Cancel:TFunc<Boolean>);
+var I,J,K,Last,Lane,Steps,Sweeps,Start,Finish,RunPart:Integer;
+  LastChord,Previous,Following,Gap,ReleaseAt,HoldLimit:Double;
+
+  procedure CheckCancel(Index:Integer);
+  begin
+    if (Index mod 128=0) and Assigned(Cancel) and Cancel() then Abort;
+  end;
+
+begin
+  for I:=0 to Count-1 do begin
+    CheckCancel(I);
+    for J:=0 to 1 do FNotes[I].Lanes[J]:=1 shl Motif[J,I mod 16];
+  end;
+
+  // 密集した打音は、同じレーンの連打にまとめる。
+  I:=0;
+  while I<Count do begin
+    CheckCancel(I);
+    Last:=I;
+    while (Last+1<Count) and RollPair(FNotes[Last].Time,FNotes[Last+1].Time) do begin
+      Inc(Last);
+      CheckCancel(Last);
+    end;
+    Start:=I;
+    RunPart:=0;
+    while Last-Start>=2 do begin
+      Finish:=Min(Last,Start+5);
+      for K:=Start to Finish do begin
+        FNotes[K].Lanes:=FNotes[Start].Lanes;
+        FNotes[K].Kind:=stRoll;
+      end;
+      FNotes[Finish].Kind:=stRollEnd;
+      Start:=Finish+1;
+      // 長い密集区間には横移動も挟み、同じレーンの連打だけが続くのを防ぐ。
+      if (RunPart mod 3=2) and (Last-Start>=6) then Inc(Start,7)
+      else if Last-Start>=3 then Inc(Start,4);
+      Inc(RunPart);
+    end;
+    I:=Last+1;
+  end;
+
+  // 間隔に余裕のある連続音は左右へ流す。2Pは逆向きにする。
+  I:=0;
+  Sweeps:=0;
+  while I<Count do begin
+    CheckCancel(I);
+    Last:=I;
+    if FNotes[I].Kind=stTap then
+      while (Last+1<Count) and (Last-I<6) and (FNotes[Last+1].Kind=stTap) and
+        (FNotes[Last+1].Time-FNotes[Last].Time<=SweepGap) do Inc(Last);
+    if Last-I<3 then begin Inc(I);Continue;end;
+    Steps:=4;
+    if (Last-I>=6) and (Sweeps mod 3=2) then Steps:=7;
+    for K:=0 to Steps-1 do begin
+      Lane:=Min(K,6-K);
+      if Sweeps mod 3=1 then Lane:=3-Lane;
+      FNotes[I+K].Lanes[0]:=1 shl Lane;
+      FNotes[I+K].Lanes[1]:=1 shl (3-Lane);
+      FNotes[I+K].Kind:=stSweep;
+    end;
+    FNotes[I+Steps-1].Kind:=stSweepEnd;
+    Inc(Sweeps);
+    Inc(I,Steps);
+    // 長い等間隔のフレーズにも単発や同時押しを差し込める余地を残す。
+    if (I<Count) and (FNotes[I].Time-FNotes[I-1].Time<=SweepGap) then Inc(I);
+  end;
+
+  LastChord:=-1;
+  for I:=0 to Count-1 do begin
+    CheckCancel(I);
+    if FNotes[I].Kind<>stTap then Continue;
+    Previous:=-1;
+    Following:=FSoundEnd;HoldLimit:=FSoundEnd;
+    if I>0 then Previous:=FNotes[I-1].Time;
+    if I+1<Count then begin
+      Following:=FNotes[I+1].Time;
+      HoldLimit:=Following-0.04;
+    end;
+    ReleaseAt:=HoldEnd(PCM,FNotes[I].Time,HoldLimit);
+    if ReleaseAt>0 then begin
+      FNotes[I].Kind:=stHold;
+      FNotes[I].EndTime:=ReleaseAt;
+    end else if (FNotes[I].Strength>=0.78) and (FNotes[I].Time-LastChord>=0.72) and
+      (FNotes[I].Time-Previous>=0.16) and ((I+1=Count) or (Following-FNotes[I].Time>=0.16)) then begin
+      for J:=0 to 1 do begin
+        Lane:=StepLane(FNotes[I].Lanes[J]);
+        FNotes[I].Lanes[J]:=FNotes[I].Lanes[J] or (1 shl (Lane xor (2-J)));
+      end;
+      FNotes[I].Kind:=stChord;
+      LastChord:=FNotes[I].Time;
+    end;
+  end;
+
+  for I:=0 to Count-2 do begin
+    CheckCancel(I);
+    if (FNotes[I].Kind<>stTap) or (FNotes[I+1].Kind<>stTap) then Continue;
+    Gap:=FNotes[I+1].Time-FNotes[I].Time;
+    if (Gap<SlideMin) or (Gap>SlideMax) or (FNotes[I+1].Strength<FNotes[I].Strength) then Continue;
+    for J:=0 to 1 do
+      if FNotes[I].Lanes[J]=FNotes[I+1].Lanes[J] then
+        FNotes[I+1].Lanes[J]:=1 shl ((StepLane(FNotes[I].Lanes[J])+1) mod STEP_LANE_COUNT);
+    FNotes[I].Kind:=stSlide;
+    FNotes[I+1].Kind:=stSlideEnd;
+  end;
+end;
+
 class function TStepPlan.Build(Audio:TRhythmAudio;Threshold:Integer;const Cancel:TFunc<Boolean>):TStepPlan;
-const
-  Motif:array[0..1,0..15] of Byte=(
-    (0,1,3,2,1,2,0,3,2,0,1,3,1,3,2,1),
-    (2,3,1,0,3,1,2,0,1,2,3,1,0,2,0,3));
-var I,J,N,Lane:Integer;Hit:TRhythmHit;Last,Previous,LastChord:Double;Chord,Roll:Boolean;
+var I,N:Integer;Hit:TRhythmHit;Last:Double;
 begin
   if Audio=nil then raise EArgumentNilException.Create('Audio');
   CheckBounds(Audio.Duration,Audio.SoundEnd,Threshold,Length(Audio.Hits));
@@ -130,23 +285,7 @@ begin
       Inc(N);
     end;
     SetLength(Result.FNotes,N);
-    Previous:=-1;
-    LastChord:=-1;
-    for I:=0 to N-1 do begin
-      if (I mod 256=0) and Assigned(Cancel) and Cancel() then Abort;
-      // 強音でだけ同時押し風の二列発光。密な区間では単音の列を優先する。
-      Roll:=Result.IsRoll(I);
-      Chord:=not Roll and (Result.FNotes[I].Strength>=0.78) and (Result.FNotes[I].Time-LastChord>=0.72) and
-        (Result.FNotes[I].Time-Previous>=0.16) and ((I=N-1) or (Result.FNotes[I+1].Time-Result.FNotes[I].Time>=0.16));
-      for J:=0 to 1 do begin
-        Lane:=Motif[J,I mod 16];
-        if Roll then Lane:=(I+J) mod 2+2*J;
-        Result.FNotes[I].Lanes[J]:=1 shl Lane;
-        if Chord then Result.FNotes[I].Lanes[J]:=Result.FNotes[I].Lanes[J] or (1 shl (Lane xor (2-J)));
-      end;
-      Previous:=Result.FNotes[I].Time;
-      if Chord then LastChord:=Previous;
-    end;
+    Result.AssignPatterns(Audio.PCM,Cancel);
   except
     Result.Free;
     raise;
@@ -184,6 +323,10 @@ begin
       Row.AddElement(PreparedExact(Note.Strength));
       Row.Add(Note.Lanes[0]);
       Row.Add(Note.Lanes[1]);
+      if FVersion>=STEP_PATTERN_VERSION then begin
+        Row.Add(Ord(Note.Kind));
+        Row.AddElement(PreparedExact(Note.EndTime));
+      end;
     end;
     WritePreparedData(Root,Ref);
   finally
@@ -191,8 +334,46 @@ begin
   end;
 end;
 
+procedure TStepPlan.CheckPattern(Index:Integer);
+var Note,Other:TStepNote;J,Lane,OtherLane:Integer;Valid:Boolean;Gap:Double;
+begin
+  Note:=FNotes[Index];
+  Valid:=True;
+  for J:=0 to 1 do
+    if Note.Kind=stChord then Valid:=Valid and (StepLane(Note.Lanes[J])<0) and
+      (StepLane(Note.Lanes[J] and (Note.Lanes[J]-1))>=0)
+    else Valid:=Valid and (StepLane(Note.Lanes[J])>=0);
+  if Note.Kind=stHold then begin
+    Valid:=Valid and (Note.EndTime-Note.Time>=HoldMin-STEP_TIME_EPSILON) and
+      (Note.EndTime-Note.Time<=HoldMax+STEP_TIME_EPSILON) and (Note.EndTime<=SoundEnd);
+    if Index+1<Count then Valid:=Valid and (Note.EndTime<FNotes[Index+1].Time);
+  end else Valid:=Valid and (Note.EndTime=0);
+  if Note.Kind in [stRoll,stSweep,stSlide] then begin
+    if Index+1>=Count then Valid:=False
+    else begin
+      Other:=FNotes[Index+1];
+      Gap:=Other.Time-Note.Time;
+      for J:=0 to 1 do begin
+        Lane:=StepLane(Note.Lanes[J]);
+        OtherLane:=StepLane(Other.Lanes[J]);
+        case Note.Kind of
+          stRoll:Valid:=Valid and (Other.Kind in [stRoll,stRollEnd]) and (Lane=OtherLane) and RollPair(Note.Time,Other.Time);
+          stSweep:Valid:=Valid and (Other.Kind in [stSweep,stSweepEnd]) and (Abs(Lane-OtherLane)=1) and (Gap<=SweepGap);
+          stSlide:Valid:=Valid and (Other.Kind=stSlideEnd) and (Lane<>OtherLane) and (Gap>=SlideMin) and (Gap<=SlideMax);
+        end;
+      end;
+    end;
+  end;
+  case Note.Kind of
+    stRollEnd:Valid:=Valid and (Index>0) and (FNotes[Index-1].Kind=stRoll);
+    stSweepEnd:Valid:=Valid and (Index>0) and (FNotes[Index-1].Kind=stSweep);
+    stSlideEnd:Valid:=Valid and (Index>0) and (FNotes[Index-1].Kind=stSlide);
+  end;
+  if not Valid then raise EConvertError.Create('Invalid step chart pattern');
+end;
+
 class function TStepPlan.ReadChart(Root:TJSONObject;const Ref:TRhythmPlanRef):TStepPlan;
-var Rows,Row:TJSONArray;I:Integer;Note:TStepNote;Last:Double;
+var Rows,Row:TJSONArray;I,Kind,Columns:Integer;Note:TStepNote;Last:Double;
 begin
   if Root.GetValue<string>('policy','')<>Policy+IntToStr(Ref.Version) then raise EConvertError.Create('Unknown step chart policy');
   Rows:=Root.GetValue<TJSONArray>('notes');
@@ -206,18 +387,28 @@ begin
     CheckBounds(Result.Duration,Result.SoundEnd,Result.FThreshold,Rows.Count);
     SetLength(Result.FNotes,Rows.Count);
     Last:=-1;
+    Columns:=4;
+    if Ref.Version>=STEP_PATTERN_VERSION then Columns:=6;
     for I:=0 to Rows.Count-1 do begin
       Row:=Rows.Items[I] as TJSONArray;
-      if Row.Count<>4 then raise EConvertError.Create('Invalid step chart row');
+      if (Row=nil) or (Row.Count<>Columns) then raise EConvertError.Create('Invalid step chart row');
+      Note:=Default(TStepNote);
       Note.Time:=ReadPreparedExact(Row.Items[0]);
       Note.Strength:=ReadPreparedExact(Row.Items[1]);
       Note.Lanes[0]:=ReadMask(Row.Items[2]);
       Note.Lanes[1]:=ReadMask(Row.Items[3]);
+      if Columns=6 then begin
+        if not (Row.Items[4] is TJSONNumber) or not TryStrToInt(Row.Items[4].Value,Kind) or
+          (Kind<Ord(Low(TStepKind))) or (Kind>Ord(High(TStepKind))) then raise EConvertError.Create('Invalid step note kind');
+        Note.Kind:=TStepKind(Kind);
+        Note.EndTime:=ReadPreparedExact(Row.Items[5]);
+      end;
       if (Note.Time<0) or (Note.Time<=Last) or (Result.SoundEnd<=0) or (Note.Time>Result.SoundEnd) or
         (Note.Strength<Result.FThreshold/100) then raise EConvertError.Create('Invalid step chart accent');
       Result.FNotes[I]:=Note;
       Last:=Note.Time;
     end;
+    if Columns=6 then for I:=0 to Rows.Count-1 do Result.CheckPattern(I);
   except
     Result.Free;
     raise;

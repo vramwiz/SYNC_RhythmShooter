@@ -2,9 +2,10 @@
 {$APPTYPE CONSOLE}
 {$POINTERMATH ON}
 // Synthetic PCM, absolute hit timing, shared density, saved chart and GDI/D2D rendering.
-uses System.SysUtils,System.Classes,System.IOUtils,System.Math,System.Hash,System.JSON,Vcl.Graphics,Vcl.Imaging.pngimage,
+uses System.SysUtils,System.Classes,System.IOUtils,System.Math,System.Hash,System.JSON,System.Diagnostics,
+  Winapi.Windows,Vcl.Graphics,Vcl.Imaging.pngimage,
   RhythmAudio,RhythmAudioCache,RhythmOrbitAudio,RhythmStyles,RhythmProduct,RhythmPlanRef,RhythmSettings,RhythmPrepare,
-  RhythmStepPlan,RhythmStepScene,RhythmScene,RhythmGamePlan,RhythmStyleRegistry,RhythmPreparedData;
+  RhythmStepPlan,RhythmStepScene,RhythmScene,RhythmGamePlan,RhythmStyleRegistry,RhythmPreparedData,RhythmOverlay;
 var
   Audio,Cold:TRhythmAudio;
   Plan:TStepPlan;
@@ -130,6 +131,7 @@ var PNG:TPngImage;
 begin
   Image.SetSize(Width,Height);
   Renderer.Render(Image,Cold,Time,0);
+  if Renderer.OutputHasAlpha then OverlayPreview(Image);
   PNG:=TPngImage.Create;
   try
     PNG.Assign(Image);
@@ -161,12 +163,210 @@ begin
   end;
 end;
 
+procedure MeasureFrames(const Chart:TRhythmPlanRef;Fixture:TRhythmAudio;Start,Window:Double);
+const Frames=120;
+var B,K,Eq:Integer;Watch:TStopwatch;
+begin
+  if GetEnvironmentVariable('RHYTHM_STEP_BENCHMARK')<>'1' then Exit;
+  Image.SetSize(1920,1080);
+  for Eq:=0 to 1 do begin
+    Renderer.ConfigureStyle(rsStepGame,Chart,100,Eq);
+    for B:=0 to 1 do begin
+      Renderer.UseD2D:=B=1;
+      for K:=0 to 11 do Renderer.Render(Image,Fixture,Start+Window*K/Frames,0);
+      GdiFlush;
+      Watch:=TStopwatch.StartNew;
+      for K:=0 to Frames-1 do Renderer.Render(Image,Fixture,Start+Window*K/Frames,0);
+      GdiFlush;
+      Watch.Stop;
+      WriteLn('1920x1080 backend=',B,' EQ=',Eq,' ms/frame=',Watch.Elapsed.TotalMilliseconds/Frames:0:3);
+    end;
+  end;
+end;
+
+procedure CheckAlpha;
+var X,Y,Clear,Partial,Opaque:Integer;Row:PByte;Valid:Boolean;
+begin
+  Clear:=0;Partial:=0;Opaque:=0;Valid:=True;
+  for Y:=0 to Image.Height-1 do begin
+    Row:=Image.ScanLine[Y];
+    for X:=0 to Image.Width-1 do begin
+      if (Row[0]>Row[3]) or (Row[1]>Row[3]) or (Row[2]>Row[3]) then Valid:=False;
+      case Row[3] of
+        0:Inc(Clear);
+        255:Inc(Opaque);
+      else
+        Inc(Partial);
+      end;
+      Inc(Row,4);
+    end;
+  end;
+  Need(Renderer.OutputHasAlpha and Valid and (Clear>Image.Width*Image.Height div 3) and
+    (Partial>1000) and (Opaque>100),'Missing transparent margins, deck tint or solid notes');
+  Row:=Image.ScanLine[Image.Height div 2];
+  Need(PCardinal(Row+Image.Width div 2*4)^=0,'MV center should stay clear');
+end;
+
+function PixelAt(X,Y:Integer):Cardinal;
+begin
+  Result:=PCardinal(PByte(Image.ScanLine[Y])+X*4)^;
+end;
+
+procedure CheckPatterns;
+const Times:array[0..23] of Double=(0.55,1.10,1.19,1.33,2.1,2.33,2.54,2.8,
+  3.5,3.71,3.99,4.23,5.0,5.22,5.49,5.73,6.02,6.21,6.53,7.8,8.01,8.61,10.0,12.3);
+  ExpectedKinds:array[0..23] of TStepKind=(stTap,stRoll,stRoll,stRollEnd,
+    stSweep,stSweep,stSweep,stSweepEnd,stSweep,stSweep,stSweep,stSweepEnd,
+    stSweep,stSweep,stSweep,stSweep,stSweep,stSweep,stSweepEnd,stSlide,stSlideEnd,stChord,stHold,stTap);
+  SweepLanes:array[4..18] of Integer=(0,1,2,3,3,2,1,0,0,1,2,3,2,1,0);
+var Input,Restored:TRhythmAudio;Chart,Loaded:TStepPlan;Saved:TRhythmPlanRef;K,B,N,X,Y,Player:Integer;
+  PCM:PSmallInt;Sample:SmallInt;Time,ReleaseAt,LaneWidth:Double;Hash:string;Event:TStepNote;
+  PNG:TPngImage;Unshifted,Before:Cardinal;
+begin
+  Input:=TRhythmAudio.Create;Restored:=nil;Chart:=nil;Loaded:=nil;
+  try
+    Input.Source:=Audio.Source;Input.SourceRevision:=Audio.SourceRevision;
+    Input.Key:=THashSHA2.GetHashString('step-patterns-fixture');Input.Sensitivity:=50;
+    Input.Duration:=13;Input.SoundEnd:=13;
+    SetLength(Input.PCM,13*RHYTHM_RATE*4);PCM:=PSmallInt(Input.PCM);
+    for K:=10*RHYTHM_RATE to Round(11.33*RHYTHM_RATE)-1 do begin
+      Time:=K/RHYTHM_RATE;
+      Sample:=Round(10000*Sin(2*Pi*220*Time));
+      PCM[K*2]:=Sample;PCM[K*2+1]:=Sample;
+    end;
+    SetLength(Input.Hits,Length(Times));
+    for K:=Low(Times) to High(Times) do begin
+      Input.Hits[K].Time:=Times[K];Input.Hits[K].Strength:=0.46;
+    end;
+    Input.Hits[21].Strength:=0.94;
+    Chart:=TStepPlan.Build(Input,20);
+    Saved:=NewPlanRef(Input.Key,50,0,rsStepGame,121);
+    Saved.SourceRevision:=Input.SourceRevision;
+    Chart.Save(Saved,Input);
+    Restored:=TStepPlan.LoadAudioMetadata(Saved,Input.Source,0);
+    Loaded:=TStepPlan.Load(Saved,Restored,0);
+    Need((Length(Restored.PCM)=0) and (Loaded.Count=Length(Times)),'Pattern chart PCM-free restoration');
+    for K:=Low(Times) to High(Times) do begin
+      Event:=Loaded.Notes[K];
+      Need((Event.Time=Times[K]) and (Event.Kind=ExpectedKinds[K]),'Wrong event time or pattern at '+IntToStr(K));
+      Need((Loaded.CountThrough(Event.Time-1E-8)=K) and (Loaded.CountThrough(Event.Time)=K+1),'Pattern hit boundary');
+      if K in [1..3] then Need((Event.Lanes[0]=Loaded.Notes[1].Lanes[0]) and
+        (Event.Lanes[1]=Loaded.Notes[1].Lanes[1]),'Roll changed lanes');
+      if K in [4..18] then Need((StepLane(Event.Lanes[0])=SweepLanes[K]) and
+        (StepLane(Event.Lanes[1])=3-SweepLanes[K]),'Sweep sequence');
+    end;
+    ReleaseAt:=Loaded.Notes[22].EndTime;
+    Need((ReleaseAt>=11.26) and (ReleaseAt<=11.33),'Hold release escaped the sustained sound');
+    Renderer.ConfigureStyle(rsStepGame,Saved,100,0);
+    Image.SetSize(960,540);
+    for B:=0 to 1 do begin
+      Renderer.UseD2D:=B=1;
+      Renderer.Render(Image,Restored,Times[0]-0.002,0);
+      LaneWidth:=540*0.666/STEP_LANE_COUNT;
+      for Player:=0 to 1 do
+        for K:=0 to STEP_LANE_COUNT do begin
+          X:=Round(960*(0.266+Player*0.468)+(K-2)*LaneWidth);
+          Need(((PixelAt(X,225) and $FF)>=200) and ((PixelAt(X+1,340) and $FF)>=200),'Lane boundary is too dim or narrow');
+        end;
+      X:=Round(960*0.266+1.5*LaneWidth);
+      Need(((PixelAt(X,186) and $FF)<55) and ((PixelAt(X,186) and $FF)>(PixelAt(X,184) and $FF)),
+        'Horizontal guide should be visible but faint');
+      X:=Round(960*0.266+(StepLane(Loaded.Notes[0].Lanes[0])-1.5)*LaneWidth);
+      Y:=Round(Image.Height*0.49);
+      Before:=PixelAt(X,Y);
+      Renderer.Render(Image,Restored,Times[0]+0.18,0);
+      Need(PixelAt(X,Y)=Before,'Hit sent a moving flash down the lane');
+      for N:=0 to 5 do begin
+        case N of
+          0:Time:=1.19;
+          1:Time:=2.46;
+          2:Time:=7.9;
+          3:Time:=8.61;
+          4:Time:=10.65;
+        else
+          Time:=ReleaseAt;
+        end;
+        Renderer.Render(Image,Input,Time,0);CheckAlpha;
+        Need(Renderer.LastUsedD2D=(B=1),'Wrong backend for the alpha overlay');
+        Hash:=ImageHash;
+        Renderer.Render(Image,Restored,Time+2.3,0);
+        Renderer.Render(Image,Restored,Time,0);
+        Need(ImageHash=Hash,'Pattern changed after PCM-free restore or reverse seek');
+        if N=5 then begin
+          X:=Round(960*0.266+(StepLane(Loaded.Notes[22].Lanes[0])-1.5)*540*0.666/4);
+          Y:=Round(540*0.266+540*0.036*0.52);
+          Unshifted:=PixelAt(X,Y);
+          Renderer.Render(Image,Restored,Time-0.002,0);
+          Before:=PixelAt(X,Y);
+          Need((Unshifted=$FFE9F0F8) and (Before<>Unshifted),'Hold release did not flash at its planned time');
+          Renderer.Render(Image,Restored,Time,0,'',1,13,-9);
+          Need((PixelAt(X+13,Y-9)=Unshifted) and (PixelAt(0,0)=0),'Position transform broke the overlay');
+          Renderer.Render(Image,Restored,Time,0);
+        end;
+        if B=1 then begin
+          OverlayPreview(Image);
+          PNG:=TPngImage.Create;
+          try
+            PNG.Assign(Image);
+            PNG.SaveToFile(TPath.Combine(Folder,'ddr-pattern-'+IntToStr(N)+'.png'));
+          finally
+            PNG.Free;
+          end;
+        end;
+      end;
+    end;
+  finally
+    Loaded.Free;Chart.Free;Restored.Free;Input.Free;
+  end;
+end;
+
+procedure CheckLongChart;
+const Notes=100000;Gap=0.029;
+var Input,Restored:TRhythmAudio;Chart:TStepPlan;Saved:TRhythmPlanRef;K,B:Integer;
+  Time:Double;Hash:string;
+begin
+  Input:=TRhythmAudio.Create;Chart:=nil;Restored:=nil;
+  try
+    Input.Source:=Audio.Source;Input.SourceRevision:=Audio.SourceRevision;
+    Input.Key:=THashSHA2.GetHashString('step-long-dense-fixture');Input.Sensitivity:=50;
+    Input.Duration:=3000;Input.SoundEnd:=3000;
+    SetLength(Input.Hits,Notes);
+    for K:=0 to Notes-1 do begin
+      Input.Hits[K].Time:=0.5+K*Gap;
+      Input.Hits[K].Strength:=0.52;
+    end;
+    Chart:=TStepPlan.Build(Input,-80);
+    Need((Chart.Count=Notes) and Chart.IsRoll(0) and (Chart.Notes[6].Kind=stSweep),'Dense long chart lost pattern variation');
+    Time:=Chart.Notes[Notes-80].Time;
+    Need(Chart.CountThrough(Time)=Notes-79,'Long chart seek boundary');
+    Need(Chart.CountThrough(Time+STEP_LOOKAHEAD)-Chart.CountThrough(Time)=56,'Dense lookahead range');
+    Saved:=NewPlanRef(Input.Key,50,0,rsStepGame,21);
+    Saved.SourceRevision:=Input.SourceRevision;
+    Chart.Save(Saved,Input);
+    Restored:=TStepPlan.LoadAudioMetadata(Saved,Input.Source,0);
+    Renderer.ConfigureStyle(rsStepGame,Saved,100,0);
+    Image.SetSize(960,540);
+    for B:=0 to 1 do begin
+      Renderer.UseD2D:=B=1;
+      Renderer.Render(Image,Restored,Time,0);
+      CheckAlpha;
+      Hash:=ImageHash;
+      Renderer.Render(Image,Restored,0,0);
+      Renderer.Render(Image,Restored,Time,0);
+      Need(ImageHash=Hash,'Dense long chart changed after seek');
+    end;
+    WriteLn('Dense chart PASS notes=',Notes,' duration=',Input.Duration:0:0);
+  finally
+    Restored.Free;Chart.Free;Input.Free;
+  end;
+end;
+
 procedure CheckRolls;
 var Input,Peaks,Dense,Restored:TRhythmAudio;Pool:TOrbitCandidatePool;Stats:TOrbitAudioStats;
   Step:TStepPlan;Game:TGamePlan;Job:TRhythmPrepareThread;Saved,Legacy:TRhythmPlanRef;
   Style:TRhythmStyle;Path,Policy,FrameHash:string;Samples:PSmallInt;Seed:Cardinal;I,J,Added,Rolls,ToneBytes:Integer;
   Time,Value,ShowAt:Double;Sample:SmallInt;N:TStepNote;PNG:TPngImage;
-  Root:TJSONObject;Settings,Parsed:TRhythmSettings;
+  Root:TJSONObject;Row:TJSONArray;Settings,Parsed:TRhythmSettings;
 begin
   Input:=TRhythmAudio.Create;Peaks:=nil;Dense:=nil;
   try
@@ -209,11 +409,12 @@ begin
         if Style=rsStepGame then begin
           Step:=TStepPlan.Load(Saved,Restored,0);
           try
-            for I:=0 to Step.Count-1 do if Step.IsRoll(I) then begin
-              N:=Step.Notes[I];Inc(Rolls);
-              if Abs(N.Time-1.5)<Abs(ShowAt-1.5) then ShowAt:=N.Time;
-              Need((N.Lanes[0] in [1,2]) and (N.Lanes[1] in [4,8]),'Roll did not alternate dedicated lanes');
+            Need(Step.Count=Length(Peaks.Hits),'DDR added synthetic peak times');
+            for I:=0 to Step.Count-1 do begin
+              N:=Step.Notes[I];
+              Need(N.Time=Peaks.Hits[I].Time,'DDR peak time changed');
             end;
+            ShowAt:=1.5;
           finally Step.Free;end;
         end else begin
           Game:=TGamePlan.Load(Saved,Restored,0);
@@ -225,7 +426,7 @@ begin
             end;
           finally Game.Free;end;
         end;
-        Need(Rolls>=5,'Saved chart lost roll classification');
+        if Style=rsRhythmGame then Need(Rolls>=5,'Saved chart lost roll classification');
         Renderer.ConfigureStyle(Style,Saved,100,0);
         Renderer.UseD2D:=False;
         Image.SetSize(960,540);Renderer.Render(Image,Restored,ShowAt,0);
@@ -240,18 +441,24 @@ begin
         try
           PNG.Assign(Image);PNG.SaveToFile(TPath.Combine(Folder,StyleId(Style)+'-roll.png'));
         finally PNG.Free;end;
+        if Style=rsStepGame then MeasureFrames(Saved,Restored,0.8,1.3);
       finally Restored.Free;end;
 
-      // 旧版と行の形は同じ。旧キー・旧policyを使ったファイルを新readerで開く。
+      // 旧キー・旧policyと旧版の列数で保存したファイルを新readerで開く。
       Legacy:=Saved;Dec(Legacy.Version);
       Legacy.Key:=THashSHA2.GetHashString(Format('%s-v%d|%s|50|0|variant=%d',
         [StyleId(Style),Legacy.Version,Legacy.SourceKey,Legacy.Variant]));
-      if Style=rsStepGame then Policy:='prism-step-v1' else Policy:='planet-orbit-v3';
+      if Style=rsStepGame then Policy:='prism-step-v2' else Policy:='planet-orbit-v3';
       Root:=ReadPreparedData(Saved,Style,0);
       try
         Root.RemovePair('version').Free;Root.AddPair('version',TJSONNumber.Create(Legacy.Version));
         Root.RemovePair('key').Free;Root.AddPair('key',Legacy.Key);
         Root.RemovePair('policy').Free;Root.AddPair('policy',Policy);
+        if Style=rsStepGame then
+          for I:=0 to Root.GetValue<TJSONArray>('notes').Count-1 do begin
+            Row:=Root.GetValue<TJSONArray>('notes').Items[I] as TJSONArray;
+            Row.Remove(5).Free;Row.Remove(4).Free;
+          end;
         WritePreparedData(Root,Legacy);
       finally Root.Free;end;
       Settings:=TRhythmSettings.Defaults;Settings.Style:=Style;Settings.GameThreshold:=-80;Settings.Plan:=Legacy;
@@ -260,7 +467,7 @@ begin
       try
         if Style=rsStepGame then begin
           Step:=TStepPlan.Load(Legacy,Restored,0);
-          try Need((Step.Count>=5) and not Step.IsRoll(3),'Old 4-lane chart migration');finally Step.Free;end;
+          try Need((Step.Version=2) and (Step.Count=Length(Peaks.Hits)),'Old 4-lane chart migration');finally Step.Free;end;
         end else begin
           Game:=TGamePlan.Load(Legacy,Restored,0);
           try Need((Game.Count>=5) and not Game.Orbit.IsRoll(3),'Old orbit chart migration');finally Game.Free;end;
@@ -344,7 +551,10 @@ begin
     SaveImage('prism-step-duo',1280,720,SampleTime);
     SaveImage('prism-step-solo',540,960,SampleTime);
     SaveImage('prism-step-clear',960,540,Audio.Duration);
+    MeasureFrames(Ref,Cold,3,4);
     CheckRolls;
+    CheckPatterns;
+    CheckLongChart;
     WriteLn('Step game PASS checks=',Checks,' taps=',Plan.Count,' chords=',ChordCount,' sample=',SampleTime:0:3);
   except
     on E:Exception do begin WriteLn(E.ClassName,': ',E.Message);ExitCode:=1;end;

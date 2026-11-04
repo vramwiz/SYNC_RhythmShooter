@@ -1,10 +1,10 @@
 ﻿unit RhythmOrbitScene;
-// 広い宇宙の一部を連続カメラで見る。惑星・軌道・音要素・自機は同じ世界座標を使う。
+// 宇宙の背景に、採用音から組み立てたType.Vのコースを重ねる。
 interface
-uses RhythmAnimation,RhythmRenderSurface,RhythmAudio,RhythmPlanRef,RhythmOrbitPlan,RhythmEqualizer;
+uses RhythmAnimation,RhythmRenderSurface,RhythmAudio,RhythmPlanRef,RhythmOrbitPlan,RhythmEqualizer,RhythmOrbitGuide;
 type
   TOrbitRenderStats=record
-    RouteSegments,Markers,NearMarkers,FarMarkers,Effects,Stars:Integer;
+    RouteSegments,Markers,Effects,Stars:Integer;
     Horizon,Density:Double;
   end;
   TOrbitAnimation=class(TAnimationScene)
@@ -14,6 +14,8 @@ type
     FPlan:TOrbitPlan;
     FAttempt,FError:string;
     FStats:TOrbitRenderStats;
+    FCourse:TOrbitCourse;
+    FLayoutWidth,FLayoutHeight:Integer;
   public
     destructor Destroy;override;
     procedure SetReference(const Ref:TRhythmPlanRef);
@@ -26,7 +28,7 @@ type
     property RenderStats:TOrbitRenderStats read FStats;
   end;
 implementation
-uses System.SysUtils,System.Math,Winapi.Windows,Vcl.Graphics,RhythmOrbitTypes,RhythmOrbitGuide,RhythmOrbitShow,RhythmOrbitMarks;
+uses System.SysUtils,System.Math,Winapi.Windows,Vcl.Graphics,RhythmOrbitTypes,RhythmOrbitShow,RhythmOrbitMarks;
 function Palette(Hue:Integer):TColor;
 begin case Hue mod 8 of
   0:Result:=RGB(65,213,255);1:Result:=RGB(205,128,255);2:Result:=RGB(255,185,93);3:Result:=RGB(109,255,198);
@@ -51,31 +53,34 @@ begin Result:=FError;end;
 function TOrbitAnimation.TryActivity(Time:Double;out Activity:TEqualizerActivity):Boolean;
 var V:TOrbitVisualState;L:TOrbitLeg;
 begin Activity:=Default(TEqualizerActivity);Result:=FPlan<>nil;if not Result or (FPlan.Count=0) then Exit;
-  V:=OrbitVisualState(FPlan,Time);Activity.Valid:=(Time>=0) and (Time<=FPlan.EndTime);Activity.Pulse:=V.Pulse;
-  Activity.Energy:=V.Energy;Activity.Hit:=FPlan.Before(Time);L:=FPlan.Legs[FPlan.LegAt(Time)];Activity.Hue:=FPlan.Bodies[L.ToBody].Hue;
+  V:=OrbitVisualState(FPlan,Time);if not V.Playing then Exit;
+  Activity.Valid:=Time<=FPlan.EndTime;Activity.Pulse:=V.Pulse;
+  Activity.Energy:=V.Energy;Activity.Hit:=V.LastHit-V.FirstTap;L:=FPlan.Legs[FPlan.LegAt(Time)];Activity.Hue:=FPlan.Bodies[L.ToBody].Hue;
 end;
 procedure TOrbitAnimation.Prepare(const Frame:TAnimationFrame);
 var Key:string;
 begin
   Key:=FRef.Key+'|'+FRef.Digest+'|'+IntToStr(Frame.Direction);
   if FAudio<>nil then Key:=Key+'|'+FAudio.Key+'|'+FAudio.SourceRevision else Key:=Key+'|none';
-  if Key=FAttempt then Exit;FAttempt:=Key;FreeAndNil(FPlan);FError:='';if FAudio=nil then Exit;
+  if Key=FAttempt then Exit;FAttempt:=Key;FreeAndNil(FPlan);FError:='';
+  FCourse:=Default(TOrbitCourse);FLayoutWidth:=0;
+  if FAudio=nil then Exit;
   try FPlan:=TOrbitPlan.Load(FRef,FAudio,Frame.Direction);except on E:Exception do FError:=E.Message;end;
 end;
 procedure TOrbitAnimation.Draw(Surface:TAnimationRenderSurface;const Frame:TAnimationFrame);
 const MaxEffects=24;
-var W,H,S,Aspect,T,Scale,Age,Alpha,U,Angle,D,Progress:Double;Camera:TOrbitCamera;
-  I,J,Hit,Next,LegIndex,FromBody,ToBody:Integer;L:TOrbitLeg;B:TOrbitBody;N:TOrbitTap;
-  P,Q,Ship:TOrbitPoint;C,Theme:TColor;V:TOrbitVisualState;
+var W,H,S,Aspect,T,Scale,Age,Alpha,U,Angle,D,Progress,HitRadius:Double;Camera:TOrbitCamera;
+  I,J,Hit,FromBody,ToBody,MarkerCount:Integer;L:TOrbitLeg;N:TOrbitTap;
+  Markers:TOrbitMarkers;
+  P,Q,Ship:TOrbitPoint;C,Theme:TColor;V:TOrbitVisualState;HitScale,X,Y:Double;
   function Screen(const P:TOrbitPoint):TOrbitPoint;
   var V:TOrbitPoint;
   begin V:=OrbitProject(P,Camera,Aspect);Result:=OrbitPoint(V.X*W,V.Y*H);end;
+  function Cursor(At:Double):TOrbitPoint;
+  begin Result:=FCourse.CursorAt(FPlan,At);end;
   procedure Line(const A,B:TOrbitPoint;Color:TColor;Width,Opacity:Double);
   var X,Y:TOrbitPoint;
   begin X:=Screen(A);Y:=Screen(B);Surface.Line(X.X,X.Y,Y.X,Y.Y,Color,Max(1.0,Width*Scale),Opacity);end;
-  procedure Ring(const P:TOrbitPoint;Radius:Double;Color:TColor;Width,Opacity:Double);
-  var X:TOrbitPoint;
-  begin X:=Screen(P);Surface.Circle(X.X,X.Y,Radius*Scale,Color,False,Max(1.0,Width*Scale),Opacity);end;
   procedure Dot(const P:TOrbitPoint;Radius:Double;Color:TColor;Opacity:Double);
   var X:TOrbitPoint;
   begin X:=Screen(P);Surface.Circle(X.X,X.Y,Max(1.0,Radius*Scale),Color,True,1,Opacity);end;
@@ -84,10 +89,10 @@ var W,H,S,Aspect,T,Scale,Age,Alpha,U,Angle,D,Progress:Double;Camera:TOrbitCamera
     function QuietAt(X,Y:Double):Double;
     begin
       if (FPlan=nil) or (FPlan.Count=0) then Exit(1);
-      F:=Screen(Ship);Result:=0.30+0.70*EnsureRange((Hypot(X-F.X,Y-F.Y)/S-0.08)/0.15,0.0,1.0);
+      Result:=0.30+0.70*EnsureRange((Hypot(X-F.X,Y-F.Y)/S-0.08)/0.15,0.0,1.0);
     end;
   begin
-    Pulse:=V.Pulse;if not TransparentBackground then begin Surface.FillRect(0,0,W,H,RGB(1,3,11));
+    F:=Ship;Pulse:=V.Pulse;if not TransparentBackground then begin Surface.FillRect(0,0,W,H,RGB(1,3,11));
     // 大きな色面は背景に置き、近い進路の周囲は明度を抑えて主線を残す。
     for I:=0 to 23 do begin
       Light:=(0.018+0.009*V.Energy+0.008*Pulse)*Sqr(Sin(I*Pi/23));
@@ -155,58 +160,61 @@ var W,H,S,Aspect,T,Scale,Age,Alpha,U,Angle,D,Progress:Double;Camera:TOrbitCamera
     end;
   end;
   procedure FutureRoute;
-  var I,K:Integer;A,B:TOrbitGuideSample;P,Q,R,Tangent,Normal:TOrbitPoint;D,Opacity,At:Double;Tint:TColor;
+  var I,K,Count:Integer;Points:TOrbitRoute;P,Q,R,Tangent,Normal,NearPoint,FarPoint:TOrbitPoint;
+    D,Opacity,At,Horizon,ArrowScale,Finish:Double;
   begin
     if V.Horizon<=0 then Exit;
-    // 遠い未来から近い未来の順に合成し、近い進路がループの重なりでも読めるようにする。
-    for I:=ORBIT_GUIDE_STEPS downto 1 do begin
-      A:=OrbitGuideAt(FPlan,T,V.Horizon,(I-1)/ORBIT_GUIDE_STEPS);B:=OrbitGuideAt(FPlan,T,V.Horizon,I/ORBIT_GUIDE_STEPS);
-      Tint:=Palette(FPlan.Bodies[FPlan.Legs[A.Leg].ToBody].Hue);Opacity:=A.Opacity;
-      Line(A.P,B.P,Tint,0.075,Opacity*0.12);Line(A.P,B.P,Tint,0.014,Opacity);
-      Line(A.P,B.P,RGB(217,247,255),0.003,Opacity*0.32);Inc(FStats.RouteSegments);
+    if MarkerCount>0 then Finish:=FPlan.Taps[Markers[MarkerCount-1].TapIndex].Time
+    else Finish:=T+Min(V.Horizon,0.35);
+    Count:=FCourse.Route(FPlan,T,Finish,Points);
+    FStats.RouteSegments:=Count;
+    Horizon:=Points[Count].Time-T;
+    ArrowScale:=S/3.7;
+    // 通過点をサンプルに含め、連打で時刻が詰まっても線が丸を飛び越えない。
+    for I:=Count downto 1 do begin
+      NearPoint:=Points[I-1].P;
+      FarPoint:=Points[I].P;
+      Opacity:=(0.065+0.80*OrbitMarkerOpacity(Points[I-1].Time-T,Horizon))*V.PreviewAlpha;
+      Surface.Line(NearPoint.X,NearPoint.Y,FarPoint.X,FarPoint.Y,Theme,Max(1.0,0.075*ArrowScale),Opacity*0.12);
+      Surface.Line(NearPoint.X,NearPoint.Y,FarPoint.X,FarPoint.Y,Theme,Max(1.0,0.014*ArrowScale),Opacity);
+      Surface.Line(NearPoint.X,NearPoint.Y,FarPoint.X,FarPoint.Y,RGB(217,247,255),1,Opacity*0.32);
     end;
     // 進行方向の矢印も同じ曲線から求める。音要素のリングとは形を分ける。
-    for K:=0 to 17 do begin
-      At:=0.24+K*0.34;if At>=V.Horizon then Break;
-      P:=FPlan.CursorAt(T+At);Q:=FPlan.CursorAt(T+At+0.015);R:=FPlan.CursorAt(T+At-0.015);
+    for K:=0 to 3 do begin
+      At:=0.24+K*0.34;if At>=Horizon then Break;
+      P:=Cursor(T+At);Q:=Cursor(T+At+0.015);R:=Cursor(T+At-0.015);
       D:=Hypot(Q.X-R.X,Q.Y-R.Y);if D<1E-8 then Continue;
       Tangent:=OrbitPoint((Q.X-R.X)/D,(Q.Y-R.Y)/D);Normal:=OrbitPoint(-Tangent.Y,Tangent.X);
-      Opacity:=0.60*OrbitMarkerOpacity(At,V.Horizon);
-      Q:=OrbitPoint(P.X-Tangent.X*0.055+Normal.X*0.032,P.Y-Tangent.Y*0.055+Normal.Y*0.032);
-      R:=OrbitPoint(P.X-Tangent.X*0.055-Normal.X*0.032,P.Y-Tangent.Y*0.055-Normal.Y*0.032);
-      Line(Q,P,RGB(190,239,255),0.010,Opacity);Line(P,R,RGB(190,239,255),0.010,Opacity);
+      Opacity:=0.60*OrbitMarkerOpacity(At,Horizon)*V.PreviewAlpha;
+      Q:=OrbitPoint(P.X+(-Tangent.X*0.055+Normal.X*0.032)*ArrowScale,P.Y+(-Tangent.Y*0.055+Normal.Y*0.032)*ArrowScale);
+      R:=OrbitPoint(P.X+(-Tangent.X*0.055-Normal.X*0.032)*ArrowScale,P.Y+(-Tangent.Y*0.055-Normal.Y*0.032)*ArrowScale);
+      Surface.Line(Q.X,Q.Y,P.X,P.Y,RGB(190,239,255),Max(1.0,0.010*ArrowScale),Opacity);
+      Surface.Line(P.X,P.Y,R.X,R.Y,RGB(190,239,255),Max(1.0,0.010*ArrowScale),Opacity);
     end;
   end;
   procedure FutureMarkers;
-  var I,K,Count,Rank:Integer;Indices:array[0..127] of Integer;N:TOrbitTap;P,A,B:TOrbitPoint;
-    Ahead,Opacity,U,Radius,Angle:Double;Near:Boolean;Kind:TOrbitMarkKind;
+  var I,K:Integer;Mark:TOrbitMarker;N:TOrbitTap;A,B:TOrbitPoint;
+    Angle:Double;Kind:TOrbitMarkKind;
   begin
-    Count:=0;
-    for I:=Max(0,Next) to Min(FPlan.Count-1,Next+ORBIT_MARKER_LIMIT-1) do begin
-      N:=FPlan.Taps[I];Ahead:=N.Time-T;if Ahead>V.Horizon then Break;
-      if OrbitMarkerOpacity(Ahead,V.Horizon)<0.015 then Continue;P:=Screen(N.P);
-      if (P.X< -30) or (P.X>W+30) or (P.Y< -30) or (P.Y>H+30) then Continue;
-      Indices[Count]:=I;Inc(Count);
-    end;
-    // 遠い予告から描き、重なる連打でも直近の塗りつぶしと記号を最前面に保つ。
-    for K:=Count-1 downto 0 do begin I:=Indices[K];Rank:=K+1;N:=FPlan.Taps[I];Ahead:=N.Time-T;P:=Screen(N.P);
-      Opacity:=OrbitMarkerOpacity(Ahead,V.Horizon);U:=EnsureRange(1-Ahead/1.45,0.0,1.0);Near:=(Ahead<=1.45) and (Rank<=8);
-      if Near then begin Inc(FStats.NearMarkers);Radius:=(0.06+N.Strength*0.018)*Scale;end
-      else begin Inc(FStats.FarMarkers);Radius:=(0.023+0.010*N.Strength)*Scale;end;
-      A:=FPlan.CursorAt(N.Time-0.015);B:=FPlan.CursorAt(N.Time+0.015);Angle:=ArcTan2(B.Y-A.Y,B.X-A.X);
+    for K:=MarkerCount-1 downto 0 do begin
+      Mark:=Markers[K];I:=Mark.TapIndex;N:=FPlan.Taps[I];
+      A:=Cursor(N.Time-0.015);B:=Cursor(N.Time+0.015);Angle:=ArcTan2(B.Y-A.Y,B.X-A.X);
       Kind:=OrbitMarkKind(N);
       if FPlan.IsRoll(I) then Kind:=omArrow;
-      DrawOrbitMark(Surface,P.X,P.Y,Radius,Angle,Opacity,U,Kind,OrbitMarkColor(N),Near);Inc(FStats.Markers);
+      if Mark.TapCount>1 then Kind:=omChord;
+      DrawOrbitMark(Surface,Mark.Center.X,Mark.Center.Y,Mark.Radius,Angle,Mark.Opacity,Mark.Approach,
+        Kind,OrbitMarkColor(N),Mark.Visibility);
+      Inc(FStats.Markers);
     end;
   end;
   procedure Hud;
-  var K,N,V,Bits,J:Integer;X,Y,Z:Double;
+  var K,N,Count,Bits,J:Integer;X,Y,Z:Double;
   const Digits:array[0..9] of Byte=($3F,$06,$5B,$4F,$66,$6D,$7D,$07,$7F,$6F);
     AX:array[0..6] of Double=(0,1,1,0,0,0,0);AY:array[0..6] of Double=(0,0,1,2,1,0,1);
     BX:array[0..6] of Double=(1,1,1,1,0,0,1);BY:array[0..6] of Double=(0,1,2,2,2,1,1);
   begin
-    V:=Hit+1;Z:=S*0.010;Y:=H*0.035;
-    for K:=5 downto 0 do begin N:=V mod 10;V:=V div 10;Bits:=Digits[N];X:=W*0.94-(5-K)*Z*1.6;
+    Count:=Hit-V.FirstTap+1;Z:=S*0.010;Y:=H*0.035;
+    for K:=5 downto 0 do begin N:=Count mod 10;Count:=Count div 10;Bits:=Digits[N];X:=W*0.94-(5-K)*Z*1.6;
       for J:=0 to 6 do if Bits and (1 shl J)<>0 then Surface.Line(X+AX[J]*Z,Y+AY[J]*Z,X+BX[J]*Z,Y+BY[J]*Z,RGB(126,195,225),1);
     end;
     Progress:=EnsureRange(T/Max(0.001,FPlan.SoundEnd),0.0,1.0);
@@ -214,42 +222,64 @@ var W,H,S,Aspect,T,Scale,Age,Alpha,U,Angle,D,Progress:Double;Camera:TOrbitCamera
   end;
 begin
   W:=Frame.Width;H:=Frame.Height;S:=Min(W,H);Aspect:=W/H;T:=Frame.Time;
+  HitRadius:=OrbitHitRadius(S);
   FStats:=Default(TOrbitRenderStats);V:=OrbitVisualState(FPlan,T);FStats.Horizon:=V.Horizon;FStats.Density:=V.Density;
-  Theme:=Palette(0);ToBody:=0;Hit:=-1;Ship:=OrbitPoint(0,0);
+  Theme:=Palette(0);FromBody:=0;ToBody:=0;Ship:=OrbitPoint(0,0);
   if (FPlan<>nil) and (FPlan.Count>0) then begin
-    L:=FPlan.Legs[FPlan.LegAt(T)];ToBody:=L.ToBody;Theme:=Palette(FPlan.Bodies[ToBody].Hue);Hit:=FPlan.Before(T);Ship:=FPlan.CursorAt(T);
+    L:=FPlan.Legs[FPlan.LegAt(T)];FromBody:=L.FromBody;ToBody:=L.ToBody;
+    Theme:=Palette(FPlan.Bodies[ToBody].Hue);
+    if (FLayoutWidth<>Frame.Width) or (FLayoutHeight<>Frame.Height) then begin
+      FCourse.Prepare(FPlan,W,H);
+      FLayoutWidth:=Frame.Width;FLayoutHeight:=Frame.Height;
+    end;
+    Ship:=Cursor(T);
   end;
   Camera.Center:=OrbitPoint(0,0);Camera.Span:=8;
   if FPlan<>nil then Camera:=FPlan.CameraAt(T,Aspect);
   Scale:=H/Camera.Span;Background;
   DrawOrbitShow(Surface,FPlan,T,W,H,Camera,False);
   if (FPlan=nil) or (FPlan.Count=0) then Exit;
-  LegIndex:=FPlan.LegAt(T);L:=FPlan.Legs[LegIndex];FromBody:=L.FromBody;ToBody:=L.ToBody;Hit:=FPlan.Before(T);Next:=Hit+1;
+  Hit:=V.LastHit;
   // 現在と前後の惑星だけを空間に置く。全曲の惑星を最初から画面へ並べない。
   for I:=Min(FPlan.BodyCount-1,ToBody+1) downto Max(0,FromBody-1) do Planet(I);
-  for I:=Hit downto Max(0,Hit-MaxEffects+1) do begin
-    N:=FPlan.Taps[I];Age:=T-N.Time;if Age>=ORBIT_EFFECT_LIFE then Break;Inc(FStats.Effects);
-    B:=FPlan.Bodies[FPlan.Legs[N.Leg].ToBody];C:=OrbitMarkColor(N);Alpha:=OrbitFade(Age);U:=Age/ORBIT_EFFECT_LIFE;
-    Ring(N.P,0.08+U*0.67,C,0.014,Alpha);Ring(N.P,0.06+U*0.95,C,0.006,Alpha*0.45);
+  HitScale:=S/3.7;
+  for I:=Hit downto Max(V.FirstTap,Hit-MaxEffects+1) do begin
+    N:=FPlan.Taps[I];Age:=T-N.Time;if Age>=ORBIT_EFFECT_LIFE then Break;
+    // 同時刻の音はひとつのマークとひとつの発光で示す。
+    if (I<Hit) and (N.Time=FPlan.Taps[I+1].Time) then Continue;
+    Inc(FStats.Effects);
+    C:=OrbitMarkColor(N);Alpha:=OrbitFade(Age);U:=Age/ORBIT_EFFECT_LIFE;
+    P:=FCourse.Center(I);X:=P.X;Y:=P.Y;
+    Surface.Circle(X,Y,(0.08+U*0.67)*HitScale,C,False,Max(1.0,0.014*HitScale),Alpha);
+    Surface.Circle(X,Y,(0.06+U*0.95)*HitScale,C,False,Max(1.0,0.006*HitScale),Alpha*0.45);
     for J:=0 to 17 do begin Angle:=J*Pi/9+N.Source*0.37;D:=(0.09+0.58*(1-Sqr(1-U)))*(0.7+Noise(J,Cardinal(N.Source))*0.5);
-      P:=OrbitPoint(N.P.X+Cos(Angle)*D,N.P.Y+Sin(Angle)*D);Q:=OrbitPoint(P.X+Cos(Angle)*0.07,P.Y+Sin(Angle)*0.07);
-      Line(P,Q,C,0.012,Alpha);
+      P:=OrbitPoint(X+Cos(Angle)*D*HitScale,Y+Sin(Angle)*D*HitScale);
+      Surface.Line(P.X,P.Y,P.X+Cos(Angle)*0.07*HitScale,P.Y+Sin(Angle)*0.07*HitScale,C,Max(1.0,0.012*HitScale),Alpha);
     end;
-    if Age<0.09 then begin Dot(N.P,0.10,RGB(245,254,255),1-Age/0.09);
-      Line(OrbitPoint(N.P.X-0.32,N.P.Y),OrbitPoint(N.P.X+0.32,N.P.Y),clWhite,0.014,1-Age/0.09);
-      Line(OrbitPoint(N.P.X,N.P.Y-0.32),OrbitPoint(N.P.X,N.P.Y+0.32),clWhite,0.014,1-Age/0.09);
+    if Age<0.09 then begin
+      Surface.Circle(X,Y,HitRadius*(0.72-0.22*Age/0.09),RGB(245,254,255),True,1,1-Age/0.09);
+      D:=0.32*HitScale;
+      Surface.Line(X-D,Y,X+D,Y,clWhite,Max(1.0,0.014*HitScale),1-Age/0.09);
+      Surface.Line(X,Y-D,X,Y+D,clWhite,Max(1.0,0.014*HitScale),1-Age/0.09);
     end;
   end;
   // 予告の主線と判定リングを反応粒子より手前へ置き、密音でも進路を読ませる。
-  FutureRoute;FutureMarkers;
-  if Hit>=0 then begin N:=FPlan.Taps[Hit];P:=Screen(N.P);DrawOrbitGood(Surface,P.X,P.Y,T-N.Time,Round(W),Round(H),OrbitMarkColor(N),FPlan.IsRoll(Hit));end;
+  MarkerCount:=FCourse.Visible(V,T,Markers);
+  FutureRoute;
+  if Hit>=V.FirstTap then begin N:=FPlan.Taps[Hit];P:=FCourse.Center(Hit);DrawOrbitGood(Surface,P.X,P.Y,T-N.Time,Round(W),Round(H),OrbitMarkColor(N),FPlan.IsRoll(Hit));end;
+  FutureMarkers;
   C:=Palette(FPlan.Bodies[ToBody].Hue);Alpha:=1;
   if T>FPlan.SoundEnd then Alpha:=Max(0.0,1-(T-FPlan.SoundEnd)/0.9);
-  P:=FPlan.CursorAt(T-0.28);
-  for J:=1 to 28 do begin Q:=FPlan.CursorAt(T-0.28+J*0.01);
-    Line(P,Q,C,0.015+0.027*J/28,Alpha*J/38);P:=Q;
+  P:=Cursor(T-0.28);
+  for J:=1 to 28 do begin Q:=Cursor(T-0.28+J*0.01);
+    Surface.Line(P.X,P.Y,Q.X,Q.Y,C,Max(1.0,(0.015+0.027*J/28)*Scale),Alpha*J/38);P:=Q;
   end;
-  Ship:=FPlan.CursorAt(T);D:=OrbitShipSize(FPlan,T);Dot(Ship,0.10*D,C,Alpha*0.18);Dot(Ship,0.063*D,C,Alpha*0.35);Dot(Ship,0.035*D,clWhite,Alpha);
-  Ring(Ship,0.055*D,C,0.010,Alpha);Hud;DrawOrbitShow(Surface,FPlan,T,W,H,Camera,True);
+  D:=OrbitShipSize(FPlan,T)*HitScale;
+  Surface.Circle(Ship.X,Ship.Y,Max(1.0,0.10*D),C,True,1,Alpha*0.18);
+  Surface.Circle(Ship.X,Ship.Y,Max(1.0,0.063*D),C,True,1,Alpha*0.35);
+  Surface.Circle(Ship.X,Ship.Y,Max(1.0,0.035*D),clWhite,True,1,Alpha);
+  Surface.Circle(Ship.X,Ship.Y,0.055*D,C,False,Max(1.0,0.010*HitScale),Alpha);
+  if V.Playing then Hud;
+  DrawOrbitShow(Surface,FPlan,T,W,H,Camera,True);
 end;
 end.

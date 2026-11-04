@@ -137,12 +137,12 @@ begin Worker:=nil;Audio:=nil;Cold:=nil;R:=nil;Blend:=nil;Image:=nil;Movie:=nil;P
               Snapshot(Format('case%d-backend%d-eq%d-over-mv',[CaseIndex,B,E]),False);
             end;
           end;
-          T:=Audio.Duration*0.38;R.Render(Image,Cold,T,0, '',0.5,17,-9);Hash:=ImageHash;
+          T:=Audio.Duration*0.62;R.Render(Image,Cold,T,0, '',0.5,17,-9);Hash:=ImageHash;
           R.Render(Image,Cold,0.0,0);R.Render(Image,Cold,T,0,'',0.5,17,-9);Need(ImageHash=Hash,'Transformed seek drift');
           Row:=Image.ScanLine[0];Need(Row[3]=0,'Transformed corner is not transparent');
           R.Render(Image,Cold,T,0);if E=0 then Plain:=ImageHash else WithEQ:=ImageHash;
         end;
-        if CaseIndex<>4 then Need(Plain<>WithEQ,'Equalizer toggle has no effect');
+        Need((Plain<>WithEQ)=(CaseIndex in [1..3]),'Equalizer ignored playable notes after the opening');
       end;
       FreeAndNil(R);FreeAndNil(Cold);FreeAndNil(Audio);
     end;

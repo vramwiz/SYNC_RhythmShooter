@@ -1,5 +1,5 @@
 [project]
-version=2010301
+version=2010601
 file=V:\DelphiProg\SYNC_RhythmShooter\Aup2\sample2.aup2
 display.scene=0
 preview.scene=0
@@ -12,7 +12,7 @@ video.rate=30
 video.scale=1
 audio.rate=44100
 output.file=C:\Users\zan12\Videos\x_73.mp4
-cursor.frame=0
+cursor.frame=663
 cursor.layer=0
 preview.frame=0
 display.frame=0
@@ -43,10 +43,9 @@ X=0
 Y=0
 音楽ファイル=C:\Users\zan12\Music\magnific__fury-blossom__1849.mp3
 設定=
+オフセット=0.00
 内部設定・旧版互換.hide=1
-設定JSON={"schema":1,"music":"C:\\Users\\zan12\\Music\\magnific__fury-blossom__1849.mp3","direction":1,"sensitivity":50,"zoom":100.0,"x":0.0,"y":0.0,"musicSource":"host","bossFrequency":100,"style":"race","fireworksRichness":50,"plan":{"key":"ecf7ef7c0c0ea167365d681d58152d9b7b2d3233dd6882bc755603d575aeec06","source":"4e5a18477edcb564058fdade652a02b759635a6040e1df490643bdd3accbce30","digest":"6db9ad9083520ec6d4b66bb08783ff7e35e12cce70c9cdfff0874cbe5b21cebb","sourceStamp":"0000000000479D20-01DD66C199646DF3","style":"race","version":11,"sensitivity":50,"direction":1,"variant":101},"designs":[]}
-スクロール方向=縦
-解析感度=50
+設定JSON={"schema":1,"presentationVersion":3,"music":"C:\\Users\\zan12\\Music\\magnific__fury-blossom__1849.mp3","direction":0,"sensitivity":50,"zoom":100.0,"offsetSeconds":0.0,"x":0.0,"y":0.0,"musicSource":"host","bossFrequency":100,"style":"rhythm-game","audioDensity":-100,"gameThreshold":-100,"equalizer":false,"fireworksRichness":50,"plan":{"key":"4c605dd44eb240652e8142b7431eced9b79c6474fe89545ff3b98c34d37f290c","source":"4e5a18477edcb564058fdade652a02b759635a6040e1df490643bdd3accbce30","digest":"19c4b646409211f988fd92779e01bfc4bdb9f83f3ab5f31013730c50ee54a124","sourceStamp":"0000000000479D20-01DD66C199646DF3","style":"rhythm-game","version":4,"sensitivity":50,"direction":0,"variant":1},"designs":[]}
 [1]
 layer=1
 frame=0,5250

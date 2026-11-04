@@ -135,7 +135,9 @@ var
     B.OnClick:=Click;
   end;
 begin
-  Caption:=ProductTitle+' 設定';
+  if ProductDefaultStyle in [rsRhythmGame,rsStepGame,rsFireworks] then
+    Caption:=StyleTitle(ProductDefaultStyle)+' 設定'
+  else Caption:=ProductTitle+' 設定';
   DoubleBuffered:=True;
   FUpdating:=True;
   // DFM読込後の現在DPIを使い、動的に生成する寸法もフォントとそろえる。
@@ -232,7 +234,7 @@ begin
   FStyle.Name:='AnimationStyle';
   FStyle.Width:=S(160);
   FStyle.ShowHint:=True;
-  FStyle.Hint:='種類変更時は計画を再準備します。リズムゲームはMVに重ねる透明映像として出力します。';
+  FStyle.Hint:='種類変更時は計画を再準備します。'+TYPE_V_TITLE+'はMVに重ねる透明映像として出力します。';
   FStyle.OnChange:=SettingChange;
   FStyleLabel.FocusControl:=FStyle;
   FDirectionPanel:=Panel(FOptionsBar,alNone,44);
@@ -277,7 +279,7 @@ begin
   FFireworksRichness.TickStyle:=tsNone;
   FFireworksRichness.Frequency:=10;
   FFireworksRichness.ShowHint:=True;
-  FFireworksRichness.Hint:='同時打ち上げ数・広がり・火花量。変更後は花火計画を再準備します（音声キャッシュは再利用）。';
+  FFireworksRichness.Hint:='同時打ち上げ数・広がり・火花量。変更後は'+TYPE_F_TITLE+'の計画を再準備します（音声キャッシュは再利用）。';
   FFireworksRichness.OnChange:=SettingChange;
   FRichnessLabel.FocusControl:=FFireworksRichness;
   FRichnessLevel:=LabelAt(FFireworksRow,'50',alNone,32);
@@ -309,7 +311,7 @@ begin
   FGameThreshold.Min:=-100;FGameThreshold.Max:=100;FGameThreshold.Position:=20;
   FGameThreshold.TickStyle:=tsNone;FGameThreshold.Frequency:=10;
   FGameThreshold.ShowHint:=True;
-  FGameThreshold.Hint:='左ほど採用する音が増え、右ほど強い音に絞ります。リズムゲームでは−35以下で持続音の連打も追加します。変更後は再準備して適用してください。';
+  FGameThreshold.Hint:='左ほど採用する音が増え、右ほど強い音に絞ります。'+TYPE_V_TITLE+'では−35以下で持続音の連打も追加します。変更後は再準備して適用してください。';
   FGameThreshold.OnChange:=SettingChange;FGameLabel.FocusControl:=FGameThreshold;
   FGameValue:=LabelAt(FGameRow,'20',alNone,32);FGameValue.Alignment:=taRightJustify;
   FEqualizerRow:=Panel(FOptionsBar,alNone,44);FEqualizerRow.Name:='EqualizerOptions';
@@ -406,6 +408,7 @@ begin
   FAnimationScroll.OnResize:=LayoutOptions;
   FStatus.Font.Color:=RhythmMuted;
   FLevel.Font.Color:=RhythmAccent;
+  FGameValue.Font.Color:=RhythmAccent;
   FRichnessLevel.Font.Color:=RhythmAccent;
   FBossValue.Font.Color:=RhythmAccent;
   PageChanged(Self);
@@ -430,13 +433,15 @@ procedure TFormRhythmShooterSettings.LayoutOptions(Sender:TObject);
 var
   Groups:array[0..7] of TPanel;
   Widths,CaptionWidths:array[0..7] of Integer;
-  I,Pass,W,H,X,Y,Gap,Total,Extra,Numbers,BarHeight,TextHeight,ButtonHeight,SavedScrollY:Integer;
-  MusicCaptionWidth,BrowseWidth,AnalyzeWidth,PlayWidth,StopWidth,ClockWidth,ValueWidth,BossValueWidth:Integer;
+  I,Pass,W,H,X,Y,Gap,Total,Extra,Numbers,BarHeight,TextHeight,ButtonHeight,ButtonTop,SavedScrollY:Integer;
+  MusicCaptionWidth,BrowseWidth,AnalyzeWidth,MusicActionsWidth,FileHeight,EqualizerHeight:Integer;
+  PlayWidth,StopWidth,ClockWidth,ValueWidth,BossValueWidth,CategoryWidth,RowWidth:Integer;
+  SeparateAudio:Boolean;
   function S(Value:Integer):Integer;
   begin Result:=MulDiv(Value,CurrentPPI,96);
   end;
   function TextWidth(const Text:string;AFont:TFont):Integer;
-  begin Canvas.Font.Assign(AFont);
+  begin Canvas.Font.PixelsPerInch:=AFont.PixelsPerInch;Canvas.Font.Assign(AFont);
     Result:=Canvas.TextWidth(Text);
   end;
   function LabelWidth(Control:TLabel;Minimum:Integer):Integer;
@@ -472,8 +477,8 @@ var
     CW:=Control.Parent.ClientWidth;
     LabelControl.SetBounds(0,0,CaptionWidth,H);
     ValueControl.SetBounds(CW-NumericWidth,0,NumericWidth,H);
-    Control.SetBounds(CaptionWidth+S(4),S(6),
-    Max(1,CW-CaptionWidth-NumericWidth-S(8)),Max(1,H-S(12)));
+    Control.SetBounds(CaptionWidth+S(4),Max(0,(H-S(24)) div 2),
+    Max(1,CW-CaptionWidth-NumericWidth-S(8)),S(24));
   end;
 begin
   // VCL raises child resize events while the form still has its old PPI.
@@ -483,11 +488,14 @@ begin
   SavedScrollY:=FAnimationScroll.VertScrollBar.Position;
   try
     Gap:=S(8);
+    Canvas.Font.PixelsPerInch:=Font.PixelsPerInch;
     Canvas.Font.Assign(Font);
     TextHeight:=Canvas.TextHeight('Agあ');
     ButtonHeight:=Max(S(32),TextHeight+S(12));
-    H:=Max(S(44),Max(FStyle.Height,FDirection.Height)+S(12));
-    H:=Max(H,ButtonHeight+S(12));
+    H:=Max(ButtonHeight,Max(FCategory.Height,Max(FStyle.Height,FDirection.Height)))+S(8);
+    ButtonTop:=(H-ButtonHeight) div 2;
+    FileHeight:=TextHeight+S(4);
+    EqualizerHeight:=Max(S(24),TextHeight+S(6));
     FNavigation.Height:=Max(S(48),ButtonHeight+S(12));
     FAnimationTab.Width:=ButtonWidth(FAnimationTab,160);
     FDesignTab.Width:=ButtonWidth(FDesignTab,160);
@@ -506,20 +514,22 @@ begin
     BrowseWidth:=0;
     if FBrowse.Visible then BrowseWidth:=ButtonWidth(FBrowse,88);
     AnalyzeWidth:=ButtonWidth(FAnalyze,88);
+    MusicActionsWidth:=AnalyzeWidth;
+    if BrowseWidth>0 then Inc(MusicActionsWidth,BrowseWidth+Gap);
     PlayWidth:=ButtonWidth(FPlay,100);
     StopWidth:=ButtonWidth(FStop,90);
     ClockWidth:=Max(S(240),TextWidth(FClock.Caption,FClock.Font)+S(8));
     ValueWidth:=Max(S(32),TextWidth('-100',FLevel.Font)+S(4));
     BossValueWidth:=Max(S(144),TextWidth('100 / 約135秒',FBossValue.Font)+S(4));
     Groups[0]:=FCategoryPanel;Groups[1]:=FStylePanel;Groups[2]:=FDirectionPanel;
-    Groups[3]:=FSensitivityPanel;Groups[4]:=FGameRow;Groups[5]:=FFireworksRow;Groups[6]:=FBossRow;Groups[7]:=FEqualizerRow;
-    CaptionWidths[0]:=LabelWidth(FCategoryLabel,56);
-    CaptionWidths[1]:=LabelWidth(FStyleLabel,56);
+    Groups[3]:=FSensitivityPanel;Groups[4]:=FGameRow;Groups[5]:=FEqualizerRow;Groups[6]:=FFireworksRow;Groups[7]:=FBossRow;
+    CaptionWidths[0]:=LabelWidth(FCategoryLabel,44);
+    CaptionWidths[1]:=LabelWidth(FStyleLabel,44);
     CaptionWidths[2]:=LabelWidth(FDirectionLabel,40);
     CaptionWidths[3]:=LabelWidth(FSensitivityLabel,56);
-    CaptionWidths[4]:=LabelWidth(FGameLabel,110);
-    CaptionWidths[5]:=LabelWidth(FRichnessLabel,56);
-    CaptionWidths[6]:=LabelWidth(FBossLabel,110);
+    CaptionWidths[4]:=LabelWidth(FGameLabel,82);
+    CaptionWidths[6]:=LabelWidth(FRichnessLabel,56);
+    CaptionWidths[7]:=LabelWidth(FBossLabel,86);
     // Re-evaluate from full width so a previous wrap cannot retain a needless
     // scrollbar. Restore the user's scroll position once the final range exists.
     FAnimationBody.Height:=FAnimationScroll.ClientHeight;
@@ -527,28 +537,27 @@ begin
     // The second pass accounts for the vertical scrollbar appearing/disappearing.
     for Pass:=0 to 1 do begin
       W:=Max(1,FMusicRow.ClientWidth);
-      if W>=MusicCaptionWidth+S(180)+BrowseWidth+AnalyzeWidth+4*Gap then begin
-        Place(FMusicLabel,0,0,MusicCaptionWidth,H);
-        Place(FAnalyze,W-AnalyzeWidth,S(6),AnalyzeWidth,ButtonHeight);
-        Place(FBrowse,W-AnalyzeWidth-Gap-BrowseWidth,S(6),BrowseWidth,ButtonHeight);
-        Place(FFile,MusicCaptionWidth+Gap,S(6),
-        W-MusicCaptionWidth-BrowseWidth-AnalyzeWidth-4*Gap,ButtonHeight);
+      Place(FMusicLabel,0,0,MusicCaptionWidth,H);
+      if W>=MusicCaptionWidth+S(180)+MusicActionsWidth+2*Gap then begin
+        Place(FAnalyze,W-AnalyzeWidth,ButtonTop,AnalyzeWidth,ButtonHeight);
+        if FBrowse.Visible then Place(FBrowse,W-MusicActionsWidth,ButtonTop,BrowseWidth,ButtonHeight);
+        Place(FFile,MusicCaptionWidth+Gap,(H-FileHeight) div 2,
+          W-MusicCaptionWidth-MusicActionsWidth-2*Gap,FileHeight);
         FMusicRow.Height:=H;
       end else begin
-        Place(FMusicLabel,0,0,MusicCaptionWidth,H);
-        Place(FFile,MusicCaptionWidth+Gap,S(6),W-MusicCaptionWidth-Gap,ButtonHeight);
-        Place(FAnalyze,W-AnalyzeWidth,H+S(6),AnalyzeWidth,ButtonHeight);
-        Place(FBrowse,W-AnalyzeWidth-Gap-BrowseWidth,H+S(6),BrowseWidth,ButtonHeight);
+        Place(FFile,MusicCaptionWidth+Gap,(H-FileHeight) div 2,W-MusicCaptionWidth-Gap,FileHeight);
+        Place(FAnalyze,W-AnalyzeWidth,H+ButtonTop,AnalyzeWidth,ButtonHeight);
+        if FBrowse.Visible then Place(FBrowse,W-MusicActionsWidth,H+ButtonTop,BrowseWidth,ButtonHeight);
         FMusicRow.Height:=2*H;
       end;
-      Widths[0]:=CaptionWidths[0]+S(6)+ComboWidth(FCategory,160);
-      Widths[1]:=CaptionWidths[1]+S(6)+ComboWidth(FStyle,160);
-      Widths[2]:=CaptionWidths[2]+S(6)+ComboWidth(FDirection,130);
+      Widths[0]:=CaptionWidths[0]+S(6)+ComboWidth(FCategory,128);
+      Widths[1]:=CaptionWidths[1]+S(6)+ComboWidth(FStyle,136);
+      Widths[2]:=CaptionWidths[2]+S(6)+ComboWidth(FDirection,112);
       Widths[3]:=Max(S(170),CaptionWidths[3]+ValueWidth+S(80));
       Widths[4]:=Max(S(170),CaptionWidths[4]+ValueWidth+S(80));
-      Widths[5]:=Max(S(170),CaptionWidths[5]+ValueWidth+S(80));
-      Widths[6]:=CaptionWidths[6]+BossValueWidth+S(88);
-      Widths[7]:=TextWidth(FEqualizer.Caption,FEqualizer.Font)+S(32);
+      Widths[5]:=TextWidth(FEqualizer.Caption,FEqualizer.Font)+S(32);
+      Widths[6]:=Max(S(170),CaptionWidths[6]+ValueWidth+S(80));
+      Widths[7]:=CaptionWidths[7]+BossValueWidth+S(88);
       W:=Max(1,FOptionsBar.ClientWidth);
       Total:=0;
       Numbers:=2;
@@ -557,16 +566,21 @@ begin
       for I:=0 to 7 do if Groups[I].Visible then begin if Total>0 then Inc(Total,Gap);
         Inc(Total,Widths[I]);
       end;
-      if W>Total then begin Extra:=(W-Total) div Numbers;
+      // 分類が一行に収まる場合、折り返しは音の設定から始める。
+      CategoryWidth:=Widths[0]+Widths[1]+Widths[2]+2*Gap;
+      SeparateAudio:=(W<Total) and (CategoryWidth<=W);
+      RowWidth:=Total;
+      if SeparateAudio then Dec(RowWidth,CategoryWidth+Gap);
+      if W>RowWidth then begin Extra:=Min(S(48),(W-RowWidth) div Numbers);
         Inc(Widths[3],Extra);
         Inc(Widths[4],Extra);
-        if FFireworksRow.Visible then Inc(Widths[5],Extra);
-        if FBossRow.Visible then Inc(Widths[6],Extra);
+        if FFireworksRow.Visible then Inc(Widths[6],Extra);
+        if FBossRow.Visible then Inc(Widths[7],Extra);
       end;
       X:=0;
       Y:=0;
       for I:=0 to 7 do if Groups[I].Visible then begin
-        if (X>0) and (X+Widths[I]>W) then begin X:=0;
+        if (X>0) and ((X+Widths[I]>W) or ((I=3) and SeparateAudio)) then begin X:=0;
           Inc(Y,H);
         end;
         Groups[I].SetBounds(X,Y,Min(W,Widths[I]),H);
@@ -581,12 +595,12 @@ begin
       Combo(FDirectionLabel,FDirection,CaptionWidths[2]);
       Slider(FSensitivityLabel,FLevel,FSensitivity,CaptionWidths[3],ValueWidth);
       Slider(FGameLabel,FGameValue,FGameThreshold,CaptionWidths[4],ValueWidth);
-      Slider(FRichnessLabel,FRichnessLevel,FFireworksRichness,CaptionWidths[5],ValueWidth);
-      Slider(FBossLabel,FBossValue,FBossFrequency,CaptionWidths[6],BossValueWidth);
-      Place(FEqualizer,0,Max(0,(H-Max(S(24),TextHeight+S(6))) div 2),FEqualizerRow.ClientWidth,Max(S(24),TextHeight+S(6)));
+      Slider(FRichnessLabel,FRichnessLevel,FFireworksRichness,CaptionWidths[6],ValueWidth);
+      Slider(FBossLabel,FBossValue,FBossFrequency,CaptionWidths[7],BossValueWidth);
+      Place(FEqualizer,0,(H-EqualizerHeight) div 2,FEqualizerRow.ClientWidth,EqualizerHeight);
       W:=Max(1,FTransportButtons.ClientWidth);
-      Place(FPlay,0,S(6),PlayWidth,ButtonHeight);
-      Place(FStop,PlayWidth+Gap,S(6),StopWidth,ButtonHeight);
+      Place(FPlay,0,ButtonTop,PlayWidth,ButtonHeight);
+      Place(FStop,PlayWidth+Gap,ButtonTop,StopWidth,ButtonHeight);
       if W>=PlayWidth+StopWidth+ClockWidth+2*Gap then begin
         Place(FClock,W-ClockWidth,0,ClockWidth,H);
         FTransportButtons.Height:=H;

@@ -23,10 +23,14 @@ type
     function SelectSpaced(Audio:TRhythmAudio;Value:Integer;const Cancel:TFunc<Boolean>):TArray<TRhythmHit>;
   end;
 function PrepareOrbitAudio(Audio:TRhythmAudio;Value:Integer;out Stats:TOrbitAudioStats;
-  const Cancel:TFunc<Boolean> = nil):TRhythmAudio;
+  const Cancel:TFunc<Boolean> = nil;IncludeRollTicks:Boolean=True):TRhythmAudio;
 function SelectAnimationHits(Audio:TRhythmAudio;Value:Integer;const Cancel:TFunc<Boolean>):TArray<TRhythmHit>;
 function RollPair(First,Second:Double):Boolean;
-const RHYTHM_ROLL_SENSITIVITY=-35;
+// 44.1 kHzのステレオPCM約40msから持続的な周期音を判定する。
+function SustainedBlock(Samples:PSmallInt):Boolean;
+const
+  RHYTHM_ROLL_SENSITIVITY=-35;
+  RHYTHM_SUSTAIN_BLOCK_SAMPLES=1764;
 implementation
 uses System.Math,System.Generics.Collections,System.Generics.Defaults,RhythmMotion,RhythmStyles;
 
@@ -76,7 +80,7 @@ begin
 end;
 
 function AddRollTicks(Audio,Snapshot:TRhythmAudio;const Cancel:TFunc<Boolean>):Integer;
-const BlockSamples=1764; Step=0.12; Guard=0.047;
+const BlockSamples=RHYTHM_SUSTAIN_BLOCK_SAMPLES; Step=0.12; Guard=0.047;
 var List:TList<TRhythmHit>;Samples:PSmallInt;Blocks,I,Run,Near,J:Integer;
   Time,Finish:Double;Blocked,Tonal:Boolean;Hit:TRhythmHit;
 begin
@@ -228,7 +232,8 @@ begin
     except Result.Free;raise;end;
   finally List.Free;end;
 end;
-function PrepareOrbitAudio(Audio:TRhythmAudio;Value:Integer;out Stats:TOrbitAudioStats;const Cancel:TFunc<Boolean>):TRhythmAudio;
+function PrepareOrbitAudio(Audio:TRhythmAudio;Value:Integer;out Stats:TOrbitAudioStats;
+  const Cancel:TFunc<Boolean>;IncludeRollTicks:Boolean):TRhythmAudio;
 var Pool:TOrbitCandidatePool;
 begin
   if (Value< -100) or (Value>100) then raise EArgumentOutOfRangeException.Create('音要素');
@@ -238,7 +243,7 @@ begin
   try
     Result:=Pool.Select(Audio,Value,Stats);
     try
-      if Value<=RHYTHM_ROLL_SENSITIVITY then Stats.RollTicks:=AddRollTicks(Audio,Result,Cancel);
+      if IncludeRollTicks and (Value<=RHYTHM_ROLL_SENSITIVITY) then Stats.RollTicks:=AddRollTicks(Audio,Result,Cancel);
     except
       Result.Free;
       raise;

@@ -2,7 +2,7 @@
 {$APPTYPE CONSOLE}
 uses Winapi.Windows,System.SysUtils,System.Math,System.Classes,System.Hash,System.IOUtils,System.JSON,
   Vcl.Graphics,Vcl.Imaging.pngimage,RhythmAudio,RhythmGamePlan,RhythmGameScene,RhythmGameLegacyScene,
-  RhythmOrbitPlan,RhythmOrbitTypes,RhythmStyles,RhythmProduct,RhythmPlanRef,RhythmPreparedData,RhythmSettings,
+  RhythmOrbitPlan,RhythmOrbitTypes,RhythmOrbitGuide,RhythmStyles,RhythmProduct,RhythmPlanRef,RhythmPreparedData,RhythmSettings,
   RhythmAnimation,RhythmImageBank,RhythmPaths;
 var
   Audio,Meta:TRhythmAudio;Plan,Cold,Again:TOrbitPlan;Facade:TGamePlan;Ref,BadRef:TRhythmPlanRef;
@@ -11,7 +11,7 @@ var
   Notes,OrbitHits,FlightHits,Planets,Transfers,Samples,Seeks,Frames,Rejected:Integer;
   Time,Gap,Duration,Error,MaxError,MinSpan,MaxSpan,Aspect,BoundaryError:Double;
   Tap:TOrbitTap;Leg:TOrbitLeg;Body:TOrbitBody;P,Q:TOrbitPoint;Cam,Other:TOrbitCamera;
-  Settings,Loaded:TRhythmSettings;Failed:Boolean;
+  Settings,Loaded:TRhythmSettings;Course:TOrbitCourse;Failed:Boolean;
 procedure Need(OK:Boolean;const S:string);
 begin if not OK then raise Exception.Create(S);end;
 function ImageHash:string;
@@ -152,8 +152,8 @@ begin
           Leg:=Plan.Legs[1];Snapshot('orbit-close-'+IntToStr(Backend),(Leg.Start+Leg.Finish)/2);
           Leg:=Plan.Legs[2];for J:=0 to 4 do Snapshot('transfer-'+IntToStr(Backend)+'-'+IntToStr(J),Leg.Start+(Leg.Finish-Leg.Start)*J/4);
           Tap:=Plan.Taps[24];Snapshot('tap-before-'+IntToStr(Backend),Tap.Time-0.05);Snapshot('tap-hit-'+IntToStr(Backend),Tap.Time);Snapshot('tap-fade-'+IntToStr(Backend),Tap.Time+0.16);
-          P:=OrbitProject(Tap.P,Plan.CameraAt(Tap.Time,16/9),16/9);Renderer.Render(Image,Tap.Time,0);
-          Need(GetRValue(ColorToRGB(Image.Canvas.Pixels[Round(P.X*960),Round(P.Y*540)]))>200,'Raster contact missing');
+          Course.Prepare(Plan,Image.Width,Image.Height);P:=Course.Center(24);Renderer.Render(Image,Tap.Time,0);
+          Need(GetRValue(ColorToRGB(Image.Canvas.Pixels[Round(P.X),Round(P.Y)]))>200,'Raster contact missing');
         end;
         if C=3 then for J:=0 to 3 do Snapshot('roll-'+IntToStr(Backend)+'-'+IntToStr(J),8.1+J*0.05);
         if C=7 then begin Image.SetSize(540,960);Snapshot('portrait-'+IntToStr(Backend),5.2);Image.SetSize(960,540);end;

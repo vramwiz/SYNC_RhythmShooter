@@ -12,8 +12,8 @@ type
     FStarBrush:array[0..2] of ID2D1SolidColorBrush;
     FStarTrailBrush:ID2D1SolidColorBrush;
   public
-    constructor Create(const Assets:array of TBitmap;const ColorKeys:TArray<Boolean> = nil);
-    function BeginFrame(Target:TBitmap;ClearColor:TColor=$001D0D07):Boolean;
+    constructor Create(const Assets:array of TBitmap;const ColorKeys:TArray<Boolean> = nil;Premultiplied:Boolean=False);
+    function BeginFrame(Target:TBitmap;ClearColor:TColor=$001D0D07;Transparent:Boolean=False):Boolean;
     function EndFrame:Boolean;
     procedure DrawAsset(Index:Integer;const Bounds:TRect;Opacity:Single=1);
     procedure Ring(X,Y,Radius:Single);
@@ -26,10 +26,10 @@ type
   end;
 implementation
 uses Winapi.Windows, Winapi.DXGIFormat, System.SysUtils;
-constructor TRhythmD2D.Create(const Assets:array of Vcl.Graphics.TBitmap;const ColorKeys:TArray<Boolean>);
+constructor TRhythmD2D.Create(const Assets:array of Vcl.Graphics.TBitmap;const ColorKeys:TArray<Boolean>;Premultiplied:Boolean);
 var Props:TD2D1RenderTargetProperties;BitmapProps:TD2D1BitmapProperties;
   I,X,Y:Integer;Temp:Vcl.Graphics.TBitmap;Pixels:TBytes;Source,Destination:PByte;
-  Size:TD2D1SizeU;Color:TD2D1ColorF;
+  Size:TD2D1SizeU;Color:TD2D1ColorF;AlphaMode:TD2D1AlphaMode;
   function UsesColorKey(Index:Integer):Boolean;
   begin
     if Length(ColorKeys)=0 then Result:=(Index<>0) and (Index<>3)
@@ -39,8 +39,10 @@ begin
   inherited Create;
   if D2D1CreateFactory(D2D1_FACTORY_TYPE_MULTI_THREADED,ID2D1Factory,nil,FFactory)<0 then
     raise Exception.Create('D2D factory unavailable');
+  AlphaMode:=D2D1_ALPHA_MODE_IGNORE;
+  if Premultiplied then AlphaMode:=D2D1_ALPHA_MODE_PREMULTIPLIED;
   Props:=D2D1RenderTargetProperties(D2D1_RENDER_TARGET_TYPE_DEFAULT,
-    D2D1PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM,D2D1_ALPHA_MODE_IGNORE),96,96);
+    D2D1PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM,AlphaMode),96,96);
   if FFactory.CreateDCRenderTarget(Props,FTarget)<0 then raise Exception.Create('D2D DC target unavailable');
   BitmapProps:=D2D1BitmapProperties(D2D1PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM,D2D1_ALPHA_MODE_PREMULTIPLIED),96,96);
   SetLength(FBitmaps,Length(Assets));Temp:=Vcl.Graphics.TBitmap.Create;
@@ -76,12 +78,13 @@ begin
   Color.r:=60/255;Color.g:=100/255;Color.b:=153/255;Color.a:=0.45;
   if FTarget.CreateSolidColorBrush(Color,nil,FStarTrailBrush)<0 then raise Exception.Create('D2D star trail brush unavailable');
 end;
-function TRhythmD2D.BeginFrame(Target:Vcl.Graphics.TBitmap;ClearColor:TColor):Boolean;
+function TRhythmD2D.BeginFrame(Target:Vcl.Graphics.TBitmap;ClearColor:TColor;Transparent:Boolean):Boolean;
 var Color:TD2D1ColorF;
 begin
   Result:=FTarget.BindDC(Target.Canvas.Handle,Rect(0,0,Target.Width,Target.Height))>=0;
   if not Result then Exit;
-  FTarget.BeginDraw;ClearColor:=ColorToRGB(ClearColor);Color.r:=(ClearColor and 255)/255;Color.g:=((ClearColor shr 8) and 255)/255;Color.b:=((ClearColor shr 16) and 255)/255;Color.a:=1;FTarget.Clear(Color);
+  FTarget.BeginDraw;ClearColor:=ColorToRGB(ClearColor);Color.r:=(ClearColor and 255)/255;Color.g:=((ClearColor shr 8) and 255)/255;Color.b:=((ClearColor shr 16) and 255)/255;
+  Color.a:=Ord(not Transparent);FTarget.Clear(Color);
 end;
 function TRhythmD2D.EndFrame:Boolean;
 begin Result:=FTarget.EndDraw()>=0;end;
