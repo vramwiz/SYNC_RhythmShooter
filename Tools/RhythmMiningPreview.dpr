@@ -1,5 +1,6 @@
 ﻿program RhythmMiningPreview;
 uses
+  RhythmOrbitLayout in '..\Source\RhythmGame\RhythmOrbitLayout.pas',
   RhythmOrbitGuide in '..\Source\RhythmGame\RhythmOrbitGuide.pas',
   RhythmOrbitMarks in '..\Source\RhythmGame\RhythmOrbitMarks.pas',
   RhythmOrbitAudio in '..\Source\RhythmGame\RhythmOrbitAudio.pas',

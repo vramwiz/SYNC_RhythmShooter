@@ -1,5 +1,5 @@
 ﻿unit RhythmOrbitScene;
-// 宇宙の背景に、事前計算したType.Vの周回軌道と予告を重ねる。
+// Type.Vの惑星・航路・判定を同じカメラで投影し、宇宙の背景に重ねる。
 interface
 uses RhythmAnimation,RhythmRenderSurface,RhythmAudio,RhythmPlanRef,RhythmOrbitPlan,RhythmEqualizer,RhythmOrbitGuide;
 type
@@ -9,9 +9,10 @@ type
   end;
   TOrbitAnimation=class(TAnimationScene)
   private
-    FAudio:TRhythmAudio;FTransparentBackground:Boolean;
+    FAudio:TRhythmAudio; // 呼び出し側からの借用。描画中の生存は呼び出し側が保証する。
+    FTransparentBackground:Boolean;
     FRef:TRhythmPlanRef;
-    FPlan:TOrbitPlan;
+    FPlan:TOrbitPlan; // シーンが所有し、入力が変わったときに差し替える。
     FAttempt,FError:string;
     FStats:TOrbitRenderStats;
     FCourse:TOrbitCourse;
@@ -72,6 +73,7 @@ begin
       try FPlan:=TOrbitPlan.Load(FRef,FAudio,Frame.Direction);except on E:Exception do FError:=E.Message;end;
   end;
   if (FPlan=nil) or (FPlan.Count=0) or (Frame.Width<=0) or (Frame.Height<=0) then Exit;
+  // 同じ計画でも画面寸法が変われば、画面外の配置と予告の余白を計算し直す。
   if (FLayoutWidth=Frame.Width) and (FLayoutHeight=Frame.Height) then Exit;
   FCourse.Prepare(FPlan,Frame.Width,Frame.Height);
   FLayoutWidth:=Frame.Width;FLayoutHeight:=Frame.Height;
@@ -82,7 +84,7 @@ var W,H,S,T,StoryTime,Scale,Age,Alpha,U,Angle,D,Progress,HitRadius:Double;View:T
   I,J,Hit,FromBody,ToBody,MarkerCount:Integer;L:TOrbitLeg;N:TOrbitTap;
   Markers:TOrbitMarkers;
   P,Q,Ship,FirstPlanet,Destination:TOrbitPoint;C,Theme:TColor;V:TOrbitVisualState;
-  HitScale,EffectScale,EffectLife,MarkRadius,X,Y,Zoom:Double;
+  HitScale,EffectScale,EffectLife,MarkRadius,X,Y,Zoom,CursorStroke:Double;
   function Cursor(At:Double):TOrbitPoint;
   begin Result:=View.Project(FCourse.CursorAt(At));end;
   procedure Dot(const P:TOrbitPoint;Radius:Double;Color:TColor;Opacity:Double);
@@ -287,11 +289,12 @@ begin
   for J:=1 to 10 do begin Q:=Cursor(T-0.10+J*0.01);
     Surface.Line(P.X,P.Y,Q.X,Q.Y,C,Max(1.0,(0.015+0.027*J/10)*Scale),Alpha*0.56*Sqr(J/10));P:=Q;
   end;
-  D:=OrbitShipSize(FPlan,StoryTime)*HitScale;
-  Surface.Circle(Ship.X,Ship.Y,Max(1.0,0.10*D),C,True,1,Alpha*0.18);
-  Surface.Circle(Ship.X,Ship.Y,Max(1.0,0.063*D),C,True,1,Alpha*0.35);
-  Surface.Circle(Ship.X,Ship.Y,Max(1.0,0.035*D),clWhite,True,1,Alpha);
-  Surface.Circle(Ship.X,Ship.Y,0.055*D,C,False,Max(1.0,0.010*HitScale),Alpha);
+  // 判定円よりひと回り小さい照準。輪の内側を開け、重なったときもマークを読めるようにする。
+  D:=OrbitCursorRadius(S)*Zoom*OrbitShipSize(FPlan,StoryTime);
+  CursorStroke:=Max(1.0,D*0.10);
+  Surface.Circle(Ship.X,Ship.Y,D,RGB(5,12,21),False,CursorStroke*2.4,Alpha*0.95);
+  Surface.Circle(Ship.X,Ship.Y,D,clWhite,False,CursorStroke,Alpha);
+  Surface.Circle(Ship.X,Ship.Y,Max(1.0,D*0.14),clWhite,True,1,Alpha);
   if V.Playing then Hud;
   DrawOrbitShow(Surface,FPlan,StoryTime,W,H,FirstPlanet,Destination,True);
 end;

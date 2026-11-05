@@ -1,7 +1,7 @@
 ﻿unit RhythmOrbitGuide;
-// 惑星を順に渡る航路と、等速の自機が各判定時刻に通る位置を事前計算する。
+// 準備した航路を絶対時刻で評価し、判定位置と先読み表示を決める。
 interface
-uses RhythmOrbitPlan,RhythmOrbitTypes;
+uses RhythmOrbitPlan,RhythmOrbitTypes,RhythmOrbitLayout;
 const
   ORBIT_GUIDE_STEPS=640;
   ORBIT_MARKER_LIMIT=128;
@@ -11,6 +11,7 @@ const
   ORBIT_WIDE_SCALE=0.82;
 type
   TOrbitView=record
+    // Centerは世界座標、ViewportCenterは描画領域の座標。惑星・自機・航路・マークで共有する。
     Center,ViewportCenter:TOrbitPoint;
     Scale:Double;
     function Project(const Point:TOrbitPoint):TOrbitPoint;
@@ -26,6 +27,7 @@ type
   end;
   TOrbitRoute=array[0..ORBIT_GUIDE_STEPS] of TOrbitRoutePoint;
   TOrbitMarker=record
+    // Centerと大きさは世界単位。描画時に自機や航路と一緒に投影する。
     Center:TOrbitPoint;
     Radius,Extent,Approach,Opacity,Visibility:Double;
     TapIndex,TapCount:Integer;
@@ -33,50 +35,42 @@ type
   TOrbitMarkers=array[0..ORBIT_MARKER_LIMIT-1] of TOrbitMarker;
   TOrbitCourse=record
   private type
-    TPathPoint=record
-      Center:TOrbitPoint;
-      Distance:Double;
-    end;
-    TPath=TArray<TPathPoint>;
-    TSection=record
-      Path:TPath;
-      Center:TOrbitPoint;
-      Start,Finish,Phase,Radius:Double;
-    end;
     TCue=record
       Center:TOrbitPoint;
+      // Timeは元の音時刻、ShowAtは交差と画面内の余裕を満たす表示開始時刻。
       Time,ShowAt,Radius,Extent:Double;
       TapIndex,TapCount:Integer;
     end;
   private
-    FBodies:TArray<TOrbitBody>;
-    FLegs:TArray<TOrbitLeg>;
-    FSections:TArray<TSection>;
+    FLayout:TOrbitLayout;
     FCues:TArray<TCue>;
-    FWidth,FHeight,FHitRadius,FMinRadius,FExtent,FSpeed,FLength,FFinishTime:Double;
-    procedure PrepareItinerary(Plan:TOrbitPlan);
-    procedure PrepareTrack(Plan:TOrbitPlan);
+    FWidth,FHeight,FHitRadius,FMinRadius:Double;
+    function GetSpeed:Double;
     function SectionAt(Distance:Double):Integer;
     function DistanceAt(Time:Double):Double;
     function NextCue(Time:Double):Integer;
     function AfterPreviousPass(const Cue:TCue):Double;
     function InViewFrom(const Cue:TCue):Double;
     procedure DelayCrossingPreviews;
-    class function PathPoint(const Path:TPath;Distance:Double):TOrbitPoint;static;
+    class function PathPoint(const Path:TOrbitPath;Distance:Double):TOrbitPoint;static;
   public
+    // Planを借用し、描画寸法に合わせて航路と判定の配列を作り直す。
     procedure Prepare(Plan:TOrbitPlan;Width,Height:Double);
     function Body(Index:Integer):TOrbitBody;
     function Leg(Index:Integer):TOrbitLeg;
     function BodyCount:Integer;
     function LegAt(Time:Double):Integer;
     function ViewAt(Time:Double):TOrbitView;
+    // 等速航行の時刻を演出用の元の計画時刻に対応づける。判定の音時刻は保持する。
     function StoryTime(Time:Double):Double;
     function CursorAt(Time:Double):TOrbitPoint;
     function HitRadiusAt(Time:Double):Double;
     function HitIndex(Time:Double):Integer;
     function HitCount(Time:Double):Integer;
-    property Speed:Double read FSpeed;
+    property Speed:Double read GetSpeed;
+    // 戻り値は固定長バッファに書き込んだ件数。位置は判定時刻から事前に確定している。
     function Visible(const State:TOrbitVisualState;Time:Double;out Markers:TOrbitMarkers):Integer;
+    // 予告の線と判定中心を一致させるため、表示マークの時刻を線のサンプルに含める。
     function Route(Plan:TOrbitPlan;Start,Finish:Double;const Markers:TOrbitMarkers;
       MarkerCount:Integer;out Points:TOrbitRoute):Integer;
   end;
@@ -85,6 +79,8 @@ function OrbitOpeningTapCount(Plan:TOrbitPlan):Integer;
 function OrbitVisualState(Plan:TOrbitPlan;Time:Double):TOrbitVisualState;
 function OrbitMarkerOpacity(Ahead,Horizon:Double):Double;
 function OrbitMarkerGap(ShortSide:Double):Double;
+function OrbitCursorRadius(ShortSide:Double):Double;
+function OrbitCursorExtent(ShortSide:Double):Double;
 implementation
 uses System.Math,RhythmOrbitMarks;
 const
@@ -154,215 +150,29 @@ begin
   Result:=Max(0.5,ORBIT_MARKER_GAP*Sqr(Min(1.0,ShortSide/540)));
 end;
 
-procedure TOrbitCourse.PrepareItinerary(Plan:TOrbitPlan);
-const NotesPerVisit=9;
-var FirstBody,Visits:TArray<Integer>;I,J,N,StartTap,AfterTap,Count,BodyTotal,LegTotal:Integer;
-  L,Part:TOrbitLeg;Body:TOrbitBody;At,Step,ScoredStart,ScoredLength:Double;
+function OrbitCursorRadius(ShortSide:Double):Double;
 begin
-  SetLength(FirstBody,Plan.BodyCount);
-  SetLength(Visits,Plan.BodyCount);
-  for I:=0 to High(Visits) do Visits[I]:=1;
-  for I:=0 to Plan.LegCount-1 do begin
-    L:=Plan.Legs[I];
-    if L.Kind<>0 then Continue;
-    ScoredStart:=Max(L.Start,OrbitGameplayStart(Plan));
-    ScoredLength:=L.Finish-ScoredStart;
-    if ScoredLength<1.5 then Continue;
-    StartTap:=Plan.Before(ScoredStart,False)+1;
-    AfterTap:=Plan.Before(L.Finish,False)+1;
-    Count:=0;
-    while StartTap<AfterTap do begin
-      Inc(Count);
-      StartTap:=Plan.Before(Plan.Taps[StartTap].Time)+1;
-    end;
-    // 連続して音が多い区間は同じ惑星を周回せず、途中の惑星を増やす。
-    if (ScoredLength>=2.0) and (Count>=6*ScoredLength) then
-      Visits[L.FromBody]:=Min(Ceil(ScoredLength/1.65),Ceil(Count/NotesPerVisit));
-    // 短い譜面でも周回に時間と音が揃えば、途中で次の空域へ渡る。
-    if (Plan.BodyCount=1) and (Count>=4) then Visits[L.FromBody]:=Max(2,Visits[L.FromBody]);
-  end;
-
-  BodyTotal:=0;
-  for I:=0 to High(Visits) do begin
-    FirstBody[I]:=BodyTotal;
-    Inc(BodyTotal,Visits[I]);
-  end;
-  SetLength(FBodies,BodyTotal);
-  for I:=0 to High(Visits) do begin
-    Body:=Plan.Bodies[I];
-    for J:=0 to Visits[I]-1 do begin
-      FBodies[FirstBody[I]+J]:=Body;
-      FBodies[FirstBody[I]+J].Hue:=(Body.Hue+J*3) mod 8;
-    end;
-  end;
-
-  LegTotal:=0;
-  SetLength(FLegs,Plan.LegCount+2*(BodyTotal-Plan.BodyCount));
-  for I:=0 to Plan.LegCount-1 do begin
-    L:=Plan.Legs[I];
-    if L.Kind=4 then Continue;
-    if L.Kind=0 then begin
-      N:=Visits[L.FromBody];
-      ScoredStart:=Max(L.Start,OrbitGameplayStart(Plan));
-      Step:=(L.Finish-ScoredStart)/N;
-      At:=L.Start;
-      for J:=0 to N-1 do begin
-        Part:=L;
-        Part.FromBody:=FirstBody[L.FromBody]+J;
-        Part.ToBody:=Part.FromBody;
-        Part.Start:=At;
-        if J<N-1 then Part.Finish:=ScoredStart+Step*(J+0.72);
-        FLegs[LegTotal]:=Part;Inc(LegTotal);
-        if J=N-1 then Break;
-        Part.Kind:=1;
-        Inc(Part.ToBody);
-        Part.Start:=Part.Finish;
-        At:=ScoredStart+Step*(J+1);
-        Part.Finish:=At;
-        FBodies[Part.FromBody].Clear:=At+1.4;
-        FLegs[LegTotal]:=Part;Inc(LegTotal);
-      end;
-    end else begin
-      Part:=L;
-      Part.FromBody:=FirstBody[L.FromBody];
-      if L.Kind in [1,3] then Inc(Part.FromBody,Visits[L.FromBody]-1);
-      Part.ToBody:=FirstBody[L.ToBody];
-      if L.Kind=3 then Part.ToBody:=Part.FromBody;
-      FLegs[LegTotal]:=Part;Inc(LegTotal);
-    end;
-  end;
-  SetLength(FLegs,LegTotal);
+  Result:=OrbitMinimumMarkRadius(ShortSide)*0.82/ORBIT_WIDE_SCALE;
 end;
 
-procedure TOrbitCourse.PrepareTrack(Plan:TOrbitPlan);
-var I,J,Steps,Last:Integer;L:TOrbitLeg;Section:TSection;LayoutState:Cardinal;
-  EntryPhase,ExitPhase,Advance,S,Padding,Radius,Length,Forward,Lateral,PreviousLateral:Double;
-  P,Q,Center:TOrbitPoint;
-  function LayoutFraction:Double;
-  begin
-    LayoutState:=Cardinal((UInt64(LayoutState)*1664525+1013904223) and $FFFFFFFF);
-    Result:=(LayoutState shr 8)/16777216.0;
-  end;
-  function ConnectorAngle(FromBody,ToBody:Integer):Double;
-  var A,B:TOrbitPoint;
-  begin
-    A:=FBodies[FromBody].Center;B:=FBodies[ToBody].Center;
-    Result:=ArcTan2(B.Y-A.Y,B.X-A.X)-Pi/2;
-  end;
-  function EntryAngle(Index:Integer):Double;
-  begin
-    if Index>0 then Exit(ConnectorAngle(Index-1,Index));
-    if System.Length(FBodies)>1 then Exit(ConnectorAngle(0,1)-Pi);
-    Result:=0.6;
-  end;
-  function ExitAngle(Index:Integer):Double;
-  begin
-    if Index<High(FBodies) then Exit(ConnectorAngle(Index,Index+1));
-    if Index>0 then Exit(EntryAngle(Index)+Pi);
-    Result:=4.7;
-  end;
-  function OnCircle(const Center:TOrbitPoint;Angle:Double):TOrbitPoint;
-  begin
-    Result:=OrbitPoint(Center.X+Radius*Cos(Angle),Center.Y+Radius*Sin(Angle));
-  end;
-  function ExtendTangent(const P,Focus:TOrbitPoint;Angle,Direction:Double):TOrbitPoint;
-  var X,Y,D,LocalX,LocalY,HalfW,HalfH:Double;
-  begin
-    X:=-Sin(Angle)*Direction;Y:=Cos(Angle)*Direction;
-    LocalX:=P.X-Focus.X;LocalY:=P.Y-Focus.Y;
-    HalfW:=FWidth*0.5-Padding;HalfH:=FHeight*0.5-Padding;
-    D:=S*0.38;
-    if X>1E-9 then D:=Min(D,(HalfW-LocalX)/X)
-    else if X< -1E-9 then D:=Min(D,(-HalfW-LocalX)/X);
-    if Y>1E-9 then D:=Min(D,(HalfH-LocalY)/Y)
-    else if Y< -1E-9 then D:=Min(D,(-HalfH-LocalY)/Y);
-    D:=Max(0.0,D);
-    Result:=OrbitPoint(P.X+X*D,P.Y+Y*D);
-  end;
+function OrbitCursorExtent(ShortSide:Double):Double;
+var Radius:Double;
 begin
-  FSpeed:=0;FLength:=0;
-  FBodies:=nil;FLegs:=nil;FSections:=nil;
-  if Plan.LegCount=0 then Exit;
-  PrepareItinerary(Plan);
-  S:=Min(FWidth,FHeight);
-  Padding:=Min(S*0.18,FExtent+ORBIT_MARKER_GAP+S*0.01);
-  Radius:=S*0.29;
-  if System.Length(FBodies)=1 then Radius:=S*0.32;
-  Center:=OrbitPoint(FWidth*0.5,FHeight*0.5);
-  LayoutState:=Cardinal(Plan.Count) xor Cardinal(Round(Frac(Plan.SoundEnd)*1000000));
-  if Plan.Count>0 then LayoutState:=LayoutState xor Cardinal(Round(Frac(Plan.Taps[Plan.Count div 3].Time)*1000000));
-  PreviousLateral:=0;
-  for I:=0 to High(FBodies) do begin
-    FBodies[I].Center:=Center;
-    // 長辺方向に次の画面へ進みながら、距離と斜め方向を訪問ごとに変える。
-    Forward:=0.63+0.24*LayoutFraction;
-    Lateral:=1.12*(LayoutFraction-0.5);
-    if Abs(Lateral-PreviousLateral)<0.22 then begin
-      if Lateral>=0 then Lateral:=Lateral-0.56 else Lateral:=Lateral+0.56;
-    end;
-    PreviousLateral:=Lateral;
-    if FWidth>=FHeight then Center:=OrbitPoint(Center.X+Forward*FWidth,Center.Y+Lateral*FHeight)
-    else Center:=OrbitPoint(Center.X-Lateral*FWidth,Center.Y+Forward*FHeight);
-  end;
-  for I:=0 to High(FBodies) do begin
-    FBodies[I].RX:=Radius;FBodies[I].RY:=Radius;FBodies[I].Rotation:=0;
-    FBodies[I].Radius:=FBodies[I].Radius*Radius*0.76;
-  end;
-
-  Last:=High(FLegs);
-  SetLength(FSections,Last+1);
-  FFinishTime:=Plan.SoundEnd;
-  for I:=0 to Last do begin
-    L:=FLegs[I];
-    Section:=Default(TSection);
-    if L.Kind=0 then begin
-      EntryPhase:=EntryAngle(L.FromBody);
-      ExitPhase:=ExitAngle(L.FromBody);
-      Advance:=ExitPhase-EntryPhase;
-      Advance:=Advance-2*Pi*Floor(Advance/(2*Pi));
-      Section.Center:=FBodies[L.FromBody].Center;
-      Section.Radius:=Radius;
-      Section.Phase:=EntryPhase;
-      Length:=Radius*Advance;
-      // 円弧は角度と弧長で評価する。予告の交差判定だけ細かい線分を使う。
-      Steps:=Max(1,Ceil(192*Advance/(2*Pi)));
-      SetLength(Section.Path,Steps+1);
-      for J:=0 to Steps do begin
-        Section.Path[J].Center:=OnCircle(Section.Center,EntryPhase+Advance*J/Steps);
-        Section.Path[J].Distance:=Length*J/Steps;
-      end;
-    end else begin
-      ExitPhase:=ExitAngle(L.FromBody);
-      EntryPhase:=EntryAngle(L.ToBody);
-      P:=OnCircle(FBodies[L.FromBody].Center,ExitPhase);
-      Q:=OnCircle(FBodies[L.ToBody].Center,EntryPhase);
-      if L.Kind=2 then P:=ExtendTangent(Q,FBodies[L.ToBody].Center,EntryPhase,-1)
-      else if L.Kind=3 then Q:=ExtendTangent(P,FBodies[L.FromBody].Center,ExitPhase,1);
-      // 半径をそろえた惑星同士の共通接線。直線と周回が同じ向きでつながる。
-      Length:=Hypot(Q.X-P.X,Q.Y-P.Y);
-      SetLength(Section.Path,2);
-      Section.Path[0].Center:=P;
-      Section.Path[1].Center:=Q;
-      Section.Path[1].Distance:=Length;
-    end;
-    Section.Start:=FLength;
-    FLength:=FLength+Length;
-    Section.Finish:=FLength;
-    FSections[I]:=Section;
-  end;
-  // この譜面の全区間を一つの速さで進む。
-  FSpeed:=FLength/FFinishTime;
+  Radius:=OrbitCursorRadius(ShortSide);
+  Result:=Radius+Max(1.2/ORBIT_WIDE_SCALE,Radius*0.12);
 end;
 
 procedure TOrbitCourse.Prepare(Plan:TOrbitPlan;Width,Height:Double);
-var I,J,Count,LastAtTime:Integer;Gap,MarkerGap,LatestShow:Double;Cue:TCue;
+var I,J,Count,LastAtTime:Integer;Gap,MarkerGap,LatestShow,ShortSide,Extent:Double;Cue:TCue;
 begin
   FWidth:=Width;
   FHeight:=Height;
   FHitRadius:=OrbitHitRadius(Min(Width,Height));
   FMinRadius:=OrbitMinimumMarkRadius(Min(Width,Height))/ORBIT_WIDE_SCALE;
-  FExtent:=OrbitMarkExtent(FHitRadius,StartApproach);
-  PrepareTrack(Plan);
+  ShortSide:=Min(Width,Height);
+  Extent:=OrbitMarkExtent(FHitRadius,StartApproach);
+  FLayout.Prepare(Plan,Width,Height,Min(ShortSide*0.18,Extent+ORBIT_MARKER_GAP+ShortSide*0.01),
+    OrbitGameplayStart(Plan));
   I:=OrbitOpeningTapCount(Plan);
   SetLength(FCues,Plan.Count-I);
   MarkerGap:=OrbitMarkerGap(Min(Width,Height))/ORBIT_WIDE_SCALE;
@@ -423,24 +233,24 @@ begin
 end;
 
 function TOrbitCourse.AfterPreviousPass(const Cue:TCue):Double;
-var I,J,FirstSection:Integer;Path:TPath;A,B:TOrbitPoint;
+var I,J,FirstSection:Integer;Path:TOrbitPath;A,B:TOrbitPoint;
   First,Last,Start,Finish,SegmentStart,SegmentFinish,Radius,Radius2,DX,DY,Length2,Along,Offset,HalfSpan,ExitTime:Double;
   FinalApproach:Boolean;
 begin
   Result:=Cue.ShowAt;
   First:=DistanceAt(Cue.ShowAt);
   Last:=DistanceAt(Cue.Time);
-  Radius:=Cue.Extent+0.0151*Min(FWidth,FHeight);
+  Radius:=Cue.Extent+OrbitCursorExtent(Min(FWidth,FHeight));
   if Last-First<=Radius then Exit;
 
   Radius2:=Sqr(Radius);
   FinalApproach:=True;
   FirstSection:=SectionAt(First);
   for I:=SectionAt(Last) downto FirstSection do begin
-    Path:=FSections[I].Path;
+    Path:=FLayout.Sections[I].Path;
     for J:=High(Path) downto 1 do begin
-      SegmentStart:=FSections[I].Start+Path[J-1].Distance;
-      SegmentFinish:=FSections[I].Start+Path[J].Distance;
+      SegmentStart:=FLayout.Sections[I].Start+Path[J-1].Distance;
+      SegmentFinish:=FLayout.Sections[I].Start+Path[J].Distance;
       if SegmentStart>=Last then Continue;
       if SegmentFinish<=First then Break;
       if SegmentFinish<=SegmentStart then Continue;
@@ -464,7 +274,7 @@ begin
       HalfSpan:=Sqrt((Radius2-Offset)/Length2);
       if (Along+HalfSpan>=0) and (Along-HalfSpan<=1) then begin
         // 手前の航路が円の範囲を横切る場合は、その出口より後に予告を出す。
-        ExitTime:=(Start+Min(1.0,Along+HalfSpan)*(Finish-Start))/FSpeed;
+        ExitTime:=(Start+Min(1.0,Along+HalfSpan)*(Finish-Start))/FLayout.Speed;
         Result:=Max(Result,ExitTime+Min(1E-6,(Cue.Time-ExitTime)*0.5));
         Exit;
       end;
@@ -473,7 +283,7 @@ begin
 end;
 
 procedure TOrbitCourse.DelayCrossingPreviews;
-var Earlier,Later,I,J:Integer;BeforePath,AfterPath:TPath;A,B:TSection;
+var Earlier,Later,I,J:Integer;BeforePath,AfterPath:TOrbitPath;A,B:TOrbitSection;
   LookAhead,BeforeFraction,AfterFraction,BeforeCross,AfterCross:Double;
   function SegmentCross(const P,Q,R,S:TOrbitPoint;out U,V:Double):Boolean;
   var DX,DY,EX,EY,Cross,X,Y:Double;
@@ -491,22 +301,22 @@ var Earlier,Later,I,J:Integer;BeforePath,AfterPath:TPath;A,B:TSection;
   var Index:Integer;ReleaseAt,Limit:Double;
   begin
     // 後で通る枝は入口から伏せる。直線の先につながる円弧も同じ先読み範囲に含める。
-    ReleaseAt:=(BeforeAt+Min(FMinRadius,(BranchStart-BeforeAt)*0.5))/FSpeed;
+    ReleaseAt:=(BeforeAt+Min(FMinRadius,(BranchStart-BeforeAt)*0.5))/FLayout.Speed;
     Limit:=ReleaseAt+ORBIT_MARKER_LEAD;
-    Index:=NextCue(BranchStart/FSpeed-1E-9);
+    Index:=NextCue(BranchStart/FLayout.Speed-1E-9);
     while (Index<Length(FCues)) and (FCues[Index].Time<=Limit) do begin
       FCues[Index].ShowAt:=Max(FCues[Index].ShowAt,ReleaseAt);
       Inc(Index);
     end;
   end;
 begin
-  if (FSpeed<=0) or (Length(FCues)=0) then Exit;
-  LookAhead:=FSpeed*ORBIT_MARKER_LEAD;
-  for Later:=2 to High(FSections) do begin
-    B:=FSections[Later];AfterPath:=B.Path;
+  if (FLayout.Speed<=0) or (Length(FCues)=0) then Exit;
+  LookAhead:=FLayout.Speed*ORBIT_MARKER_LEAD;
+  for Later:=2 to High(FLayout.Sections) do begin
+    B:=FLayout.Sections[Later];AfterPath:=B.Path;
     // 隣り合う区間は接線でつながるため、継ぎ目は交差として扱わない。
     for Earlier:=Later-2 downto 0 do begin
-      A:=FSections[Earlier];
+      A:=FLayout.Sections[Earlier];
       if B.Start-A.Finish>=LookAhead then Break;
       if (A.Radius>0) and (B.Radius>0) then
         if ((A.Center.X=B.Center.X) and (A.Center.Y=B.Center.Y)) or
@@ -529,41 +339,46 @@ begin
   end;
 end;
 
+function TOrbitCourse.GetSpeed:Double;
+begin
+  Result:=FLayout.Speed;
+end;
+
 function TOrbitCourse.DistanceAt(Time:Double):Double;
 begin
-  Result:=EnsureRange(Time*FSpeed,0.0,FLength);
+  Result:=EnsureRange(Time*FLayout.Speed,0.0,FLayout.TotalLength);
 end;
 
 function TOrbitCourse.SectionAt(Distance:Double):Integer;
 var L,R,M:Integer;
 begin
   L:=0;
-  R:=High(FSections);
+  R:=High(FLayout.Sections);
   while L<R do begin
     M:=L+(R-L) div 2;
-    if FSections[M].Finish<=Distance then L:=M+1 else R:=M;
+    if FLayout.Sections[M].Finish<=Distance then L:=M+1 else R:=M;
   end;
   Result:=L;
 end;
 
 function TOrbitCourse.Body(Index:Integer):TOrbitBody;
 begin
-  Result:=FBodies[Index];
+  Result:=FLayout.Bodies[Index];
 end;
 
 function TOrbitCourse.Leg(Index:Integer):TOrbitLeg;
 begin
-  Result:=FLegs[Index];
+  Result:=FLayout.Legs[Index];
 end;
 
 function TOrbitCourse.BodyCount:Integer;
 begin
-  Result:=Length(FBodies);
+  Result:=Length(FLayout.Bodies);
 end;
 
 function TOrbitCourse.LegAt(Time:Double):Integer;
 begin
-  if Length(FSections)=0 then Exit(-1);
+  if Length(FLayout.Sections)=0 then Exit(-1);
   Result:=SectionAt(DistanceAt(Time));
 end;
 
@@ -579,9 +394,9 @@ var Index:Integer;Distance:Double;View:TOrbitView;
   var Start,Finish,Span,Blend,Offset,Progress,U:Double;A,B:TOrbitPoint;
   begin
     Result:=False;
-    if (Index<=0) or (Index>=High(FSections)) or (FLegs[Index].Kind<>1) then Exit;
-    Start:=FSections[Index].Start;Finish:=FSections[Index].Finish;Span:=Finish-Start;
-    Blend:=Min(Span*0.55,0.48*Min(Start-FSections[Index-1].Start,FSections[Index+1].Finish-Finish));
+    if (Index<=0) or (Index>=High(FLayout.Sections)) or (FLayout.Legs[Index].Kind<>1) then Exit;
+    Start:=FLayout.Sections[Index].Start;Finish:=FLayout.Sections[Index].Finish;Span:=Finish-Start;
+    Blend:=Min(Span*0.55,0.48*Min(Start-FLayout.Sections[Index-1].Start,FLayout.Sections[Index+1].Finish-Finish));
     if (Distance<Start-Blend) or (Distance>Finish+Blend) then Exit;
     // 出発前と到着後にパンをならす。直線区間ではカメラが自機よりゆっくり進む。
     Offset:=Distance-Start;
@@ -589,7 +404,7 @@ var Index:Integer;Distance:Double;View:TOrbitView;
     else if Offset>Span then Progress:=Span+Blend-Sqr(Span+Blend-Offset)/(2*Blend)
     else Progress:=Offset+Blend*0.5;
     Progress:=Progress/(Span+Blend);
-    A:=FBodies[FLegs[Index].FromBody].Center;B:=FBodies[FLegs[Index].ToBody].Center;
+    A:=FLayout.Bodies[FLayout.Legs[Index].FromBody].Center;B:=FLayout.Bodies[FLayout.Legs[Index].ToBody].Center;
     View.Center:=OrbitPoint(A.X+(B.X-A.X)*Progress,A.Y+(B.Y-A.Y)*Progress);
     U:=(Offset+Blend)/(Span+2*Blend);
     View.Scale:=1-(1-ORBIT_WIDE_SCALE)*Sqr(Sin(Pi*U));
@@ -599,10 +414,10 @@ begin
   View.ViewportCenter:=OrbitPoint(FWidth*0.5,FHeight*0.5);
   View.Center:=View.ViewportCenter;
   View.Scale:=1;
-  if Length(FSections)>0 then begin
+  if Length(FLayout.Sections)>0 then begin
     Distance:=DistanceAt(Time);
     Index:=SectionAt(Distance);
-    View.Center:=FBodies[FLegs[Index].FromBody].Center;
+    View.Center:=FLayout.Bodies[FLayout.Legs[Index].FromBody].Center;
     if not FrameTransfer(Index) and not FrameTransfer(Index-1) then FrameTransfer(Index+1);
   end;
   Result:=View;
@@ -611,18 +426,18 @@ end;
 function TOrbitCourse.StoryTime(Time:Double):Double;
 var Index:Integer;Distance,Length:Double;L:TOrbitLeg;
 begin
-  if System.Length(FSections)=0 then Exit(Time);
+  if System.Length(FLayout.Sections)=0 then Exit(Time);
   Distance:=DistanceAt(Time);
   Index:=SectionAt(Distance);
-  L:=FLegs[Index];
-  if Time>=FFinishTime then Exit(L.Finish+Time-FFinishTime);
-  Length:=FSections[Index].Finish-FSections[Index].Start;
+  L:=FLayout.Legs[Index];
+  if Time>=FLayout.FinishTime then Exit(L.Finish+Time-FLayout.FinishTime);
+  Length:=FLayout.Sections[Index].Finish-FLayout.Sections[Index].Start;
   if Length<=0 then Exit(L.Finish);
-  Result:=L.Start+(L.Finish-L.Start)*(Distance-FSections[Index].Start)/Length;
+  Result:=L.Start+(L.Finish-L.Start)*(Distance-FLayout.Sections[Index].Start)/Length;
 end;
 
-class function TOrbitCourse.PathPoint(const Path:TPath;Distance:Double):TOrbitPoint;
-var L,R,M:Integer;U:Double;A,B:TPathPoint;
+class function TOrbitCourse.PathPoint(const Path:TOrbitPath;Distance:Double):TOrbitPoint;
+var L,R,M:Integer;U:Double;A,B:TOrbitPathPoint;
 begin
   if Distance<=0 then Exit(Path[0].Center);
   L:=0;R:=High(Path);
@@ -639,16 +454,16 @@ end;
 function TOrbitCourse.CursorAt(Time:Double):TOrbitPoint;
 var Index:Integer;Distance,Angle:Double;
 begin
-  if Length(FSections)=0 then Exit(OrbitPoint(FWidth*0.5,FHeight*0.5));
+  if Length(FLayout.Sections)=0 then Exit(OrbitPoint(FWidth*0.5,FHeight*0.5));
   Distance:=DistanceAt(Time);
   Index:=SectionAt(Distance);
-  Distance:=Distance-FSections[Index].Start;
-  if FSections[Index].Radius>0 then begin
-    Angle:=FSections[Index].Phase+Distance/FSections[Index].Radius;
-    Exit(OrbitPoint(FSections[Index].Center.X+FSections[Index].Radius*Cos(Angle),
-      FSections[Index].Center.Y+FSections[Index].Radius*Sin(Angle)));
+  Distance:=Distance-FLayout.Sections[Index].Start;
+  if FLayout.Sections[Index].Radius>0 then begin
+    Angle:=FLayout.Sections[Index].Phase+Distance/FLayout.Sections[Index].Radius;
+    Exit(OrbitPoint(FLayout.Sections[Index].Center.X+FLayout.Sections[Index].Radius*Cos(Angle),
+      FLayout.Sections[Index].Center.Y+FLayout.Sections[Index].Radius*Sin(Angle)));
   end;
-  Result:=PathPoint(FSections[Index].Path,Distance);
+  Result:=PathPoint(FLayout.Sections[Index].Path,Distance);
 end;
 
 function TOrbitCourse.HitRadiusAt(Time:Double):Double;
@@ -717,8 +532,8 @@ begin
   Points[0].P:=CursorAt(Start);
   Result:=0;
   if Finish<=Start then Exit;
-  // 速い周回を細かく描き、表示した判定の時刻も必ずサンプルに含める。
-  Step:=Max((Finish-Start)/(ORBIT_GUIDE_STEPS-MarkerCount-1),Min(1/45,Min(FWidth,FHeight)*0.018/Max(1.0,FSpeed)));
+  // 各判定間の端数を切り上げられるよう、バッファの一部を区間の終点用に確保する。
+  Step:=Max((Finish-Start)/(ORBIT_GUIDE_STEPS-MarkerCount-1),Min(1/45,Min(FWidth,FHeight)*0.018/Max(1.0,FLayout.Speed)));
   At:=Start;
   for I:=0 to MarkerCount do begin
     NextTime:=Finish;

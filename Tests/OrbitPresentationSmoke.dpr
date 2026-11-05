@@ -64,7 +64,7 @@ var State:TOrbitVisualState;Course:TOrbitCourse;Camera:TOrbitView;Markers,LastMa
   Point,Ship,Projected:TOrbitPoint;Route:TOrbitRoute;
   Previous,Current:TArray<Integer>;Entered:TArray<Boolean>;
   View,Frame,Count,I,J,Index,LastIndex,MaxMarkers,Accepted,Segments:Integer;
-  Time,W,H,FullExtent,LeadStart,Extent:Double;Found:Boolean;
+  Time,W,H,FullExtent,LeadStart,Extent,StepX,PreviousStepX:Double;Found:Boolean;
 begin
   Need(OrbitGameplayStart(Plan)=3,'Opening length');
   Course.Prepare(Plan,960,540);
@@ -89,6 +89,12 @@ begin
   for View:=Low(Widths) to High(Widths) do begin
     W:=Widths[View];H:=Heights[View];
     Course.Prepare(Plan,W,H);
+    PreviousStepX:=0;
+    for I:=1 to Course.BodyCount-1 do begin
+      StepX:=Course.Body(I).Center.X-Course.Body(I-1).Center.X;
+      Need(StepX*PreviousStepX<=0,'Consecutive transfers headed to the same side of the screen');
+      PreviousStepX:=StepX;
+    end;
     MaxMarkers:=0;
     for I:=0 to Plan.Count-1 do begin Previous[I]:=-1;Entered[I]:=False;end;
     for Frame:=0 to Ceil((Plan.SoundEnd-LeadStart)*60)+1 do begin
@@ -109,7 +115,7 @@ begin
         Extent:=OrbitMarkExtent(Markers[I].Radius*Camera.Scale,Markers[I].Approach);
         Need((Projected.X>=Extent-1E-9) and (Projected.X+Extent<=W+1E-9) and
           (Projected.Y>=Extent-1E-9) and (Projected.Y+Extent<=H+1E-9),'Marker was clipped');
-        FullExtent:=OrbitMarkExtent(Course.HitRadiusAt(Plan.Taps[Index].Time),0.65)+0.055*Min(W,H)/3.7;
+        FullExtent:=OrbitMarkExtent(Course.HitRadiusAt(Plan.Taps[Index].Time),0.65)+OrbitCursorExtent(Min(W,H));
         if Hypot(Point.X-Ship.X,Point.Y-Ship.Y)<=FullExtent then Entered[Index]:=True
         else Need(not Entered[Index],'Ship passed over a visible target and left before its hit');
         LastIndex:=Previous[Index];
@@ -252,10 +258,10 @@ begin
     Course.Prepare(ShortPlan,960,540);
     Need(Course.BodyCount=2,'Short song stayed at one planet');
     A:=Course.Body(0).Center;B:=Course.Body(1).Center;
-    Need(B.X-A.X>=0.62*960,'Short song did not travel to the next screen');
+    Need((Abs(B.X-A.X)>=0.60*960) or (Abs(B.Y-A.Y)>=0.60*540),'Short song did not travel to the next screen');
     Course.Prepare(ShortPlan,540,960);
     A:=Course.Body(0).Center;B:=Course.Body(1).Center;
-    Need(B.Y-A.Y>=0.62*960,'Portrait short song did not travel to the next screen');
+    Need((Abs(B.X-A.X)>=0.60*540) or (Abs(B.Y-A.Y)>=0.60*960),'Portrait short song did not travel to the next screen');
     FreeAndNil(ShortPlan);
     SetLength(Audio.Hits,1);
     Audio.Hits[0].Time:=Audio.SoundEnd;
@@ -269,9 +275,10 @@ end;
 procedure CheckUniformTravel;
 const Gaps:array[0..2] of Double=(0.04,0.11,0.23);
 var Audio:TRhythmAudio;Mixed:TOrbitPlan;Course:TOrbitCourse;Leg:TOrbitLeg;Planet,NextPlanet:TOrbitBody;
-  LastPoint,Point,Other,Before,After,Projected,LastProjected:TOrbitPoint;Camera:TOrbitView;
-  Time,Gap,Start,Distance,Ratio,MinRatio,Sweep,PreviousTime,MinZoom,Boundary,TransferStart:Double;
+  LastPoint,Point,Other,Before,After,Projected,LastProjected,Step,PreviousStep:TOrbitPoint;Camera:TOrbitView;
+  Time,Gap,Start,Distance,Ratio,MinRatio,Sweep,PreviousTime,MinZoom,Boundary,TransferStart,SideY:Double;
   I,J,K,LegIndex,PreviousLeg,Visits,Transfers,Diagonals,Offscreen,ForwardSteps:Integer;
+  Left,Right,Vertical:Boolean;
   procedure CheckPlanetClearance(Index:Integer);
   var Body:TOrbitBody;
   begin
@@ -327,14 +334,24 @@ begin
     Visits:=0;Transfers:=0;Diagonals:=0;Offscreen:=0;ForwardSteps:=0;
     PreviousLeg:=-1;MinRatio:=1;MinZoom:=1;Sweep:=0;PreviousTime:=0;TransferStart:=-1;
     Need(Course.BodyCount>=14,'The fixture did not cover the old twelve-step cycle');
+    Left:=False;Right:=False;Vertical:=False;
+    Before:=Course.Body(0).Center;After:=Course.Body(Course.BodyCount-1).Center;
+    SideY:=Sign(After.Y-Before.Y);
+    PreviousStep:=OrbitPoint(0,0);
     for I:=1 to Course.BodyCount-1 do begin
       Before:=Course.Body(I-1).Center;After:=Course.Body(I).Center;
-      Need(After.X-Before.X>=0.62*960,'A transfer doubled back or stayed within the same screen');
-      if I>=2 then begin
-        Other:=Course.Body(I-2).Center;
-        Need(Abs((After.Y-Before.Y)-(Before.Y-Other.Y))>=0.21*540,'Successive transfers repeated the same diagonal');
-      end;
+      Step:=OrbitPoint(After.X-Before.X,After.Y-Before.Y);
+      Need(SideY*Step.Y>=0.26*540,'A transfer doubled back into an earlier region');
+      Need(Step.X*PreviousStep.X+Step.Y*PreviousStep.Y<=
+        Cos(Pi/10)*Hypot(Step.X,Step.Y)*Hypot(PreviousStep.X,PreviousStep.Y)+1E-6,
+        'Consecutive transfers had almost the same heading');
+      Need(Step.X*PreviousStep.X<=0,'Consecutive transfers headed to the same side of the screen');
+      PreviousStep:=Step;
+      Left:=Left or (Step.X< -0.17*960);
+      Right:=Right or (Step.X>0.17*960);
+      Vertical:=Vertical or ((Abs(Step.X)<0.12*960) and (Abs(Step.Y)>0.60*540));
     end;
+    Need(Left and Right and Vertical,'The journey missed leftward, rightward, or vertical transfers');
     Before:=Course.Body(1).Center;After:=Course.Body(13).Center;Other:=Course.Body(12).Center;
     Need(Hypot(Before.X-Course.Body(0).Center.X-(After.X-Other.X),
       Before.Y-Course.Body(0).Center.Y-(After.Y-Other.Y))>1,'The old twelve-step cycle repeated');
