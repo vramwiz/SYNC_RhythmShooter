@@ -40,7 +40,7 @@ begin
     Saved:=TRhythmSettings.Defaults;Saved.OffsetSeconds:=NaN;
     Need(TRhythmSettings.TryJSON(Saved.ToJSON,Loaded) and (Loaded.OffsetSeconds=0),'Finite serialization fallback');
     Folder:=TPath.Combine(ExtractFileDir(ParamStr(0)),'Evidence');ForceDirectories(Folder);
-    TFile.WriteAllText(TPath.Combine(Folder,'result.json'),Format('{"checks":%d,"styles":13,"offsetSteps":201,"oldJson":true,"gui":false}',[Checks]),TEncoding.UTF8);
-    WriteLn('Host timing PASS checks=',Checks,' styles=13 offsetSteps=201 old JSON no GUI');
+    TFile.WriteAllText(TPath.Combine(Folder,'result.json'),Format('{"checks":%d,"styles":16,"offsetSteps":201,"oldJson":true,"gui":false}',[Checks]),TEncoding.UTF8);
+    WriteLn('Host timing PASS checks=',Checks,' styles=16 offsetSteps=201 old JSON no GUI');
   except on E:Exception do begin WriteLn(E.ClassName,': ',E.Message);ExitCode:=1;end;end;
 end.

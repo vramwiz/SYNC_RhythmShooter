@@ -11,7 +11,7 @@ video.height=1080
 video.rate=30
 video.scale=1
 audio.rate=44100
-cursor.frame=0
+cursor.frame=154
 cursor.layer=1
 preview.frame=0
 display.frame=0
@@ -43,7 +43,7 @@ Y=0
 音楽ファイル=C:\Users\vramw\Music\magnific_aQo5nq8fSh.mp3
 設定=
 オフセット=0.00
-設定JSON={"schema":1,"presentationVersion":3,"music":"C:\\Users\\vramw\\Music\\magnific_aQo5nq8fSh.mp3","direction":0,"sensitivity":100,"zoom":100.0,"offsetSeconds":0.0,"x":0.0,"y":0.0,"musicSource":"host","bossFrequency":100,"style":"rhythm-game","audioDensity":-100,"gameThreshold":-100,"equalizer":true,"fireworksRichness":50,"plan":{"key":"37352c3e29ae50362026b79dc5f87063ae4c6b314c86715f5249fcce3d0b5ec5","source":"2e722315dc71767cc2cfa7ff5f32ea25f8a1036787476cf221d0a6cf58551fe3","digest":"3e0446bf5a630ae5fbe3d9cf0ece26e30555f6fed688fa36d7ad3645cd5c94e7","sourceStamp":"000000000012D8E3-01DD0F42DA2E56DD","style":"rhythm-game","version":4,"sensitivity":100,"direction":0,"variant":1},"designs":[]}
+設定JSON={"schema":1,"presentationVersion":3,"music":"C:\\Users\\vramw\\Music\\magnific_aQo5nq8fSh.mp3","direction":0,"sensitivity":100,"zoom":100.0,"offsetSeconds":0.0,"x":0.0,"y":0.0,"musicSource":"host","bossFrequency":100,"style":"side-race","audioDensity":-100,"gameThreshold":-100,"equalizer":true,"fireworksRichness":50,"plan":{"key":"ad87564e67e6e23f596a25614fc3262bdcecac834c1d1979582e7b560d951923","source":"2e722315dc71767cc2cfa7ff5f32ea25f8a1036787476cf221d0a6cf58551fe3","digest":"cafe07fa4066275662e6baef32151fd5914f53089efc3bc767fe036d5d7cc8ee","sourceStamp":"000000000012D8E3-01DD0F42DA2E56DD","style":"side-race","version":1,"sensitivity":100,"direction":0,"variant":101,"density":1},"designs":[]}
 [plugin.0]
 plugin.name=Syncroh2_Extension2
 SpeechSynthesisProjectID={3E81007F-19B9-4FA9-8E28-2F05F9E41910}

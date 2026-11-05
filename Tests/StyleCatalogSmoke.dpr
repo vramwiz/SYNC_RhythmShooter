@@ -4,11 +4,11 @@
 uses System.SysUtils,System.Classes,System.Hash,System.IOUtils,System.JSON,
   RhythmStyles,RhythmStyleSelection,RhythmSettings,RhythmPlanRef,RhythmStyleOps,RhythmStyleRegistry,
   RhythmAudio,RhythmAnimation,RhythmImageBank;
-const Ids:array[TRhythmStyle] of string=('shooting','ball','fireworks','runner','breakout','race','bomb-action','fighting','mining','train','naval','rhythm-game','prism-step');
-  Versions:array[TRhythmStyle] of Integer=(1,6,3,7,10,11,2,2,1,1,1,4,3);
-  Groups:array[TRhythmStyle] of TRhythmStyleGroup=(sgShooting,sgBall,sgMusic,sgAction,sgBall,sgRace,sgAction,sgAction,sgAction,sgShooting,sgShooting,sgMusic,sgMusic);
-  Scenes:array[TRhythmStyle] of string=('TShootingAnimation','TBallAnimation','TFireworksAnimation','TRunnerAnimation','TBreakoutAnimation','TRaceAnimation','TBombActionAnimation','TFightingAnimation','TMiningAnimation','TTrainAnimation','TNavalAnimation','TGameAnimation','TStepAnimation');
-  GroupCounts:array[TRhythmStyleGroup] of Integer=(3,2,4,1,3);
+const Ids:array[TRhythmStyle] of string=('shooting','ball','fireworks','runner','breakout','race','bomb-action','fighting','mining','train','naval','rhythm-game','prism-step','jump-adventure','fighting-rush','side-race');
+  Versions:array[TRhythmStyle] of Integer=(1,6,3,7,10,11,2,2,1,1,1,4,3,1,1,1);
+  Groups:array[TRhythmStyle] of TRhythmStyleGroup=(sgShooting,sgBall,sgMusic,sgAction,sgBall,sgRace,sgAction,sgAction,sgAction,sgShooting,sgShooting,sgMusic,sgMusic,sgAction,sgAction,sgRace);
+  Scenes:array[TRhythmStyle] of string=('TShootingAnimation','TBallAnimation','TFireworksAnimation','TRunnerAnimation','TBreakoutAnimation','TRaceAnimation','TBombActionAnimation','TFightingAnimation','TMiningAnimation','TTrainAnimation','TNavalAnimation','TGameAnimation','TStepAnimation','TJumpAnimation','TRushAnimation','TSideRaceAnimation');
+  GroupCounts:array[TRhythmStyleGroup] of Integer=(3,2,6,2,3);
   Levels:array[0..4] of Integer=(-100,-1,0,50,100);
 var S,Other,ParsedStyle:TRhythmStyle;G:TRhythmStyleGroup;D,I,J,K,V,Expected,Checks,Stage,Combinations:Integer;
   Sel,Restored:TStyleSelection;Saved,Loaded:TRhythmSettings;Ref:TRhythmPlanRef;Ops:TStyleOperations;
@@ -43,7 +43,7 @@ begin Scene:=nil;Images:=nil;Names:=nil;Checks:=0;Combinations:=0;
       for I:=0 to High(Levels) do for J:=0 to High(Levels) do for K:=0 to High(Levels) do begin
         Expected:=0;
         if S in [rsRhythmGame,rsStepGame] then Expected:=Levels[K]+101
-        else if (S in [rsShooting,rsRunner,rsBreakout,rsRace,rsBombAction,rsFighting,rsMining,rsTrain,rsNaval]) and (Levels[J]>=0) then Expected:=Levels[J]+1
+        else if (S in [rsShooting,rsRunner,rsBreakout,rsRace,rsBombAction,rsFighting,rsMining,rsTrain,rsNaval,rsJumpAdventure,rsFightingRush,rsSideRace]) and (Levels[J]>=0) then Expected:=Levels[J]+1
         else if S=rsFireworks then begin Expected:=Levels[I];if Expected<0 then Expected:=0;end;
         Need(StyleVariant(S,Levels[I],Levels[J],Levels[K])=Expected,'Variant recipe changed');
       end;
@@ -73,8 +73,8 @@ begin Scene:=nil;Images:=nil;Names:=nil;Checks:=0;Combinations:=0;
     Need(not TryStyle('unknown',ParsedStyle) and (ParsedStyle=rsShooting),'Unknown ID handling');
     Stage:=0;Context.Progress:=procedure(Value:Integer) begin Stage:=Value;end;Context.SetStage(4);Need(Stage=4,'Progress callback');
     Context.Cancel:=function:Boolean begin Result:=True;end;Failed:=False;try Context.CheckCancel;except on E:EAbort do Failed:=True;end;Need(Failed,'Cancellation callback');
-    TFile.WriteAllText(TPath.Combine(Folder,'result.json'),Format('{"checks":%d,"groups":5,"styles":13,"smallChoices":16,"selectionTransitions":%d,"adapters":13,"gui":false}',[Checks,Combinations]),TEncoding.UTF8);
-    WriteLn('Style catalog PASS checks=',Checks,' groups=5 styles=13 transitions=',Combinations,' no GUI');
+    TFile.WriteAllText(TPath.Combine(Folder,'result.json'),Format('{"checks":%d,"groups":5,"styles":16,"smallChoices":19,"selectionTransitions":%d,"adapters":16,"gui":false}',[Checks,Combinations]),TEncoding.UTF8);
+    WriteLn('Style catalog PASS checks=',Checks,' groups=5 styles=16 transitions=',Combinations,' no GUI');
   except on E:Exception do begin WriteLn(E.ClassName,': ',E.Message);ExitCode:=1;end;end;
   Scene.Free;Images.Free;Names.Free;
 end.

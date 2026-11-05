@@ -92,6 +92,7 @@ begin
       PlanObject.AddPair('direction',TJSONNumber.Create(Plan.Direction));
       PlanObject.AddPair('variant',TJSONNumber.Create(Plan.Variant));
       if Plan.AudioDensity<>0 then PlanObject.AddPair('density',TJSONNumber.Create(Plan.AudioDensity));
+      if Plan.Generation<>'' then PlanObject.AddPair('generation',Plan.Generation);
     end;
     Assets:=TJSONArray.Create;
     J.AddPair('designs',Assets);
@@ -182,6 +183,7 @@ begin
           Value.Plan.Sensitivity:=PlanObject.GetValue<Integer>('sensitivity',0);
           Value.Plan.Direction:=PlanObject.GetValue<Integer>('direction',-1);
           Value.Plan.Variant:=PlanObject.GetValue<Integer>('variant',0);
+          if Value.Plan.Style=rsJumpAdventure then Value.Plan.Generation:=PlanObject.GetValue<string>('generation','');
           V:=PlanObject.GetValue('density');
           if (V<>nil) and ((not (V is TJSONNumber)) or not TryStrToInt(V.Value,Value.Plan.AudioDensity)) then Exit;
           ExpectedVariant:=StyleVariant(Value.Style,Value.FireworksRichness,Value.BossFrequency,Value.GameThreshold);

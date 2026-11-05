@@ -42,7 +42,7 @@
         <GenDll>true</GenDll>
         <DCC_DcuOutput>.\$(Platform)\RhythmFighting\$(Config)\DCU</DCC_DcuOutput>
         <DCC_ExeOutput>.\$(Platform)\RhythmFighting\$(Config)</DCC_ExeOutput>
-        <DCC_UnitSearchPath>Source\RhythmGame;Source\Fighting;Source\Mining;Source\Train;Source\Naval;Source\BombAction;Source\Race;Source\Runner;Source\Breakout;Source\Shared\Audio;Source\Shared\Render;Source\Shared\Settings;Source\Shared\Common;Source\Shared\Assets;Source\Shared\UI;Source\Shared\Host;Source\Shared\Integrations;Source\Composition;Source\Shooting;Source\Ball;Source\Fireworks;Source\Lib;Source\Lib\Process;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
+        <DCC_UnitSearchPath>Source\SideRace;Source\FightingRush;Source\JumpAdventure;Source\RhythmGame;Source\Fighting;Source\Mining;Source\Train;Source\Naval;Source\BombAction;Source\Race;Source\Runner;Source\Breakout;Source\Shared\Audio;Source\Shared\Render;Source\Shared\Settings;Source\Shared\Common;Source\Shared\Assets;Source\Shared\UI;Source\Shared\Host;Source\Shared\Integrations;Source\Composition;Source\Shooting;Source\Ball;Source\Fireworks;Source\Lib;Source\Lib\Process;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
         <DCC_Namespace>System;Xml;Data;Datasnap;Web;Soap;Winapi;Vcl;$(DCC_Namespace)</DCC_Namespace>
         <SanitizedProjectName>SYNC_RhythmFighting</SanitizedProjectName>
     </PropertyGroup>
@@ -95,6 +95,21 @@
         <DCCReference Include="Source\RhythmGame\RhythmOrbitTypes.pas"/>
         <DCCReference Include="Source\RhythmGame\RhythmOrbitCodec.pas"/>
         <DCCReference Include="Source\RhythmGame\RhythmOrbitLayout.pas"/>
+        <DCCReference Include="Source\JumpAdventure\RhythmJumpPlan.pas"/>
+        <DCCReference Include="Source\JumpAdventure\RhythmJumpBuild.pas"/>
+        <DCCReference Include="Source\JumpAdventure\RhythmJumpCodec.pas"/>
+        <DCCReference Include="Source\JumpAdventure\RhythmJumpScene.pas"/>
+        <DCCReference Include="Source\JumpAdventure\RhythmJumpStyle.pas"/>
+        <DCCReference Include="Source\FightingRush\RhythmRushPlan.pas"/>
+        <DCCReference Include="Source\FightingRush\RhythmRushBuild.pas"/>
+        <DCCReference Include="Source\FightingRush\RhythmRushCodec.pas"/>
+        <DCCReference Include="Source\FightingRush\RhythmRushScene.pas"/>
+        <DCCReference Include="Source\FightingRush\RhythmRushStyle.pas"/>
+        <DCCReference Include="Source\SideRace\RhythmSideRacePlan.pas"/>
+        <DCCReference Include="Source\SideRace\RhythmSideRaceBuild.pas"/>
+        <DCCReference Include="Source\SideRace\RhythmSideRaceCodec.pas"/>
+        <DCCReference Include="Source\SideRace\RhythmSideRaceScene.pas"/>
+        <DCCReference Include="Source\SideRace\RhythmSideRaceStyle.pas"/>
         <DCCReference Include="Source\RhythmGame\RhythmOrbitGuide.pas"/>
         <DCCReference Include="Source\RhythmGame\RhythmOrbitMarks.pas"/>
         <DCCReference Include="Source\RhythmGame\RhythmOrbitAudio.pas"/>
