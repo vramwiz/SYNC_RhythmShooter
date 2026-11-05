@@ -3,7 +3,8 @@
 // 曲全体の接触・走行・連結ボスと保存後の描画を確認する。
 uses System.SysUtils,System.Math,System.Types,System.Classes,System.IOUtils,System.Hash,
   Vcl.Graphics,Vcl.Imaging.pngimage,RhythmAudio,RhythmAudioCache,RhythmCartPlan,RhythmCartBuild,
-  RhythmCartCodec,RhythmStyles,RhythmPlanRef,RhythmSettings,RhythmStyleOps,RhythmStyleRegistry,RhythmScene;
+  RhythmCartCodec,RhythmStyles,RhythmPlanRef,RhythmSettings,RhythmStyleOps,RhythmStyleRegistry,RhythmScene,
+  RhythmFireworksScene;
 
 var Checks:Integer;
 
@@ -41,13 +42,44 @@ begin
   SetLength(Result.Hits,N);
 end;
 
+procedure VerifyChase(Plan:TCartPlan;Audio:TRhythmAudio);
+var I,J,K,Cars,PreviousShots:Integer; B:TCartBoss; M:TCartMove; Shot:TCartBossShot;
+  P,Q:TCartPosition; Rider:TPointF;
+begin
+  for I:=0 to High(Plan.Bosses) do begin
+    B:=Plan.Bosses[I];
+    Cars:=B.LastMove-B.FirstMove+1;
+    Need(Cars=I+2,'Convoy did not grow by one');
+    PreviousShots:=0;
+    for J:=B.FirstMove to B.LastMove do begin
+      M:=Plan.Moves[J];
+      Need(M.Kind=cmBossBump,'Legacy stomp used for boss');
+      Need(Audio.Hits[Audio.NearestHit(M.Hit)].Time=M.Hit,'Convoy accent moved');
+      P:=Plan.Cart(M.Hit);
+      Q:=Plan.ChaseCar(I,J,M.Hit);
+      Need((Abs(Q.X-P.X-CartChaseContact)<1E-7) and (CartJump(M,M.Hit)=0),'Cart did not ram on the rail');
+      Q:=Plan.ChaseCar(I,J,M.Hit-0.45);
+      Need(Q.X-Plan.Cart(M.Hit-0.45).X>CartChaseContact,'Convoy did not close in');
+      K:=Plan.ChaseShotCount(I,J);
+      Need((K>0) and (K>=PreviousShots) and ((PreviousShots>=4) or (K>PreviousShots)),'Boss attacks did not escalate');
+      PreviousShots:=K;
+      Shot:=Plan.ChaseShot(I,J,K-1);
+      Need((Shot.Origin.X>Shot.Target.X) and (Plan.Cart(Shot.CrossTime).Y>Shot.Target.Y+0.5),'Boss shot missed its dodge');
+    end;
+  end;
+  P:=Plan.Track(Plan.Goal);
+  Rider:=Plan.FinishRider(Plan.Goal+CartFinishLanding);
+  Need((Rider.X>P.X+CartFinishLedge) and (Abs(Rider.Y-(P.Y-CartFinishDrop))<0.00001),'Rider missed goal ground');
+  Rider:=Plan.FinishRider(Plan.Goal+0.24);
+  Need(Rider.Y>P.Y+0.70,'Rider did not jump from cart');
+end;
+
 procedure Verify(Plan:TCartPlan;Audio:TRhythmAudio);
-var I,J,AirCoins,ClosePairs,PreviousCars,Cars:Integer;
+var I,J,AirCoins,ClosePairs:Integer;
   P,Q:TCartPosition;
   Wing,Rock:TPointF;
   C:TCartCoin;
   M:TCartMove;
-  B:TCartBoss;
   T,Fastest,Slowest,BeforeX:Double;
   Kinds:set of TCartMoveKind;
   Themes:set of 0..4;
@@ -110,23 +142,12 @@ begin
       end;
     end;
   end;
-  Need(Kinds=[Low(TCartMoveKind)..High(TCartMoveKind)],'Missing gimmick');
+  Need(Kinds=[Low(TCartMoveKind)..High(TCartMoveKind)]-[cmBoss],'Missing gimmick');
   Themes:=[];
   for I:=0 to High(Plan.Knots) do Include(Themes,Plan.Knots[I].Theme);
   Need(Themes=[0..4],'Missing backdrop');
   Need(Length(Plan.Bosses)>=3,'Missing long-course convoys');
-  PreviousCars:=1;
-  for I:=0 to High(Plan.Bosses) do begin
-    B:=Plan.Bosses[I];
-    Cars:=B.LastMove-B.FirstMove+1;
-    Need(Cars>PreviousCars,'Convoy did not grow');
-    PreviousCars:=Cars;
-    for J:=B.FirstMove to B.LastMove do begin
-      T:=Plan.Moves[J].Hit;
-      Need(Abs(Plan.BossProgress(I,T)-(J-B.FirstMove))<1E-7,'Convoy misses timed weak point');
-      Need(Audio.Hits[Audio.NearestHit(T)].Time=T,'Convoy accent moved');
-    end;
-  end;
+  VerifyChase(Plan,Audio);
   WriteLn(Format('%.0fs, %d coins (%d airborne, %d close pairs), %d events, %d convoys, speed %.2f to %.2f',
     [Plan.Duration,Length(Plan.Coins),AirCoins,ClosePairs,Length(Plan.Moves),Length(Plan.Bosses),Slowest,Fastest]));
 end;
@@ -148,8 +169,8 @@ begin
   end;
 end;
 
-procedure RenderProof(Plan:TCartPlan;Audio,Cold:TRhythmAudio;const Ref:TRhythmPlanRef;const Folder:string);
-var R:TRhythmRenderer; Image:TBitmap; PNG:TPngImage; M:TCartMove; Seen:set of TCartMoveKind;
+procedure RenderProof(Plan:TCartPlan;Audio,Cold:TRhythmAudio;const Ref:TRhythmPlanRef;const Folder:string;Short:Boolean=False);
+var R:TRhythmRenderer; Image:TBitmap; PNG:TPngImage; M:TCartMove; B:TCartBoss; Seen:set of TCartMoveKind;
 
   procedure Snapshot(const Name:string;Time:Double);
   var Hash:string;
@@ -171,15 +192,26 @@ begin
     R.ConfigureStyle(rsMineCart,Ref,Audio.BossFrequency);
     Image.PixelFormat:=pf32bit;
     Image.SetSize(960,540);
-    Snapshot('start',0.6);
-    Seen:=[];
-    for M in Plan.Moves do
-      if not (M.Kind in Seen) then begin
-        Snapshot('event-'+IntToStr(Ord(M.Kind)),M.Hit-0.10);
-        Include(Seen,M.Kind);
-      end;
-    Snapshot('long-convoy',Plan.Moves[Plan.Bosses[High(Plan.Bosses)].FirstMove].Hit-0.30);
-    Snapshot('goal',Plan.Goal+0.38);
+    if not Short then begin
+      Snapshot('start',0.6);
+      Seen:=[];
+      for M in Plan.Moves do
+        if not (M.Kind in Seen) then begin
+          Snapshot('event-'+IntToStr(Ord(M.Kind)),M.Hit-0.10);
+          Include(Seen,M.Kind);
+        end;
+    end;
+    B:=Plan.Bosses[High(Plan.Bosses)];
+    M:=Plan.Moves[B.FirstMove];
+    Snapshot('convoy-entry',M.Start-0.24);
+    Snapshot('boss-dodge',M.Start+0.42);
+    Snapshot('boss-first-ram',M.Hit+0.065);
+    M:=Plan.Moves[B.LastMove];
+    Snapshot('boss-final-dodge',M.Start+0.37);
+    Snapshot('boss-finish',M.Hit+0.28);
+    Snapshot('goal-jump',Plan.Goal+0.30);
+    Snapshot('goal-landing',Plan.Goal+CartFinishLanding-0.002);
+    Snapshot('goal-fireworks',Plan.Goal+CartFinishLanding+0.62);
   finally
     PNG.Free;
     Image.Free;
@@ -187,8 +219,8 @@ begin
   end;
 end;
 
-procedure VerifyShort;
-var Audio:TRhythmAudio; Plan:TCartPlan;
+procedure VerifyShort(const Folder:string);
+var Audio,Cold:TRhythmAudio; Plan:TCartPlan; I:Integer; Source:string; Ref:TRhythmPlanRef;
 begin
   Audio:=TRhythmAudio.Create;
   try
@@ -197,6 +229,43 @@ begin
     Plan:=BuildCartPlan(Audio,nil);
     try
       Need((Length(Plan.Moves)=0) and (Length(Plan.Coins)=0) and (Plan.Cart(0.18).X>0),'Short silent route');
+    finally
+      Plan.Free;
+    end;
+    Source:=TPath.Combine(Folder,'short.identity');
+    TFile.WriteAllText(Source,'Short mine cart rhythm',TEncoding.UTF8);
+    Audio.Source:=Source;
+    Audio.SourceRevision:=AudioSourceStamp(Source);
+    Audio.Key:=THashSHA2.GetHashStringFromFile(Source);
+    Audio.Sensitivity:=50;
+    Audio.Duration:=6.4;
+    Audio.SoundEnd:=6.4;
+    SetLength(Audio.Hits,27);
+    for I:=0 to High(Audio.Hits) do begin
+      Audio.Hits[I].Time:=0.23*(I+1);
+      Audio.Hits[I].Strength:=0.70;
+    end;
+    Need(Audio.BossCount=0,'Fixture should exercise short-song fallback');
+    Plan:=BuildCartPlan(Audio,nil);
+    try
+      Need(Length(Plan.Bosses)=1,'Short song has no convoy');
+      VerifyChase(Plan,Audio);
+      Ref:=NewPlanRef(Audio.Key,Audio.Sensitivity,0,rsMineCart,StyleVariant(rsMineCart,50,100));
+      Ref.SourceRevision:=Audio.SourceRevision;
+      SaveCartPlan(Plan,Audio,Ref);
+      Cold:=LoadCartAudio(Ref,Source,0);
+      try
+        RenderProof(Plan,Audio,Cold,Ref,Folder,True);
+      finally
+        Cold.Free;
+      end;
+    finally
+      Plan.Free;
+    end;
+    Audio.SetBossFrequency(0);
+    Plan:=BuildCartPlan(Audio,nil);
+    try
+      Need(Length(Plan.Bosses)=0,'Boss-off setting was ignored');
     finally
       Plan.Free;
     end;
@@ -213,9 +282,10 @@ begin
   Plan:=nil;
   Again:=nil;
   try
-    VerifyShort;
     Folder:=TPath.Combine(ExtractFileDir(ParamStr(0)),'Evidence');
     ForceDirectories(Folder);
+    ForceDirectories(TPath.Combine(Folder,'Short'));
+    VerifyShort(TPath.Combine(Folder,'Short'));
     Source:=TPath.Combine(Folder,'source.identity');
     Audio:=Fixture(Source);
     Ref:=NewPlanRef(Audio.Key,Audio.Sensitivity,0,rsMineCart,StyleVariant(rsMineCart,50,100));
@@ -233,6 +303,7 @@ begin
     Cold:=Ops.LoadAudio(Loaded.Plan,Source,0);
     Need(Length(Cold.PCM)=0,'Cold restore decoded PCM');
     Plan:=LoadCartPlan(Loaded.Plan,Cold,0);
+    Need(Span>=Plan.Goal+CartFinishLanding+GoalFireworksDuration,'Preview cuts off ending fireworks');
     Again:=BuildCartPlan(Audio,nil);
     Other:=Ref;
     SaveCartPlan(Again,Audio,Other);

@@ -164,7 +164,8 @@ begin
   end;
   SetLength(Plan.Moves,Count('moves',0,4000));
   MaxMoveKind:=Ord(cmBoss);
-  if Version>=2 then MaxMoveKind:=Ord(High(TCartMoveKind));
+  if Version=2 then MaxMoveKind:=Ord(cmRam);
+  if Version>=3 then MaxMoveKind:=Ord(cmBossBump);
   for I:=0 to High(Plan.Moves) do begin
     SelectRow(I,5);
     Move.Start:=Exact(0,0,Plan.Goal);

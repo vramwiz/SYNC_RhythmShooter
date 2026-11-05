@@ -5,8 +5,8 @@ uses RhythmStyleOps;
 function CartOperations:TStyleOperations;
 
 implementation
-uses System.SysUtils,RhythmAnimation,RhythmAudio,RhythmPlanRef,RhythmCartPlan,
-  RhythmCartBuild,RhythmCartCodec,RhythmCartScene;
+uses System.SysUtils,System.Math,RhythmAnimation,RhythmAudio,RhythmPlanRef,RhythmCartPlan,
+  RhythmCartBuild,RhythmCartCodec,RhythmCartScene,RhythmFireworksScene;
 
 function CreateScene:TAnimationScene;
 begin
@@ -42,7 +42,7 @@ begin
   try
     Plan:=LoadCartPlan(Ref,Restored,Context.Direction);
     try
-      PreparedEnd:=Plan.Duration;
+      PreparedEnd:=Max(Plan.Duration,Plan.Goal+CartFinishLanding+GoalFireworksDuration);
       PreparedSummary:=Format('コイン %d枚 / ギミック %d箇所 / 連結ボス %d戦',
         [Length(Plan.Coins),Length(Plan.Moves),Length(Plan.Bosses)]);
     finally

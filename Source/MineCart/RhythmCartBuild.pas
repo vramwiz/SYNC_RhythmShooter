@@ -22,9 +22,10 @@ type
     function Pick(Count:Integer):Integer;
     procedure ReadAccents;
     procedure LayRail;
-    function AtAccent(Time,Limit:Double):Double;
+    function AtAccent(Time,Limit:Double;Earliest:Double=0;Window:Double=0.30):Double;
     function MakeMove(Kind:TCartMoveKind;Time:Double):TCartMove;
     procedure RegularUntil(Limit:Double);
+    function TryChase(EndTime,FirstHit:Double):Boolean;
     procedure Choreograph;
   public
     procedure Build(Source:TRhythmAudio;Destination:TCartPlan;const IsCancelled:TFunc<Boolean>);
@@ -90,13 +91,13 @@ begin
   end;
 end;
 
-function TCartBuilder.AtAccent(Time,Limit:Double):Double;
+function TCartBuilder.AtAccent(Time,Limit,Earliest,Window:Double):Double;
 var I:Integer; Distance:Double;
 begin
   Result:=Time;
-  Distance:=0.30;
-  I:=Plan.CoinFrom(Time-0.30);
-  while (I<Length(Plan.Coins)) and (Plan.Coins[I].Time<=Min(Limit,Time+0.30)) do begin
+  Distance:=Window;
+  I:=Plan.CoinFrom(Max(Earliest,Time-Window));
+  while (I<Length(Plan.Coins)) and (Plan.Coins[I].Time<=Min(Limit,Time+Window)) do begin
     if Abs(Plan.Coins[I].Time-Time)<Distance then begin
       Result:=Plan.Coins[I].Time;
       Distance:=Abs(Result-Time);
@@ -126,6 +127,11 @@ begin
     cmLift:Result.Height:=1.40;
     cmFlame:Result.Height:=1.54;
     cmRam:Result.Height:=1.88;
+    cmBossBump:begin
+      Result.Start:=Time-CartChaseLead;
+      Result.Finish:=Time+0.14;
+      Result.Height:=1.52;
+    end;
     cmCollapse,cmRival:Result.Height:=0;
   end;
 end;
@@ -150,56 +156,55 @@ begin
   end;
 end;
 
-procedure TCartBuilder.Choreograph;
-var
-  I,J,Required:Integer;
-  First,Last,Previous,Time,StartLimit:Double;
-  Cue:TRhythmBossCue;
-  M:TCartMove;
-  Boss:TCartBoss;
-  Spots:TList<TCartMove>;
+function TCartBuilder.TryChase(EndTime,FirstHit:Double):Boolean;
+const MinGap=1.57;
+var I,Count:Integer; Target,Upper,Lower,BeatGap:Double; Spots:TArray<TCartMove>; Boss:TCartBoss;
 begin
-  Spots:=TList<TCartMove>.Create;
-  try
-    NextAction:=2.05;
-    Previous:=0;
+  Result:=False;
+  Count:=Bosses.Count+2;
+  if EndTime-FirstHit<(Count-1)*MinGap then Exit;
+  BeatGap:=Min(1.88,(EndTime-FirstHit)/(Count-1));
+  SetLength(Spots,Count);
+  Target:=EndTime;
+  Upper:=EndTime;
+  for I:=Count-1 downto 0 do begin
+    Lower:=FirstHit+I*MinGap;
+    Target:=Max(Lower,Target);
+    // 音を間引いた設定でも、攻防の間隔を守れる音があれば体当たりに使う。
+    Target:=AtAccent(Target,Upper,Lower,0.90);
+    Spots[I]:=MakeMove(cmBossBump,EnsureRange(Target,Lower,Upper));
+    Spots[I].Height:=Min(1.91,1.52+0.09*(Bosses.Count+I));
+    Upper:=Spots[I].Hit-MinGap;
+    Target:=Spots[I].Hit-BeatGap;
+  end;
+  RegularUntil(Spots[0].Start-1.10);
+  Boss.FirstMove:=Moves.Count;
+  Moves.AddRange(Spots);
+  Boss.LastMove:=Moves.Count-1;
+  Bosses.Add(Boss);
+  NextAction:=Moves.Last.Finish+1.45;
+  Result:=True;
+end;
+
+procedure TCartBuilder.Choreograph;
+var I:Integer; EndTime,FirstHit:Double; Cue:TRhythmBossCue;
+begin
+  NextAction:=2.05;
+  FirstHit:=1.45;
+  if (Audio.BossFrequency>0) and (Length(Plan.Coins)>0) then begin
     for I:=0 to Audio.BossCount-1 do begin
       CheckCancel;
       Cue:=Audio.BossCue(I);
-      Required:=Min(8,Bosses.Count+2);
-      Last:=Min(Plan.Goal-0.42,Cue.KillTime);
-      First:=Max(Previous+2.30,Last-(Required*1.50+2.8));
-      First:=Max(First,5.0);
-      Spots.Clear;
-      J:=Plan.CoinFrom(Last+0.000001)-1;
-      while (J>=0) and (Plan.Coins[J].Time>=First) and (Spots.Count<Required) do begin
-        if J mod 128=0 then CheckCancel;
-        Time:=Plan.Coins[J].Time;
-        if Time<=Last then begin
-          M:=MakeMove(cmBoss,Time);
-          if Plan.CanStomp(M) and Plan.CanClearBoss(M,True) and Plan.CanClearBoss(M,False) then begin
-            Spots.Add(M);
-            Last:=Time-0.97;
-          end;
-        end;
-        Dec(J);
-      end;
-      if Spots.Count<>Required then Continue;
-      StartLimit:=Spots.Last.Start-0.25;
-      RegularUntil(StartLimit);
-      Boss.FirstMove:=Moves.Count;
-      for J:=Spots.Count-1 downto 0 do Moves.Add(Spots[J]);
-      Boss.LastMove:=Moves.Count-1;
-      Bosses.Add(Boss);
-      Previous:=Moves.Last.Finish;
-      NextAction:=Previous+1.08;
+      EndTime:=Min(Plan.Goal-0.54,Cue.KillTime);
+      if TryChase(EndTime,Max(FirstHit,Cue.StartTime+0.70)) then
+        FirstHit:=Moves.Last.Finish+3.60;
     end;
-    RegularUntil(Plan.Goal-0.23);
-    Plan.Moves:=Moves.ToArray;
-    Plan.Bosses:=Bosses.ToArray;
-  finally
-    Spots.Free;
+    // 共通のボス区間がない短い曲にも二両分の攻防を確保する。
+    if Bosses.Count=0 then TryChase(Plan.Goal-0.54,1.45);
   end;
+  RegularUntil(Plan.Goal-0.23);
+  Plan.Moves:=Moves.ToArray;
+  Plan.Bosses:=Bosses.ToArray;
 end;
 
 procedure TCartBuilder.Build(Source:TRhythmAudio;Destination:TCartPlan;const IsCancelled:TFunc<Boolean>);

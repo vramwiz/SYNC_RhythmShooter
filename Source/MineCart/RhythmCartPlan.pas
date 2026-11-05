@@ -16,9 +16,15 @@ const
   CartRamHeight=1.20;
   CartThrowLead=0.43;
   CartThrowDistance=2.48;
+  CartChaseContact=1.24;
+  CartChaseLead=1.23;
+  CartChaseAir=0.84;
+  CartFinishLanding=0.76;
+  CartFinishDrop=1.36;
+  CartFinishLedge=2.16;
 
 type
-  TCartMoveKind=(cmGap,cmStomp,cmFork,cmLift,cmCollapse,cmFlame,cmRival,cmBoss,cmRam);
+  TCartMoveKind=(cmGap,cmStomp,cmFork,cmLift,cmCollapse,cmFlame,cmRival,cmBoss,cmRam,cmBossBump);
   TCartKnot=record
     Time,X,Y,Speed:Double;
     Theme:Integer;
@@ -36,6 +42,11 @@ type
   TCartPosition=record
     X,Y,Speed,Slope:Double;
   end;
+  TCartBossShot=record
+    ReleaseTime,CrossTime:Double;
+    Origin,Target:TPointF;
+    function Position(Time:Double):TPointF;
+  end;
   TCartPlan=class
   public
     Duration,Goal:Double;
@@ -51,6 +62,7 @@ type
     function Rail(Time,Clock:Double):TCartPosition;
     function RailAtX(X,Clock:Double):TCartPosition;
     function Cart(Time:Double):TCartPosition;
+    function FinishRider(Time:Double):TPointF;
     function GapAt(Time:Double):Boolean;
     function CoinPosition(Time:Double):TPointF;
     function StompTop(const Move:TCartMove):Double;
@@ -64,6 +76,9 @@ type
     function FlameTop(const Move:TCartMove):Double;
     function CanClearFlame(const Move:TCartMove):Boolean;
     function BossProgress(Index:Integer;Time:Double):Double;
+    function ChaseCar(Index,Car:Integer;Time:Double):TCartPosition;
+    function ChaseShotCount(Index,Car:Integer):Integer;
+    function ChaseShot(Index,Car,Shot:Integer):TCartBossShot;
     procedure Verify(CheckNewAttacks:Boolean=True);
   end;
 
@@ -85,6 +100,7 @@ var U,Span:Double;
 begin
   Span:=Move.Finish-Move.Start;
   if Move.Kind=cmFork then Span:=Span*0.62;
+  if Move.Kind=cmBossBump then Span:=CartChaseAir;
   U:=EnsureRange((Time-Move.Start)/Span,0.0,1.0);
   Result:=4*Move.Height*U*(1-U);
 end;
@@ -231,6 +247,15 @@ begin
     (Time>Moves[I].Start+0.13) and (Time<Moves[I].Finish-0.13);
 end;
 
+function TCartPlan.FinishRider(Time:Double):TPointF;
+var P:TCartPosition; U:Double;
+begin
+  P:=Track(Goal);
+  U:=EnsureRange((Time-Goal)/CartFinishLanding,0.0,1.0);
+  Result:=PointF(P.X+3.58*U*(1.22-0.22*U),
+    P.Y+0.53+3.75*U*(1-U)-(0.53+CartFinishDrop)*Sqr(U));
+end;
+
 function TCartPlan.CoinPosition(Time:Double):TPointF;
 var P:TCartPosition;
 begin
@@ -359,14 +384,62 @@ begin
   Result:=I-B.FirstMove+U*U*(2-U);
 end;
 
+function TCartPlan.ChaseCar(Index,Car:Integer;Time:Double):TCartPosition;
+var B:TCartBoss; I:Integer; HeroX,FromX,ToX,Offset,U:Double;
+begin
+  B:=Bosses[Index];
+  HeroX:=Track(Time).X;
+  if Time<Moves[B.FirstMove].Hit then
+    Offset:=0.68*(Track(Moves[B.FirstMove].Hit).X-HeroX)
+  else begin
+    I:=EnsureRange(MoveFrom(Time)-1,B.FirstMove,B.LastMove-1);
+    FromX:=Track(Moves[I].Hit).X;
+    ToX:=Track(Moves[I+1].Hit).X;
+    U:=EnsureRange((HeroX-FromX)/(ToX-FromX),0.0,1.0);
+    // 撃破直後は残りの車両が前へ離れ、次の体当たりに向けて詰める。
+    Offset:=-(I-B.FirstMove+U*(0.62+0.38*U))*CartBossSpacing;
+  end;
+  Result:=RailAtX(HeroX+CartChaseContact+(Car-B.FirstMove)*CartBossSpacing+Offset,Time);
+end;
+
+function TCartPlan.ChaseShotCount(Index,Car:Integer):Integer;
+begin
+  Result:=Min(4,1+Car-Bosses[Index].FirstMove+Index);
+end;
+
+function TCartPlan.ChaseShot(Index,Car,Shot:Integer):TCartBossShot;
+var P:TCartPosition; Lead:Double;
+begin
+  Result.CrossTime:=Moves[Car].Start+0.42+(Shot-(ChaseShotCount(Index,Car)-1)*0.5)*0.084;
+  P:=Track(Result.CrossTime);
+  Result.Target:=PointF(P.X,P.Y+0.42);
+  Lead:=0.39;
+  repeat
+    Result.ReleaseTime:=Result.CrossTime-Lead;
+    P:=ChaseCar(Index,Car,Result.ReleaseTime);
+    Result.Origin:=PointF(P.X-0.33,P.Y+1.03);
+    Lead:=Lead-0.045;
+  until (Result.Origin.X>=Result.Target.X+0.70) or (Lead<0.12);
+end;
+
+function TCartBossShot.Position(Time:Double):TPointF;
+var U:Double;
+begin
+  U:=(Time-ReleaseTime)/(CrossTime-ReleaseTime);
+  Result:=PointF(Origin.X+(Target.X-Origin.X)*U,
+    Origin.Y+(Target.Y-Origin.Y)*U+0.62*U*(1-U));
+end;
+
 procedure TCartPlan.Verify(CheckNewAttacks:Boolean);
 var
-  I,J,LastBoss:Integer;
+  I,J,K,Sample,LastBoss:Integer;
   A,B:TCartKnot;
   M:TCartMove;
   C:TCartCoin;
   Convoy:TCartBoss;
   Q:TPointF;
+  Shot:TCartBossShot;
+  P:TCartPosition;
   T,EndTime:Double;
 
   procedure Need(Condition:Boolean;const Detail:string);
@@ -420,8 +493,26 @@ begin
     Need((Convoy.FirstMove>LastBoss) and (Convoy.LastMove>Convoy.FirstMove) and
       (Convoy.LastMove<=High(Moves)),'連結ボスの区間');
     for J:=Convoy.FirstMove to Convoy.LastMove do begin
-      Need(Moves[J].Kind=cmBoss,'ボス車両');
-      if CheckNewAttacks then Need(CanClearBoss(Moves[J],J=Convoy.FirstMove),'連結車両の回避');
+      M:=Moves[J];
+      Need(M.Kind=Moves[Convoy.FirstMove].Kind,'ボス車両の種類');
+      if M.Kind=cmBossBump then begin
+        Need((M.Start+CartChaseAir<M.Hit) and (CartJump(M,M.Hit)=0),'体当たり前の着地');
+        P:=ChaseCar(I,J,M.Hit);
+        Need(Abs(P.X-Cart(M.Hit).X-CartChaseContact)<1E-6,'体当たりの接触');
+        for K:=0 to ChaseShotCount(I,J)-1 do begin
+          Shot:=ChaseShot(I,J,K);
+          Need(Shot.Origin.X>Shot.Target.X,'ボスの投石方向');
+          for Sample:=0 to 24 do begin
+            T:=Shot.ReleaseTime+(Shot.CrossTime+0.16-Shot.ReleaseTime)*(Sample/24);
+            P:=Cart(T);
+            Q:=Shot.Position(T);
+            if Abs(P.X-Q.X)<CartHalfWidth+0.24 then Need(P.Y>Q.Y+0.20,'ボスの投石回避');
+          end;
+        end;
+      end else begin
+        Need(M.Kind=cmBoss,'ボス車両');
+        if CheckNewAttacks then Need(CanClearBoss(M,J=Convoy.FirstMove),'連結車両の回避');
+      end;
     end;
     LastBoss:=Convoy.LastMove;
   end;
