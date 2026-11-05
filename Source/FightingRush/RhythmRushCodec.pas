@@ -159,6 +159,7 @@ begin
   SetLength(Plan.Cues,Count('cues',0,EventCount));
   Previous:=-1;
   for I:=0 to High(Plan.Cues) do begin
+    A:=Default(TRushCue);
     ReadRow(I,6);
     A.Time:=Exact(0,0,Plan.Finish);
     Require(A.Time>Previous,'cue order');
@@ -236,6 +237,7 @@ begin
       Require((Abs(Result.Duration-Audio.Duration)<1E-6) and (Result.Finish>0) and
         (Result.Finish<=Result.Duration),'duration');
       Parse(Root,Result,Length(Audio.Hits));
+      Result.ArrangeHealth;
     except
       Result.Free;
       raise;

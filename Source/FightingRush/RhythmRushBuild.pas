@@ -27,7 +27,6 @@ type
     procedure ChooseBosses;
     procedure ChooseArcs;
     procedure Choreograph;
-    procedure AimOrbs;
     function SelectMove(Index:Integer;const Foe:TRushFoe;Arc,Level:Integer):TRushMove;
   public
     procedure Build(Audio:TRhythmAudio;Plan:TRushPlan;const Cancel:TFunc<Boolean>);
@@ -268,11 +267,12 @@ var
   A:TRushCue;
   Stage:TRushStage;
   I,J,S,Arc,Limit,Cause,NextArc:Integer;
-  T,Gap:Double;
+  T,Gap,NextExchange:Double;
 begin
   Foes:=TList<TRushFoe>.Create;
   try
     I:=0;
+    NextExchange:=1.6;
     while I<Length(FPlan.Cues) do begin
       CheckCancel;
       T:=FPlan.Cues[I].Time;
@@ -315,6 +315,14 @@ begin
           Inc(J);
         end;
       end;
+      if (T>=NextExchange) and (Arc<0) and (I<Limit) and
+        (FPlan.ArcAt(FPlan.Cues[I+1].Time)<0) and
+        InRange(FPlan.Cues[I+1].Time-T,0.20,0.88) and
+        ((I=0) or (T-FPlan.Cues[I-1].Time>=0.15)) then begin
+        // 単発技が続く序盤にも、敵が先に打ち込める二拍の攻防を作る。
+        F.Last:=Max(F.Last,I+1);
+        NextExchange:=T+4.0;
+      end;
       if (I>0) and (T-FPlan.Cues[I-1].Time<0.12) and
         (FPlan.Cues[I-1].Move=raOrb) and not F.Boss then F.Side:=Foes.Last.Side;
       Cause:=-1;
@@ -346,30 +354,6 @@ begin
   end;
 end;
 
-procedure TRushBuilder.AimOrbs;
-var I,J,Side:Integer; A:TRushCue; Source,Dest:TPointF;
-begin
-  for I:=0 to High(FPlan.Cues) do begin
-    if I mod 128=0 then CheckCancel;
-    A:=FPlan.Cues[I];
-    if A.Flight=0 then Continue;
-    Side:=FPlan.Foes[A.Foe].Side;
-    if Defensive(A.Move) then begin
-      Dest:=FPlan.Incoming(I);
-      Side:=-Side;
-    end else Dest:=FPlan.Impact(I);
-    // 追撃で移動する両者を考慮し、手元から相手側へ飛ぶリードを選ぶ。
-    for J:=0 to 7 do begin
-      Source:=FPlan.Projectile(I,A.Time-FPlan.Cues[I].Flight);
-      if (Dest.X-Source.X)*Side>0.22 then Break;
-      FPlan.Cues[I].Flight:=FPlan.Cues[I].Flight*0.68;
-    end;
-    Source:=FPlan.Projectile(I,A.Time-FPlan.Cues[I].Flight);
-    if (Dest.X-Source.X)*Side<=0.22 then FPlan.Cues[I].Flight:=0;
-    if (FPlan.Cues[I].Flight=0) and (A.Move=raOrb) then FPlan.Cues[I].Move:=raPunch;
-  end;
-end;
-
 procedure TRushBuilder.Build(Audio:TRhythmAudio;Plan:TRushPlan;const Cancel:TFunc<Boolean>);
 begin
   FAudio:=Audio;
@@ -387,7 +371,6 @@ begin
   ChooseBosses;
   ChooseArcs;
   Choreograph;
-  AimOrbs;
 end;
 
 function BuildRushPlan(Audio:TRhythmAudio;const Cancel:TFunc<Boolean>):TRushPlan;

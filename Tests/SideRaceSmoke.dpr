@@ -124,9 +124,14 @@ begin
     Hit:=P.Cues[F.Last].Time;
     if Hit+0.10>P.Duration then Continue;
     Outgoing:=P.CarPose(I,Hit+0.075);
-    Need(Outgoing.Root.Y>P.Hero(Hit).Y+2.2,'Front wreck did not rise immediately');
-    Need(Outgoing.Root.X-P.Distance(Hit+0.075)<SideHeroHalf+P.CarHalf(I)+0.60,
+    Need(Outgoing.Root.Y>P.Hero(Hit).Y+1.25,'Front wreck did not rise immediately');
+    Need(Outgoing.Root.X-P.Distance(Hit+0.075)<SideHeroHalf+P.CarHalf(I)+0.80,
       'Front wreck crossed the entry lane before rising');
+    if Hit+0.73<=P.Duration then begin
+      Outgoing:=P.CarPose(I,Hit+0.73);
+      Need(Outgoing.Root.Y<P.CarPose(I,Hit+0.36).Root.Y,'Front wreck did not descend');
+      Need(P.CarPose(I,Hit).Angle-Outgoing.Angle>Pi*1.5,'Front wreck did not tumble in reverse');
+    end;
     Half:=P.CarHalf(I);
     for J:=0 to 6 do begin
       T:=Hit+0.10+J*0.07;

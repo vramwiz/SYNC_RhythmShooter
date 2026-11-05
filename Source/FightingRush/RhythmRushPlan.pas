@@ -3,6 +3,10 @@
 interface
 uses System.Types;
 
+const
+  RushMaxHealth=5;
+  RushRecoveryHalfSpan=0.29;
+
 type
   TRushMode=(rmStreet,rmCrowd,rmAir,rmChase);
   TRushMove=(raPunch,raKick,raLaunch,raAirPunch,raAirKick,raOrb,raGuard,
@@ -17,6 +21,9 @@ type
     Time,Power,Flight:Double;
     Move:TRushMove;
     Foe,Cause:Integer; // Cause は集団戦で飛ばされた敵の番号。それ以外は -1。
+    // 以下は読み込み時に再現する演出情報。保存形式には追加しない。
+    Health:Integer;
+    Recovery,RecoveryHop:Boolean;
   end;
   TRushFoe=record
     First,Last,Kind,Side:Integer;
@@ -34,11 +41,17 @@ type
     Cues:TArray<TRushCue>;
     Foes:TArray<TRushFoe>;
     Arcs:TArray<TRushArc>;
+  private
+    function CanRecover(Index:Integer;out Hop:Boolean):Boolean;
+    procedure FitProjectiles;
+  public
+    procedure ArrangeHealth;
     function StageAt(Time:Double):Integer;
     function CueFrom(Time:Double):Integer;
     function ArcAt(Time:Double):Integer;
     function FoeFromCue(Index:Integer):Integer;
     function Hero(Time:Double):TPointF;
+    function Health(Time:Double):Integer;
     function Enemy(Index:Integer;Time:Double):TPointF;
     function Contact(Index:Integer):TPointF;
     function Impact(Index:Integer):TPointF;
@@ -146,7 +159,7 @@ begin
 end;
 
 function TRushPlan.Hero(Time:Double):TPointF;
-var I,J:Integer; A:TRushStage; Limit,Span,U,V0,V1,Start:Double;
+var I,J:Integer; A:TRushStage; Limit,Span,U,V0,V1,Start,Age:Double;
 begin
   Time:=EnsureRange(Time,0.0,Finish);
   I:=StageAt(Time);
@@ -164,11 +177,89 @@ begin
   // 隣の区間と位置・境界速度を共有し、足を止める乱戦から追撃へ連続する。
   Result:=PointF(A.X+Span*(A.Speed*RushEase(U)+V0*U*Sqr(1-U)-V1*Sqr(U)*(1-U)),0);
   if A.Mode=rmChase then Result.X:=Result.X+Min(0.62,Span*0.073)*Sin(8*Pi*U)*Sqr(Sin(Pi*U));
+  // 保存した区間座標から描画用の走行距離を求める。旧計画にも同じ速度を適用する。
+  Result.X:=Result.X*2;
   J:=ArcAt(Time);
-  if J<0 then Exit;
-  Start:=Cues[Arcs[J].First].Time;
-  U:=(Time-Start)/(Cues[Arcs[J].Last].Time-Start);
-  Result.Y:=4*Arcs[J].Height*U*(1-U);
+  if J>=0 then begin
+    Start:=Cues[Arcs[J].First].Time;
+    U:=(Time-Start)/(Cues[Arcs[J].Last].Time-Start);
+    Result.Y:=4*Arcs[J].Height*U*(1-U);
+    Exit;
+  end;
+  J:=CueFrom(Time-RushRecoveryHalfSpan);
+  while (J<Length(Cues)) and (Cues[J].Time<=Time+RushRecoveryHalfSpan) do begin
+    if Cues[J].RecoveryHop then begin
+      Age:=(Time-Cues[J].Time)/RushRecoveryHalfSpan;
+      Result.Y:=0.94*Max(0.0,1-Sqr(Age));
+      Exit;
+    end;
+    Inc(J);
+  end;
+end;
+
+function TRushPlan.Health(Time:Double):Integer;
+var I:Integer;
+begin
+  I:=CueFrom(Time);
+  if (I<Length(Cues)) and (Cues[I].Time=Time) then Exit(Cues[I].Health);
+  if I>0 then Exit(Cues[I-1].Health);
+  Result:=RushMaxHealth;
+end;
+
+function TRushPlan.CanRecover(Index:Integer;out Hop:Boolean):Boolean;
+var T:Double; I:Integer;
+begin
+  T:=Cues[Index].Time;
+  Hop:=False;
+  if (T+RushRecoveryHalfSpan>Finish) or (Cues[Index].Move in [raGuard,raDodge,raHurt,raSlam,raCrash]) then
+    Exit(False);
+  if ArcAt(T)>=0 then Exit(Hero(T).Y>=0.72);
+  // 既存の空中コンボと回復用のジャンプを重ねない。
+  if (ArcAt(T-RushRecoveryHalfSpan)>=0) or (ArcAt(T+RushRecoveryHalfSpan)>=0) then Exit(False);
+  I:=CueFrom(T-RushRecoveryHalfSpan);
+  while (I<Length(Cues)) and (Cues[I].Time<=T+RushRecoveryHalfSpan) do begin
+    if (Cues[I].Move in [raSlam,raCrash,raGuard,raDodge,raHurt]) or (ArcAt(Cues[I].Time)>=0) then Exit(False);
+    Inc(I);
+  end;
+  Hop:=True;
+  Result:=True;
+end;
+
+procedure TRushPlan.ArrangeHealth;
+var I,Hp:Integer; T,NextHit,RecoverAfter:Double; Hop,CanHit:Boolean;
+begin
+  // 保存済みの譜面の音時刻と敵の順番から、被弾と回復を再現する。
+  for I:=0 to High(Cues) do begin
+    Cues[I].Recovery:=False;
+    Cues[I].RecoveryHop:=False;
+  end;
+  Hp:=RushMaxHealth;
+  NextHit:=1.6;
+  RecoverAfter:=0;
+  for I:=0 to High(Cues) do begin
+    T:=Cues[I].Time;
+    if (Hp<=RushMaxHealth-2) and (T>=RecoverAfter) and CanRecover(I,Hop) then begin
+      Cues[I].Recovery:=True;
+      Cues[I].RecoveryHop:=Hop;
+      Inc(Hp,2);
+      NextHit:=Max(NextHit,T+1.0);
+    end;
+    CanHit:=(Hp>1) and (T>=NextHit) and (ArcAt(T)<0) and
+      (I<Foes[Cues[I].Foe].Last) and (Cues[I+1].Time-T>=0.17) and
+      (not Defensive(Cues[I+1].Move)) and
+      (Cues[I].Move in [raPunch,raKick,raGuard,raDodge,raHurt]);
+    if CanHit and (I>0) then CanHit:=(T-Cues[I-1].Time>=0.15) and not Defensive(Cues[I-1].Move);
+    if CanHit then begin
+      Cues[I].Move:=raHurt;
+      Cues[I].Flight:=0;
+      Dec(Hp);
+      NextHit:=T+4.0;
+      RecoverAfter:=T+1.15;
+    end else if Cues[I].Move=raHurt then
+      Cues[I].Move:=raGuard;
+    Cues[I].Health:=Hp;
+  end;
+  FitProjectiles;
 end;
 
 function TRushPlan.BodySize(Index:Integer):Double;
@@ -238,6 +329,8 @@ begin
     Distance:=2.65+F.Kind*0.17;
     if F.Boss then Distance:=4.35;
     Result.X:=Result.X+F.Side*Distance*(1-U);
+    if (F.Side<0) and (A.Move<>raCrash) then
+      Result.X:=Result.X+Hero(Time).X-Hero(A.Time).X;
     Result.Y:=Result.Y*U;
     if F.Kind=4 then Result.Y:=Result.Y+0.92*4*U*(1-U);
     Exit;
@@ -293,7 +386,10 @@ begin
   Result:=PointF(H.X+F.Side*0.27,H.Y+0.81);
   if A.Move=raDodge then Result.Y:=H.Y+1.41;
   if Threat(Index)=rtSweep then Result.Y:=H.Y+0.43;
-  if A.Move=raHurt then Result.X:=H.X;
+  if A.Move=raHurt then begin
+    Result.X:=H.X-F.Side*0.13;
+    if Threat(Index)<>rtSweep then Result.Y:=H.Y+0.69;
+  end;
 end;
 
 function TRushPlan.Projectile(Index:Integer;Time:Double):TPointF;
@@ -315,6 +411,29 @@ begin
   Result:=PointF(RushMix(Start.X,Finish.X,U),RushMix(Start.Y,Finish.Y,U));
 end;
 
+procedure TRushPlan.FitProjectiles;
+var I,J,Side:Integer; A:TRushCue; Source,Dest:TPointF;
+begin
+  for I:=0 to High(Cues) do begin
+    A:=Cues[I];
+    if A.Flight=0 then Continue;
+    Side:=Foes[A.Foe].Side;
+    if Defensive(A.Move) then begin
+      Dest:=Incoming(I);
+      Side:=-Side;
+    end else Dest:=Impact(I);
+    // 走行速度を上げても、弾が手元から相手側へ向かうようにする。
+    for J:=0 to 7 do begin
+      Source:=Projectile(I,A.Time-Cues[I].Flight);
+      if (Dest.X-Source.X)*Side>0.22 then Break;
+      Cues[I].Flight:=Cues[I].Flight*0.68;
+    end;
+    Source:=Projectile(I,A.Time-Cues[I].Flight);
+    if (Dest.X-Source.X)*Side<=0.22 then Cues[I].Flight:=0;
+    if (Cues[I].Flight=0) and (A.Move=raOrb) then Cues[I].Move:=raPunch;
+  end;
+end;
+
 function TRushPlan.CrowdExtras(Index:Integer):Integer;
 var S:TRushStage; A:TRushCue;
 begin
@@ -332,7 +451,10 @@ begin
   Result:=Contact(Index);
   Age:=Time-A.Time;
   Offset:=0.55+Slot*0.51;
-  if Age<0 then Offset:=Offset+1.32*RushEase(-Age/0.66)
+  if Age<0 then begin
+    Offset:=Offset+1.32*RushEase(-Age/0.66);
+    if Foes[A.Foe].Side<0 then Result.X:=Result.X+Hero(Time).X-Hero(A.Time).X;
+  end
   else begin
     Offset:=Offset+(1.8+Slot*0.52)*(1-Exp(-3.1*Age));
     Result.Y:=Max(0.0,Result.Y+(2.0+Slot*0.68)*Age-6.2*Sqr(Age));

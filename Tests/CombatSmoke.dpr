@@ -3,8 +3,6 @@
 uses
   RhythmBombPlan in '..\Source\BombAction\RhythmBombPlan.pas',
   RhythmBombScene in '..\Source\BombAction\RhythmBombScene.pas',
-  RhythmRacePlan in '..\Source\Race\RhythmRacePlan.pas',
-  RhythmRaceScene in '..\Source\Race\RhythmRaceScene.pas',
   System.SysUtils,System.Classes,System.Types,System.Math,System.IOUtils,System.JSON,
   System.Hash,System.Diagnostics,Vcl.Graphics,Vcl.Imaging.pngimage,
   RhythmAudio,RhythmSections,RhythmStage,RhythmMotion,RhythmBarrage,RhythmScene;

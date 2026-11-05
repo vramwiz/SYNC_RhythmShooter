@@ -28,13 +28,16 @@ type
     Root,Tip:TPointF;
     Size,Face,Stride,Blend,Duck,Tilt:Double;
     Kind:Integer;
-    Hero,Boss,HitArm,HitLeg,Guard,Grab,Down:Boolean;
+    Mob,Boss,HitArm,HitLeg,Guard,Grab:Boolean;
   end;
   TRushPainter=record
     Surface:TAnimationRenderSurface;
     Plan:TRushPlan;
     Time,W,H,Scale,Left,Top:Double;
     Palette:TRushPalette;
+    Rotated:Boolean;
+    Pivot:TPointF;
+    TurnSin,TurnCos,Drop:Double;
     function Screen(X,Y:Double):TPointF;
     procedure Rect(X,Y,Width,Height:Double;Color:TColor);
     procedure Disc(X,Y,R:Double;Color:TColor);
@@ -43,12 +46,13 @@ type
     procedure City(CameraX,CameraY,BossMix:Double);
     procedure Platform;
     procedure Limb(const A,B:TPointF;Bend,Size:Double;Color:TColor;Foot:Boolean);
-    procedure Fighter(const Pose:TFighterPose);
+    procedure Fighter(const Pose:TFighterPose;Fall:Double=0);
     procedure DrawHero(const Root:TPointF;Action:Integer);
     procedure DrawEnemy(Index,Action:Integer);
     procedure Spark(const P:TPointF;Age,Power,Face:Double;Color:TColor;Wide:Boolean);
     procedure DrawCrowd;
     procedure DrawCues;
+    procedure DrawRecovery;
     procedure DrawHUD(Stage,Boss:Integer);
     procedure Draw(const Frame:TAnimationFrame);
   end;
@@ -58,14 +62,16 @@ const
   Ivory=$00D9F3FF;
   OrbBlue=$00FFCC70;
   ImpactGold=$006FCEFF;
-  PlayerCoat=$008C3DEA;
+  HeroCoat=$00957C5A;
+  MobCoat=$008C3DEA;
+  RecoveryGreen=$008DF2A7;
+  HeartRed=$008756F7;
   Themes:array[0..4] of TRushPalette=(
     (Sky:$0040212B;Fog:$00765B92;Far:$00574767;Wall:$00583D52;Deck:$00413741;Trim:$00797191;Light:$0075C9FF),
     (Sky:$004E2B18;Fog:$008D643A;Far:$00705235;Wall:$0054442C;Deck:$00463831;Trim:$00927854;Light:$00FAC977),
     (Sky:$00382725;Fog:$006B8471;Far:$00536454;Wall:$00465041;Deck:$0042443A;Trim:$008CA477;Light:$008AF2C4),
     (Sky:$00311B36;Fog:$00704685;Far:$00573865;Wall:$00483257;Deck:$003D2B47;Trim:$007F6591;Light:$00BFABFA),
     (Sky:$003A2020;Fog:$00775763;Far:$00554C6A;Wall:$0040405D;Deck:$00403E52;Trim:$008882B9;Light:$0068A6F8));
-  Coats:array[0..5] of TColor=($00957C5A,$00BC8C53,$004C78B3,$00C59F70,$0087A841,$00A898D3);
   BossCoats:array[0..5] of TColor=($005D61BE,$00D38DCE,$008A628B,$004E9ED5,$00C1D275,$00B27153);
 
 function Tint(A,B:TColor;U:Double):TColor;
@@ -97,13 +103,24 @@ begin
 end;
 
 function TRushPainter.Screen(X,Y:Double):TPointF;
+var DX,DY:Double;
 begin
+  if Rotated then begin
+    DX:=X-Pivot.X;
+    DY:=Y-Pivot.Y;
+    X:=Pivot.X+DX*TurnCos-DY*TurnSin;
+    Y:=Pivot.Y+DX*TurnSin+DY*TurnCos-Drop;
+  end;
   Result:=PointF((X-Left)*Scale,(Top-Y)*Scale);
 end;
 
 procedure TRushPainter.Rect(X,Y,Width,Height:Double;Color:TColor);
 var P:TPointF;
 begin
+  if Rotated then begin
+    Poly(PointF(X,Y),PointF(X+Width,Y),PointF(X+Width,Y-Height),PointF(X,Y-Height),Color);
+    Exit;
+  end;
   P:=Screen(X,Y);
   Surface.FillRect(P.X,P.Y,P.X+Width*Scale,P.Y+Height*Scale,Color);
 end;
@@ -193,7 +210,7 @@ begin
   end;
 end;
 
-procedure TRushPainter.Fighter(const Pose:TFighterPose);
+procedure TRushPainter.Fighter(const Pose:TFighterPose;Fall:Double);
 var
   X,Y,S,F,Breadth,Head,Lean,Step,Duck,FootY:Double;
   Coat,Dark,Skin,Hair:TColor;
@@ -204,22 +221,20 @@ begin
   S:=Pose.Size;
   F:=Pose.Face;
   Breadth:=RushBreadth(Pose.Kind);
-  Coat:=Coats[Pose.Kind];
+  Coat:=HeroCoat;
   if Pose.Boss then Coat:=BossCoats[Pose.Kind];
-  if Pose.Hero then Coat:=PlayerCoat;
+  if Pose.Mob then Coat:=MobCoat;
   Dark:=Tint(Coat,Ink,0.47);
   Skin:=Tint($0099BBF0,Coat,0.14+0.06*Pose.Kind);
   Hair:=Tint(Ink,Coat,0.43);
   Lean:=F*S*Pose.Tilt;
   Duck:=Pose.Duck*S;
-  if Pose.Down then begin
-    A:=PointF(X-F*S*0.45,Y+S*0.32);
-    B:=PointF(X+F*S*0.04,Y+S*0.43);
-    C:=PointF(X+F*S*0.61,Y+S*0.10);
-    Limb(A,B,-0.06,S,Coat,False);
-    Limb(B,C,0.08,S,Dark,True);
-    Disc(A.X-F*S*0.11,A.Y,S*0.19,Skin);
-    Exit;
+  Rotated:=Fall>0;
+  if Rotated then begin
+    // 全パーツを腰の周りに回転させ、寝た姿が地面付近に収まるよう下ろす。
+    Pivot:=PointF(X,Y+0.56*S);
+    SinCos(F*Fall*Pi/2,TurnSin,TurnCos);
+    Drop:=S*(0.56*(1-TurnCos)-0.33*Abs(TurnSin));
   end;
   Head:=Y+S*(1.05+0.012*Pose.Kind)-Duck;
   Step:=Pose.Stride*S;
@@ -252,7 +267,7 @@ begin
 
   Disc(X+Lean,Head,S*0.204,Ink);
   Disc(X+Lean+F*S*0.025,Head-S*0.013,S*0.169,Skin);
-  if Pose.Hero or (Pose.Kind in [1,4]) then begin
+  if Pose.Mob or (Pose.Kind in [1,4]) then begin
     Rect(X+Lean-S*0.182,Head+S*0.092,S*0.364,S*0.076,Coat);
     Line(X+Lean-F*S*0.14,Head+S*0.068,X+Lean-F*S*0.30,Head+S*0.025,S*0.044,Coat);
   end else
@@ -268,7 +283,7 @@ begin
   if Pose.HitArm or Pose.Guard then
     Hand:=PointF(RushMix(Hand.X,Pose.Tip.X,Pose.Blend),RushMix(Hand.Y,Pose.Tip.Y,Pose.Blend));
   Limb(A,Hand,-F*0.085,S,Coat,False);
-  if not Pose.Hero and ((Pose.Boss and (Pose.Kind=2)) or (not Pose.Boss and (Pose.Kind=3))) then begin
+  if (Pose.Boss and (Pose.Kind=2)) or (Pose.Mob and (Pose.Kind=3)) then begin
     // 武器を振る時は手元を内側へ引き、先端が同じ接触点に届く。
     if Pose.HitArm then begin
       C:=PointF(Hand.X+F*S*0.33,Hand.Y+S*0.10);
@@ -279,6 +294,7 @@ begin
       Line(Hand.X,Hand.Y+S*0.05,Hand.X+F*S*0.29,Hand.Y+S*0.53,S*0.042,Ivory);
     end;
   end;
+  Rotated:=False;
 end;
 
 procedure TRushPainter.DrawHero(const Root:TPointF;Action:Integer);
@@ -288,10 +304,9 @@ begin
   Pose.Root:=Root;
   Pose.Size:=1;
   Pose.Face:=1;
-  Pose.Hero:=True;
   Pose.Tilt:=0.07;
-  T:=Plan.Stages[Plan.StageAt(Time)].Speed;
-  Pose.Stride:=Sin(Time*(13+T*4))*Min(0.29,T*0.065);
+  T:=(Root.X-Plan.Hero(Time-0.05).X)*20;
+  Pose.Stride:=Sin(Time*14+Root.X*2.2)*EnsureRange(T*0.085,0.0,0.34);
   if Root.Y>0 then Pose.Stride:=0.09;
   if Time>=Plan.Finish then Pose.Stride:=0;
   if Action>=0 then begin
@@ -309,7 +324,11 @@ begin
         else Pose.Duck:=0.32*Pose.Blend;
         Pose.Tilt:=-0.21*Pose.Blend;
       end;
-      if A.Move=raHurt then Pose.Tilt:=-0.27*Pose.Blend;
+      if A.Move=raHurt then begin
+        // 被弾した拍で上体を反らせ、次の反撃に向けて戻す。
+        Pose.Tilt:=-0.44*Pose.Blend;
+        Pose.Duck:=0.18*Pose.Blend;
+      end;
     end else if not (A.Move in [raOrb,raCrash]) then begin
       Pose.Tip:=Plan.Impact(Action);
       Pose.HitLeg:=Kicking(A.Move);
@@ -349,11 +368,12 @@ begin
   Pose.Size:=Plan.BodySize(Index);
   Pose.Kind:=F.Kind;
   Pose.Boss:=F.Boss;
+  Pose.Mob:=not F.Boss;
   Pose.Face:=-F.Side;
   Pose.Tilt:=0.04;
-  Pose.Stride:=Sin((Time-Start)*19+Index)*0.18;
+  Pose.Stride:=Sin((Time-Max(0.0,Age)-Start)*19+Index)*0.18;
   if Time>Plan.Cues[F.First].Time then Pose.Stride:=Pose.Stride*0.41;
-  Pose.Down:=(Age>=0.065) or ((Age>=0) and (Plan.Cues[F.Last].Move=raSlam));
+  if Age>=0 then Action:=F.Last;
   if (Action>=F.First) and (Action<=F.Last) then begin
     A:=Plan.Cues[Action];
     Pose.Blend:=PoseBlend(A,Time);
@@ -381,7 +401,7 @@ begin
       Pose.Duck:=0.12*Recoil;
     end;
   end;
-  Fighter(Pose);
+  Fighter(Pose,RushEase(Age/0.28));
 end;
 
 procedure TRushPainter.Spark(const P:TPointF;Age,Power,Face:Double;Color:TColor;Wide:Boolean);
@@ -414,9 +434,9 @@ begin
       Pose.Face:=-Plan.Foes[A.Foe].Side;
       Pose.Kind:=(Plan.Foes[A.Foe].Kind+J+1) mod 6;
       Pose.Size:=0.86+J*0.12;
-      Pose.Stride:=Sin(Time*20+J)*0.16;
-      Pose.Down:=Age>=0.04;
-      Fighter(Pose);
+      Pose.Mob:=True;
+      Pose.Stride:=Sin((Time-Max(0.0,Age))*20+J)*0.16;
+      Fighter(Pose,RushEase(Age/0.28));
       if Age>=0 then Spark(PointF(Pose.Root.X,Pose.Root.Y+0.62),Age,A.Power,-Pose.Face,ImpactGold,False);
     end;
     Inc(I);
@@ -450,7 +470,7 @@ begin
           raGuard:Spark(P,Age,0.45,F.Side,$00EBE19D,False);
           raDodge:if Age<0.095 then Line(P.X-F.Side*0.38,P.Y,P.X+F.Side*0.43,P.Y+0.095,
             0.045*(1-Age/0.10),Tint(OrbBlue,Ivory,0.43));
-          raHurt:Spark(P,Age,0.36,-F.Side,$007AA1F7,False);
+          raHurt:Spark(P,Age,0.75,-F.Side,HeartRed,True);
         end;
       end else begin
         P:=Plan.Impact(I);
@@ -473,8 +493,46 @@ begin
   end;
 end;
 
+procedure TRushPainter.DrawRecovery;
+var I,Limit:Integer; P:TPointF; Age,S,Glow:Double;
+
+  procedure Heart(Size:Double;Color:TColor);
+  begin
+    Disc(P.X-Size*0.46,P.Y+Size*0.19,Size*0.55,Color);
+    Disc(P.X+Size*0.46,P.Y+Size*0.19,Size*0.55,Color);
+    Poly(PointF(P.X-Size,P.Y+Size*0.12),PointF(P.X+Size,P.Y+Size*0.12),
+      PointF(P.X+Size*0.04,P.Y-Size),PointF(P.X-Size*0.04,P.Y-Size),Color);
+  end;
+
+begin
+  I:=Plan.CueFrom(Time-0.44);
+  Limit:=Plan.CueFrom(Time+1.65);
+  while I<Limit do begin
+    if Plan.Cues[I].Recovery then begin
+      Age:=Time-Plan.Cues[I].Time;
+      P:=Plan.Hero(Plan.Cues[I].Time);
+      P.Y:=P.Y+0.86;
+      if Age<0 then begin
+        P.Y:=P.Y+Sin(Age*9)*0.09*Min(1.0,-Age*4);
+        S:=0.24+0.018*Sin(Age*9);
+        Heart(S+0.039,Ink);
+        Heart(S,HeartRed);
+        Disc(P.X-S*0.50,P.Y+S*0.37,S*0.16,Ivory);
+      end else begin
+        Spark(P,Age,0.60,1,RecoveryGreen,True);
+        Glow:=1-Age/0.44;
+        P.Y:=P.Y+Age*1.3;
+        S:=0.16;
+        Line(P.X-S,P.Y,P.X+S,P.Y,0.065*Glow,RecoveryGreen);
+        Line(P.X,P.Y-S,P.X,P.Y+S,0.065*Glow,RecoveryGreen);
+      end;
+    end;
+    Inc(I);
+  end;
+end;
+
 procedure TRushPainter.DrawHUD(Stage,Boss:Integer);
-var I:Integer; U,X,Y:Double; C:TColor;
+var I,Hp:Integer; U,X,Y:Double; C:TColor;
 begin
   U:=Max(2.0,Scale*0.075);
   X:=W*0.06;
@@ -484,6 +542,16 @@ begin
     C:=Tint(Palette.Sky,Palette.Light,0.35);
     if I<=Plan.Stages[Stage].Level then C:=Palette.Light;
     Surface.FillRect(X+U*(I*2-2),Y-U*0.60,X+U*(I*2-0.6),Y+U*0.60,C);
+  end;
+  Hp:=Plan.Health(Time);
+  X:=W*0.06;
+  Y:=Y+U*2.7;
+  Surface.FillRect(X-U*2,Y-U*0.82,X+U*12,Y+U*0.82,Ink);
+  for I:=1 to RushMaxHealth do begin
+    C:=Tint(Palette.Sky,HeartRed,0.22);
+    if I<=Hp then C:=RecoveryGreen;
+    if (I<=Hp) and (Hp<=2) then C:=HeartRed;
+    Surface.FillRect(X+U*(I*2-2),Y-U*0.41,X+U*(I*2-0.25),Y+U*0.41,C);
   end;
   if Boss>=0 then begin
     X:=W*0.35;
@@ -547,6 +615,7 @@ begin
   Scale:=Min(W/11.5,H/6.7)*Zoom;
   Left:=CamX-W/Scale*0.42;
   Top:=CamY+H/Scale*0.66;
+  Rotated:=False;
   City(CamX,CamY,BossMix);
   Platform;
   if Frame.BackgroundOnly then Exit;
@@ -556,6 +625,7 @@ begin
   DrawCrowd;
   for I:=Last downto First do DrawEnemy(I,Act);
   DrawHero(Root,Act);
+  DrawRecovery;
   DrawCues;
   DrawHUD(S,Boss);
 end;

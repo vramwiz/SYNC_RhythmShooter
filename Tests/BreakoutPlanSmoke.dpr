@@ -4,8 +4,6 @@
 uses
   RhythmBombPlan in '..\Source\BombAction\RhythmBombPlan.pas',
   RhythmBombScene in '..\Source\BombAction\RhythmBombScene.pas',
-  RhythmRacePlan in '..\Source\Race\RhythmRacePlan.pas',
-  RhythmRaceScene in '..\Source\Race\RhythmRaceScene.pas',
   Winapi.Windows,System.SysUtils,System.Math,System.Classes,System.Generics.Collections,System.Hash,System.IOUtils,System.JSON,Vcl.Graphics,Vcl.Imaging.pngimage,
   RhythmAudio,RhythmBreakoutPlan,RhythmBreakoutGeometry,RhythmStyles,RhythmProduct,RhythmPlanRef,RhythmSettings,RhythmScene,RhythmPaths,RhythmPreparedData,RhythmBreakoutCampaign;
 var Audio,Meta:TRhythmAudio;Plan,Again:TBreakoutPlan;Ref,Bad:TRhythmPlanRef;Settings:TRhythmSettings;

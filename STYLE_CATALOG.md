@@ -1,8 +1,8 @@
 # バリエーション分類と共通ディスパッチ
 
-2026-11-04 / 当初の分類整理は12種類。末尾の4レーン追加後は13種類。
+2026-11-05 / 旧3Dレースと旧格闘を廃止し、2Dハイウェイと格闘ラッシュを含む14種類。後半の検証記録は当時の構成。
 
-設定画面の種類選択を大・中・小の3段に整理。ピンボールとブロック崩しをボールアクションへまとめ、宇宙シューティングの縦／横を小分類へ配置した。12種類の生成・準備・保存後読戻し・PCMなし復元・描画接続を専用アダプターへ移し、RhythmStyleRegistryの登録表から一括で分岐する。
+設定画面の種類選択を大・中・小の3段に整理。ピンボールとブロック崩しをボールアクションへまとめ、宇宙シューティングの縦／横を小分類へ配置した。各種類の生成・準備・保存後読戻し・PCMなし復元・描画接続を専用アダプターへ移し、RhythmStyleRegistryの登録表から一括で分岐する。
 
 ## 設定画面の分類
 
@@ -15,14 +15,15 @@
 | ボールアクション | ブロック崩し | 固定盤面 |
 | アクション | 横スクロールアクション | 右方向へ進行（固定） |
 | アクション | 爆弾アクション | 見下ろし（固定） |
-| アクション | 格闘アクション | 右方向へ進行（固定） |
+| アクション | 格闘ラッシュ | 地上戦・空中戦 |
 | アクション | 掘削アクション | 見下ろし（固定） |
-| レース | カーレース | 後方視点（固定） |
+| アクション | ジャンプアドベンチャー | 横・縦の自動切替 |
+| レース | 2Dハイウェイ | 横スクロール（固定） |
 | 音楽・演出 | Type.V | MV重ね（透過） |
 | 音楽・演出 | Type.D | 縦 |
 | 音楽・演出 | Type.F | 縦構図／横構図 |
 
-小分類が1つの種類では説明を表示して選択を無効化する。未実装のゲーム種や新しい視点は増やしていない。ピンボール・花火の2方向は元のdirectionの意味を保持する。分類変更後は先頭の中分類へ切り替え、実際の種類変更時だけ方向を0へ戻す。同じ分類・種類を選び直しても元の方向を保つ。大→中→小の操作は500ms待機し、ドロップダウンが開いている間は準備を待たせる。
+小分類が1つの種類では説明を表示して選択を無効化する。ピンボール・花火の2方向は元のdirectionの意味を保持する。分類変更後は先頭の中分類へ切り替え、実際の種類変更時だけ方向を0へ戻す。同じ分類・種類を選び直しても元の方向を保つ。大→中→小の操作は500ms待機し、ドロップダウンが開いている間は準備を待たせる。
 
 ## 分類の考え方と公式資料
 
@@ -60,9 +61,9 @@
 | `rsFireworks` | `Source/Fireworks/RhythmFireworksStyle.pas` | 44 |
 | `rsRunner` | `Source/Runner/RhythmRunnerStyle.pas` | 46 |
 | `rsBreakout` | `Source/Breakout/RhythmBreakoutStyle.pas` | 51 |
-| `rsRace` | `Source/Race/RhythmRaceStyle.pas` | 51 |
+| `rsSideRace` | `Source/SideRace/RhythmSideRaceStyle.pas` | 72 |
 | `rsBombAction` | `Source/BombAction/RhythmBombActionStyle.pas` | 45 |
-| `rsFighting` | `Source/Fighting/RhythmFightingStyle.pas` | 45 |
+| `rsFightingRush` | `Source/FightingRush/RhythmRushStyle.pas` | 70 |
 | `rsMining` | `Source/Mining/RhythmMiningStyle.pas` | 45 |
 | `rsTrain` | `Source/Train/RhythmTrainStyle.pas` | 45 |
 | `rsNaval` | `Source/Naval/RhythmNavalStyle.pas` | 45 |

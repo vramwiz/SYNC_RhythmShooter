@@ -105,7 +105,7 @@ begin
     if TComboBox(Form.FindComponent('ScrollDirection')).Items.Count<>StyleSmallCount(Style) then raise Exception.Create('Small category restore');
     if Form.FindComponent('MovieLayerStyle')<>nil then raise Exception.Create('Duplicate middle selection');
     if (Form.FindComponent('RhythmLayerVisible')<>nil) or (Form.FindComponent('MovieLayerVisible')<>nil) then raise Exception.Create('Obsolete layer controls');
-    if TTrackBar(Form.FindComponent('BossFrequency')).Parent.Visible<>(Style in [rsShooting,rsRunner,rsBreakout,rsRace,rsBombAction,rsFighting,rsMining,rsTrain,rsNaval,rsJumpAdventure,rsFightingRush,rsSideRace]) then raise Exception.Create('Boss frequency visibility');
+    if TTrackBar(Form.FindComponent('BossFrequency')).Parent.Visible<>(Style in [rsShooting,rsRunner,rsBreakout,rsBombAction,rsMining,rsTrain,rsNaval,rsJumpAdventure,rsFightingRush,rsSideRace]) then raise Exception.Create('Boss frequency visibility');
     if not TTrackBar(Form.FindComponent('GameThreshold')).Parent.Visible then raise Exception.Create('Audio density visibility');
     CheckOptionCaption(Form,'GameThresholdCaption','GameThreshold');
     if (Form.FindComponent('EqualizerVisible')=nil) or not TCheckBox(Form.FindComponent('EqualizerVisible')).Visible then raise Exception.Create('Equalizer option missing');
@@ -126,6 +126,6 @@ begin
     WriteLn('LAYOUT ',StyleId(Style),' requested=',DPIs[D],' actual=',Form.CurrentPPI,' PASS');
    finally Form.Free;end;
   end;
-  WriteLn('SETTINGS_LAYOUT_OK: 16 animation choices x 4 PPIs x 3 widths');
+  WriteLn('SETTINGS_LAYOUT_OK: 15 animation choices x 4 PPIs x 3 widths');
  except on E:Exception do begin WriteLn(E.ClassName,': ',E.Message);ExitCode:=1;end;end;
 end.

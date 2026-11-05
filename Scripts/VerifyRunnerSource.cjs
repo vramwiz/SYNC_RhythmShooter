@@ -30,8 +30,7 @@ assert.match(pixels,/A:=T-H.Time;if A>0.26 then Break/,'impact age is relative t
 assert.match(pixels,/if \(Age<0\) or \(Age>0.26\) then Exit/,'no pre-impact burst');
 assert.match(pixels,/if T>=H.Kill then begin/,'enemy defeat starts on its kill time');
 assert.match(legacy,/if FAction<>nil then begin Pose:=FAction.HeroAt\(Time\)/,'v6 PositionAt forwarding');
-assert.match(read('Source/Shared/Settings/RhythmStyles.pas'),/\(Style=rsRunner\) and \(Version in \[2,3,4,5\]\)/,'legacy versions 2..5');
-assert.match(read('Source/Shared/Settings/RhythmStyles.pas'),/\(Style in \[rsRunner,rsBreakout,rsRace\]\) and \(Version=1\)/,'legacy v1');
+assert.match(read('Source/Shared/Settings/RhythmStyles.pas'), /Id:'runner'.*Versions:\[1,2,3,4,5,6,7\]/,'legacy Runner plans');
 assert(!read('Source/Runner/RhythmRunnerScene.pas').includes('TRunnerPlan.Build('),'render must not build a score');
 const restore=action.slice(action.indexOf('class function TRunnerActionPlan.FromJSON('));
 assert(!restore.includes('.Build('),'cold restore must not re-plan');

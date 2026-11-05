@@ -1,7 +1,7 @@
 ﻿unit RhythmStyles;
 // 保存ID/計画版の契約と、設定画面だけの分類・機能カタログ。分類値はJSONやホストへ保存しない。
 interface
-type TRhythmStyle=(rsShooting,rsBall,rsFireworks,rsRunner,rsBreakout,rsRace,rsBombAction,rsFighting,rsMining,rsTrain,rsNaval,rsRhythmGame,rsStepGame,rsJumpAdventure,rsFightingRush,rsSideRace);
+type TRhythmStyle=(rsShooting,rsBall,rsFireworks,rsRunner,rsBreakout,rsSideRace,rsBombAction,rsFightingRush,rsMining,rsTrain,rsNaval,rsRhythmGame,rsStepGame,rsJumpAdventure);
 type
   TRhythmStyleGroup=(sgShooting,sgBall,sgAction,sgRace,sgMusic);
   TStyleSmallKind=(skFixed,skScroll,skComposition);
@@ -43,24 +43,22 @@ const FIREWORKS_DEFAULT_RICHNESS=50;BOSS_DEFAULT_FREQUENCY=50;AUDIO_DEFAULT_DENS
 implementation
 uses System.SysUtils,System.Math;
 const
-  // enum順は既存保存の契約。UIの並びはGroup/Orderで独立させ、変更してもID/recipeを変えない。
+  // 既存種類のenum順を維持し、廃止した3Dレースと旧格闘の枠を後継へ引き継ぐ。保存ID/recipeは独立。
   Catalog:array[TRhythmStyle] of TStyleInfo=(
     (Id:'shooting';Title:'シューティング';MiddleTitle:'宇宙シューティング';FixedSmall:'';ProgressText:'敵・弾・命中を準備中';Group:sgShooting;Order:0;SmallKind:skScroll;Version:1;Versions:[1];Features:[sfBoss,sfAssets,sfDesigns];VariantKind:svBoss),
     (Id:'ball';Title:'ボール（ピンボール）';MiddleTitle:'ピンボール';FixedSmall:'';ProgressText:'障害物と軌道を準備中';Group:sgBall;Order:0;SmallKind:skScroll;Version:6;Versions:[4,5,6];Features:[sfPrepared];VariantKind:svNone),
     (Id:'fireworks';Title:TYPE_F_TITLE;MiddleTitle:TYPE_F_TITLE;FixedSmall:'';ProgressText:'打ち上げと開花を準備中';Group:sgMusic;Order:2;SmallKind:skComposition;Version:3;Versions:[2,3];Features:[sfPrepared,sfRichness];VariantKind:svRichness),
     (Id:'runner';Title:'ランナー';MiddleTitle:'横スクロールアクション';FixedSmall:'右方向へ進行';ProgressText:'足場とジャンプ軌道を準備中';Group:sgAction;Order:0;SmallKind:skFixed;Version:7;Versions:[1,2,3,4,5,6,7];Features:[sfPrepared,sfBoss];VariantKind:svBoss),
     (Id:'breakout';Title:'ブロック崩し';MiddleTitle:'ブロック崩し';FixedSmall:'固定盤面';ProgressText:'破壊時刻から逆算・配置・前向き検証中';Group:sgBall;Order:1;SmallKind:skFixed;Version:10;Versions:[1,2,3,4,5,6,7,8,9,10];Features:[sfPrepared,sfBoss,sfAssets];VariantKind:svBoss),
-    (Id:'race';Title:'レースゲーム';MiddleTitle:'カーレース';FixedSmall:'後方視点';ProgressText:'衝突経路・一般車の回避・大型車・ボス破壊を検証中';Group:sgRace;Order:0;SmallKind:skFixed;Version:11;Versions:[1,2,3,4,5,6,7,8,9,10,11];Features:[sfPrepared,sfBoss];VariantKind:svBoss),
+    (Id:'side-race';Title:'2Dハイウェイ';MiddleTitle:'2Dハイウェイ';FixedSmall:'横スクロール';ProgressText:'高速道路・ジャンプ・前後の衝突を音時刻から逆算中';Group:sgRace;Order:0;SmallKind:skFixed;Version:1;Versions:[1];Features:[sfPrepared,sfBoss,sfDefaultBoss50];VariantKind:svBoss),
     (Id:'bomb-action';Title:'爆弾アクション';MiddleTitle:'爆弾アクション';FixedSmall:'見下ろし';ProgressText:'音時刻から設置・連鎖・破壊・ボス回避を逆算/検証中';Group:sgAction;Order:1;SmallKind:skFixed;Version:2;Versions:[1,2];Features:[sfPrepared,sfBoss,sfDefaultBoss50];VariantKind:svBoss),
-    (Id:'fighting';Title:'格闘';MiddleTitle:'格闘アクション';FixedSmall:'右方向へ進行';ProgressText:'命中・反撃・ボス・カメラを逆算/保存検証中';Group:sgAction;Order:2;SmallKind:skFixed;Version:2;Versions:[1,2];Features:[sfPrepared,sfBoss,sfDefaultBoss50];VariantKind:svBoss),
+    (Id:'fighting-rush';Title:'格闘ラッシュ';MiddleTitle:'格闘ラッシュ';FixedSmall:'地上戦・空中戦';ProgressText:'打撃・防御・空中コンボを音時刻から逆算中';Group:sgAction;Order:2;SmallKind:skFixed;Version:1;Versions:[1];Features:[sfPrepared,sfBoss,sfDefaultBoss50];VariantKind:svBoss),
     (Id:'mining';Title:'採掘';MiddleTitle:'掘削アクション';FixedSmall:'見下ろし';ProgressText:'切削・敵・ボスを逆算/保存検証中';Group:sgAction;Order:3;SmallKind:skFixed;Version:1;Versions:[1];Features:[sfPrepared,sfBoss,sfDefaultBoss50];VariantKind:svBoss),
     (Id:'train';Title:'列車';MiddleTitle:'装甲列車';FixedSmall:'横からの視点';ProgressText:'列車・砲撃・ボスを逆算/保存検証中';Group:sgShooting;Order:1;SmallKind:skFixed;Version:1;Versions:[1];Features:[sfPrepared,sfBoss,sfDefaultBoss50];VariantKind:svBoss),
     (Id:'naval';Title:'海戦';MiddleTitle:'海戦';FixedSmall:'見下ろし';ProgressText:'艦隊・砲撃・ボスを逆算/保存検証中';Group:sgShooting;Order:2;SmallKind:skFixed;Version:1;Versions:[1];Features:[sfPrepared,sfBoss,sfDefaultBoss50];VariantKind:svBoss),
     (Id:'rhythm-game';Title:TYPE_V_TITLE;MiddleTitle:TYPE_V_TITLE;FixedSmall:'MV重ね（透過）';ProgressText:'音時刻からマーク・カーソル軌道・連打を逆算/保存検証中';Group:sgMusic;Order:0;SmallKind:skFixed;Version:4;Versions:[1,2,3,4];Features:[sfPrepared,sfThreshold,sfTransparent];VariantKind:svRhythm),
     (Id:'prism-step';Title:TYPE_D_TITLE;MiddleTitle:TYPE_D_TITLE;FixedSmall:'縦';ProgressText:'音時刻から4レーン譜面を準備中';Group:sgMusic;Order:1;SmallKind:skFixed;Version:3;Versions:[1,2,3];Features:[sfPrepared,sfThreshold];VariantKind:svRhythm),
-    (Id:'jump-adventure';Title:'ジャンプアドベンチャー';MiddleTitle:'ジャンプアドベンチャー';FixedSmall:'横・縦の自動切替';ProgressText:'音時刻から足場・踏みつけ・ボス戦を逆算中';Group:sgAction;Order:4;SmallKind:skFixed;Version:1;Versions:[1];Features:[sfPrepared,sfBoss,sfDefaultBoss50];VariantKind:svBoss),
-    (Id:'fighting-rush';Title:'格闘ラッシュ';MiddleTitle:'格闘ラッシュ';FixedSmall:'地上戦・空中戦';ProgressText:'打撃・防御・空中コンボを音時刻から逆算中';Group:sgAction;Order:5;SmallKind:skFixed;Version:1;Versions:[1];Features:[sfPrepared,sfBoss,sfDefaultBoss50];VariantKind:svBoss),
-    (Id:'side-race';Title:'2Dハイウェイ';MiddleTitle:'2Dハイウェイ';FixedSmall:'横スクロール';ProgressText:'高速道路・ジャンプ・前後の衝突を音時刻から逆算中';Group:sgRace;Order:1;SmallKind:skFixed;Version:1;Versions:[1];Features:[sfPrepared,sfBoss,sfDefaultBoss50];VariantKind:svBoss)
+    (Id:'jump-adventure';Title:'ジャンプアドベンチャー';MiddleTitle:'ジャンプアドベンチャー';FixedSmall:'横・縦の自動切替';ProgressText:'音時刻から足場・踏みつけ・ボス戦を逆算中';Group:sgAction;Order:4;SmallKind:skFixed;Version:1;Versions:[1];Features:[sfPrepared,sfBoss,sfDefaultBoss50];VariantKind:svBoss)
   );
   GroupTitles:array[TRhythmStyleGroup] of string=('シューティング','ボールアクション','アクション','レース','音楽・演出');
 function StyleInfo(Style:TRhythmStyle):TStyleInfo;

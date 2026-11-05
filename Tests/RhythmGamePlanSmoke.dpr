@@ -76,7 +76,7 @@ begin
   try
     ConfigureRhythmProduct('SYNC_RhythmGame','Music Sync Orbit Game',rsRhythmGame);
     Need((Ord(rsRhythmGame)=11) and (StylePlanVersion(rsRhythmGame)=4) and CompatiblePlanVersion(rsRhythmGame,1),'Version registration');
-    Need((StyleVariant(rsRace,50,100)=101) and (StyleVariant(rsRhythmGame,50,100,20)=121),'Variant separation');
+    Need((StyleVariant(rsSideRace,50,100)=101) and (StyleVariant(rsRhythmGame,50,100,20)=121),'Variant separation');
     Folder:=TPath.Combine(ExtractFileDir(ParamStr(0)),'OrbitEvidence');ForceDirectories(Folder);Source:=TPath.Combine(Folder,'events.identity');TFile.WriteAllText(Source,'Synthetic orbit events; no playback.',TEncoding.UTF8);
     Need(GetFileAttributesEx(PChar(Source),GetFileExInfoStandard,@Stamp),'Source stamp');Revision:=IntToHex(Stamp.nFileSizeHigh,8)+IntToHex(Stamp.nFileSizeLow,8)+'-'+IntToHex(Stamp.ftLastWriteTime.dwHighDateTime,8)+IntToHex(Stamp.ftLastWriteTime.dwLowDateTime,8);
     Image:=TBitmap.Create;Image.PixelFormat:=pf32bit;Image.SetSize(960,540);

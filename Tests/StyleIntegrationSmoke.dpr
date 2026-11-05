@@ -3,14 +3,14 @@
 {$POINTERMATH ON}
 uses Winapi.Windows,System.SysUtils,System.Math,System.Classes,System.Hash,System.IOUtils,System.JSON,
   Vcl.Graphics,Vcl.Imaging.pngimage,AviUtl2FilterTypes,RhythmAudio,RhythmStyles,RhythmProduct,RhythmPlanRef,RhythmSettings,
-  RhythmPrepare,RhythmScene,RhythmStyleRegistry,RhythmPaths,RhythmMotion,RhythmRacePlan;
+  RhythmPrepare,RhythmScene,RhythmStyleRegistry,RhythmPaths,RhythmMotion;
 type TInitPlugin=function(Version:DWORD):Byte;cdecl;
  TDonePlugin=procedure;cdecl;
  TGetPlugin=function:PFILTER_PLUGIN_TABLE;cdecl;
 var Captured:TBytes;CapturedWidth,CapturedHeight:Integer;
 var Root,Source,Revision,Expected,Actual:string;Stamp:TWin32FileAttributeData;Style:TRhythmStyle;
   Audio,Cold:TRhythmAudio;Worker:TRhythmPrepareThread;Ref:TRhythmPlanRef;Renderer:TRhythmRenderer;
-  Image:TBitmap;Race:TRacePlan;Settings,Restored:TRhythmSettings;Backend,J,Checks,HostChecks,MusicChecks,OffsetChecks,Density,StylesChecked,BaseHits:Integer;T,Shift:Double;PNG:TPngImage;
+  Image:TBitmap;Settings,Restored:TRhythmSettings;Backend,J,Checks,HostChecks,MusicChecks,OffsetChecks,Density,StylesChecked,BaseHits:Integer;T,Shift:Double;PNG:TPngImage;
 procedure Need(V:Boolean;const S:string);begin if not V then raise Exception.Create(S);end;
 function MakeAudio:TRhythmAudio;
 var I,J,Start:Integer;Time,Gap,Phase:Double;Samples:PSmallInt;V:SmallInt;
@@ -57,7 +57,7 @@ function ImageHash:string;
 var S:TMemoryStream;B:TBytes;H:THashSHA2;
 begin S:=TMemoryStream.Create;try Image.SaveToStream(S);SetLength(B,S.Size);S.Position:=0;S.ReadBuffer(B[0],Length(B));H:=THashSHA2.Create;H.Update(B);Result:=H.HashAsString;finally S.Free;end;end;
 function ProductForStyle:string;
-begin case Style of rsBall:Result:='SYNC_RhythmBall';rsFireworks:Result:='SYNC_RhythmFireworks';rsRunner:Result:='SYNC_RhythmRunner';rsBreakout:Result:='SYNC_RhythmBreakout';rsRace:Result:='SYNC_RhythmRace';rsBombAction:Result:='SYNC_RhythmBombAction';rsFighting:Result:='SYNC_RhythmFighting';rsMining:Result:='SYNC_RhythmMining';rsTrain:Result:='SYNC_RhythmTrain';rsNaval:Result:='SYNC_RhythmNaval';rsRhythmGame,rsStepGame:Result:='SYNC_RhythmGame';else Result:='SYNC_RhythmShooter';end;end;
+begin case Style of rsBall:Result:='SYNC_RhythmBall';rsFireworks:Result:='SYNC_RhythmFireworks';rsRunner:Result:='SYNC_RhythmRunner';rsBreakout:Result:='SYNC_RhythmBreakout';rsBombAction:Result:='SYNC_RhythmBombAction';rsMining:Result:='SYNC_RhythmMining';rsTrain:Result:='SYNC_RhythmTrain';rsNaval:Result:='SYNC_RhythmNaval';rsRhythmGame,rsStepGame:Result:='SYNC_RhythmGame';else Result:='SYNC_RhythmShooter';end;end;
 procedure CaptureHost(Buffer:PPIXEL_RGBA;W,H:Integer);cdecl;
 begin CapturedWidth:=W;CapturedHeight:=H;SetLength(Captured,W*H*4);Move(Buffer^,Captured[0],Length(Captured));end;
 procedure VerifyHost;
@@ -174,7 +174,7 @@ begin
 end;
 
 begin
- Audio:=nil;Cold:=nil;Worker:=nil;Renderer:=nil;Image:=nil;Race:=nil;PNG:=nil;Checks:=0;HostChecks:=0;MusicChecks:=0;OffsetChecks:=0;StylesChecked:=0;
+ Audio:=nil;Cold:=nil;Worker:=nil;Renderer:=nil;Image:=nil;PNG:=nil;Checks:=0;HostChecks:=0;MusicChecks:=0;OffsetChecks:=0;StylesChecked:=0;
  try
   Density:=AUDIO_DEFAULT_DENSITY;if ParamCount>3 then Density:=StrToInt(ParamStr(4));
   Root:=TPath.Combine(ExtractFileDir(ParamStr(0)),'Evidence');ForceDirectories(Root);Source:=TPath.Combine(Root,'shared-source.identity');TFile.WriteAllText(Source,'Synthetic events only. No sound playback.',TEncoding.UTF8);
@@ -210,19 +210,9 @@ begin
    end;
    VerifyHost;
    Renderer.Render(Image,Cold,32.3,0);PNG:=TPngImage.Create;PNG.Assign(Image);PNG.SaveToFile(TPath.Combine(Root,StyleId(Style)+'.png'));FreeAndNil(PNG);
-   if Style=rsRace then begin
-    Race:=TRacePlan.Load(Ref,Cold,0);try
-     if Density=AUDIO_DEFAULT_DENSITY then Need(Length(Race.Crash.Shunts)>0,'Race boss shunt coverage');
-     if Length(Race.Crash.Shunts)>0 then
-     for J:=0 to 2 do begin T:=Race.Crash.Shunts[Length(Race.Crash.Shunts) div 2].Time+(J-1)*0.08;
-      Renderer.Render(Image,Cold,T,0);PNG:=TPngImage.Create;PNG.Assign(Image);
-      PNG.SaveToFile(TPath.Combine(Root,'race-shunt-'+IntToStr(J)+'.png'));FreeAndNil(PNG);
-     end;
-    finally FreeAndNil(Race);end;
-   end;
    FreeAndNil(Renderer);FreeAndNil(Cold);FreeAndNil(Audio);
   end;
   TFile.WriteAllText(TPath.Combine(Root,'result.json'),Format('{"styles":%d,"density":%d,"warmColdSeekChecks":%d,"hostDLLChecks":%d,"hostMusicChecks":%d,"offsetChecks":%d,"backends":["GDI","Direct2D"],"audioPlayback":false}',[StylesChecked,Density,Checks,HostChecks,MusicChecks,OffsetChecks]),TEncoding.UTF8);WriteLn('Shared preparation/factory/settings/cold/seek PASS: ',Checks);
  except on E:Exception do begin WriteLn(E.ClassName,': ',E.Message);ExitCode:=1;end;end;
- PNG.Free;Race.Free;Renderer.Free;Worker.Free;Cold.Free;Audio.Free;Image.Free;
+ PNG.Free;Renderer.Free;Worker.Free;Cold.Free;Audio.Free;Image.Free;
 end.

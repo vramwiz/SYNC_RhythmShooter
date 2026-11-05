@@ -42,7 +42,7 @@
         <GenDll>true</GenDll>
         <DCC_DcuOutput>.\$(Platform)\RhythmFireworks\$(Config)\DCU</DCC_DcuOutput>
         <DCC_ExeOutput>.\$(Platform)\RhythmFireworks\$(Config)</DCC_ExeOutput>
-        <DCC_UnitSearchPath>Source\SideRace;Source\FightingRush;Source\JumpAdventure;Source\RhythmGame;Source\Fighting;Source\Mining;Source\Train;Source\Naval;Source\BombAction;Source\Race;Source\Runner;Source\Breakout;Source\Shared\Audio;Source\Shared\Render;Source\Shared\Settings;Source\Shared\Common;Source\Shared\Assets;Source\Shared\UI;Source\Shared\Host;Source\Shared\Integrations;Source\Composition;Source\Shooting;Source\Ball;Source\Fireworks;Source\Lib;Source\Lib\Process;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
+        <DCC_UnitSearchPath>Source\SideRace;Source\FightingRush;Source\JumpAdventure;Source\RhythmGame;Source\Mining;Source\Train;Source\Naval;Source\BombAction;Source\Runner;Source\Breakout;Source\Shared\Audio;Source\Shared\Render;Source\Shared\Settings;Source\Shared\Common;Source\Shared\Assets;Source\Shared\UI;Source\Shared\Host;Source\Shared\Integrations;Source\Composition;Source\Shooting;Source\Ball;Source\Fireworks;Source\Lib;Source\Lib\Process;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
         <DCC_Namespace>System;Xml;Data;Datasnap;Web;Soap;Winapi;Vcl;$(DCC_Namespace)</DCC_Namespace>
         <SanitizedProjectName>SYNC_RhythmFireworks</SanitizedProjectName>
     </PropertyGroup>
@@ -118,8 +118,6 @@
         <DCCReference Include="Source\RhythmGame\RhythmOrbitScene.pas"/>
         <DCCReference Include="Source\RhythmGame\RhythmGamePlan.pas"/>
         <DCCReference Include="Source\RhythmGame\RhythmGameScene.pas"/>
-        <DCCReference Include="Source\Race\RhythmRaceTrafficPlan.pas"/>
-        <DCCReference Include="Source\Race\RhythmRaceImpact.pas"/>
         <DCCReference Include="Source\Shared\Audio\RhythmAudioData.pas"/>
         <DCCReference Include="Source\Shared\Audio\RhythmAudioCache.pas"/>
         <DCCReference Include="Source\Shared\Audio\RhythmAudioDecode.pas"/>
@@ -127,22 +125,11 @@
         <DCCReference Include="Source\Runner\RhythmRunnerAction.pas"/>
         <DCCReference Include="Source\Runner\RhythmRunnerPixels.pas"/>
         <DCCReference Include="Source\Runner\RhythmRunnerLegacyScene.pas"/>
-        <DCCReference Include="Source\Fighting\RhythmFightingDuel.pas"/>
-        <DCCReference Include="Source\Fighting\RhythmFightingDuelScene.pas"/>
-        <DCCReference Include="Source\Fighting\RhythmFightingLegacyScene.pas"/>
         <DCCReference Include="Source\Breakout\RhythmBreakoutScoreTypes.pas"/>
         <DCCReference Include="Source\Breakout\RhythmBreakoutScoreGeometry.pas"/>
-        <DCCReference Include="Source\Race\RhythmRaceCrashMotion.pas"/>
-        <DCCReference Include="Source\Race\RhythmRaceTrafficContacts.pas"/>
-        <DCCReference Include="Source\Race\RhythmRaceCrashCodec.pas"/>
-        <DCCReference Include="Source\Race\RhythmRaceCrashBuild.pas"/>
-        <DCCReference Include="Source\Race\RhythmRaceCrash.pas"/>
-        <DCCReference Include="Source\Race\RhythmRaceCrashScene.pas"/>
         <DCCReference Include="Source\Ball\RhythmBallCircuitPlan.pas"/>
         <DCCReference Include="Source\Ball\RhythmBallCircuitScene.pas"/>
         <DCCReference Include="Source\Breakout\RhythmBreakoutAction.pas"/>
-        <DCCReference Include="Source\Fighting\RhythmFightingPlan.pas"/>
-        <DCCReference Include="Source\Fighting\RhythmFightingScene.pas"/>
         <DCCReference Include="Source\Mining\RhythmMiningPlan.pas"/>
         <DCCReference Include="Source\Mining\RhythmMiningScene.pas"/>
         <DCCReference Include="Source\Train\RhythmTrainPlan.pas"/>
@@ -154,8 +141,6 @@
         </DelphiCompile>
         <DCCReference Include="Source\BombAction\RhythmBombPlan.pas"/>
         <DCCReference Include="Source\BombAction\RhythmBombScene.pas"/>
-        <DCCReference Include="Source\Race\RhythmRacePlan.pas"/>
-        <DCCReference Include="Source\Race\RhythmRaceScene.pas"/>
         <DCCReference Include="Source\Shared\Settings\RhythmPreparedData.pas"/>
         <DCCReference Include="Source\Breakout\RhythmBreakoutCampaign.pas"/>
         <DCCReference Include="Source\Breakout\RhythmBreakoutScore.pas"/>

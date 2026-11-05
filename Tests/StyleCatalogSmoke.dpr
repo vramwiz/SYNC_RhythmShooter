@@ -4,11 +4,11 @@
 uses System.SysUtils,System.Classes,System.Hash,System.IOUtils,System.JSON,
   RhythmStyles,RhythmStyleSelection,RhythmSettings,RhythmPlanRef,RhythmStyleOps,RhythmStyleRegistry,
   RhythmAudio,RhythmAnimation,RhythmImageBank;
-const Ids:array[TRhythmStyle] of string=('shooting','ball','fireworks','runner','breakout','race','bomb-action','fighting','mining','train','naval','rhythm-game','prism-step','jump-adventure','fighting-rush','side-race');
-  Versions:array[TRhythmStyle] of Integer=(1,6,3,7,10,11,2,2,1,1,1,4,3,1,1,1);
-  Groups:array[TRhythmStyle] of TRhythmStyleGroup=(sgShooting,sgBall,sgMusic,sgAction,sgBall,sgRace,sgAction,sgAction,sgAction,sgShooting,sgShooting,sgMusic,sgMusic,sgAction,sgAction,sgRace);
-  Scenes:array[TRhythmStyle] of string=('TShootingAnimation','TBallAnimation','TFireworksAnimation','TRunnerAnimation','TBreakoutAnimation','TRaceAnimation','TBombActionAnimation','TFightingAnimation','TMiningAnimation','TTrainAnimation','TNavalAnimation','TGameAnimation','TStepAnimation','TJumpAnimation','TRushAnimation','TSideRaceAnimation');
-  GroupCounts:array[TRhythmStyleGroup] of Integer=(3,2,6,2,3);
+const Ids:array[TRhythmStyle] of string=('shooting','ball','fireworks','runner','breakout','side-race','bomb-action','fighting-rush','mining','train','naval','rhythm-game','prism-step','jump-adventure');
+  Versions:array[TRhythmStyle] of Integer=(1,6,3,7,10,1,2,1,1,1,1,4,3,1);
+  Groups:array[TRhythmStyle] of TRhythmStyleGroup=(sgShooting,sgBall,sgMusic,sgAction,sgBall,sgRace,sgAction,sgAction,sgAction,sgShooting,sgShooting,sgMusic,sgMusic,sgAction);
+  Scenes:array[TRhythmStyle] of string=('TShootingAnimation','TBallAnimation','TFireworksAnimation','TRunnerAnimation','TBreakoutAnimation','TSideRaceAnimation','TBombActionAnimation','TRushAnimation','TMiningAnimation','TTrainAnimation','TNavalAnimation','TGameAnimation','TStepAnimation','TJumpAnimation');
+  GroupCounts:array[TRhythmStyleGroup] of Integer=(3,2,5,1,3);
   Levels:array[0..4] of Integer=(-100,-1,0,50,100);
 var S,Other,ParsedStyle:TRhythmStyle;G:TRhythmStyleGroup;D,I,J,K,V,Expected,Checks,Stage,Combinations:Integer;
   Sel,Restored:TStyleSelection;Saved,Loaded:TRhythmSettings;Ref:TRhythmPlanRef;Ops:TStyleOperations;
@@ -19,12 +19,29 @@ begin if not OK then raise Exception.Create(Why);Inc(Checks);end;
 function WasCompatible(Style:TRhythmStyle;Version:Integer):Boolean;
 begin Result:=Version=Versions[Style];case Style of
   rsBall:Result:=Version in [4,5,6];rsFireworks:Result:=Version in [2,3];rsRunner:Result:=Version in [1,2,3,4,5,6,7];
-  rsBreakout:Result:=Version in [1,2,3,4,5,6,7,8,9,10];rsRace:Result:=Version in [1,2,3,4,5,6,7,8,9,10,11];
-  rsBombAction,rsFighting:Result:=Version in [1,2];rsRhythmGame:Result:=Version in [1,2,3,4];rsStepGame:Result:=Version in [1,2,3];
+  rsBreakout:Result:=Version in [1,2,3,4,5,6,7,8,9,10];
+  rsBombAction:Result:=Version in [1,2];rsRhythmGame:Result:=Version in [1,2,3,4];rsStepGame:Result:=Version in [1,2,3];
 end;end;
 begin Scene:=nil;Images:=nil;Names:=nil;Checks:=0;Combinations:=0;
   try
     Folder:=TPath.Combine(ExtractFileDir(ParamStr(0)),'Evidence');ForceDirectories(Folder);Names:=TStringList.Create;Key:=StringOfChar('a',64);
+    Need((GroupStyleCount(sgRace)=1) and (GroupStyleAt(sgRace,0)=rsSideRace),'Only 2D race is selectable');
+    Need(not TryStyle('race',ParsedStyle),'Retired 3D ID is still registered');
+    Need(TRhythmSettings.TryJSON('{"schema":1,"style":"race","music":"old-race.wav","sensitivity":73,'+
+      '"offsetSeconds":0.21,"plan":{"style":"race","version":11,"key":"'+Key+'"}}',Loaded) and
+      (Loaded.Style=rsSideRace) and (Loaded.Plan.Key='') and (Loaded.Music='old-race.wav') and
+      (Loaded.Sensitivity=73) and (Abs(Loaded.OffsetSeconds-0.21)<1E-9),'Retired race settings migration');
+    Need(TRhythmSettings.TryJSON('{"schema":1,"style":"rhythm-game","layers":'+
+      '{"style":"race","movie":true,"foreground":false,"plan":{"style":"race"}}}',Loaded) and
+      (Loaded.Style=rsSideRace) and (Loaded.Plan.Key=''),'Retired race layer migration');
+    Need(not TryStyle('fighting',ParsedStyle),'Retired fighting ID is still registered');
+    Need(TRhythmSettings.TryJSON('{"schema":1,"style":"fighting","music":"old-fight.wav","bossFrequency":67,'+
+      '"offsetSeconds":-0.18,"plan":{"style":"fighting","version":2,"key":"'+Key+'"}}',Loaded) and
+      (Loaded.Style=rsFightingRush) and (Loaded.Plan.Key='') and (Loaded.Music='old-fight.wav') and
+      (Loaded.BossFrequency=67) and (Abs(Loaded.OffsetSeconds+0.18)<1E-9),'Retired fighting settings migration');
+    Need(TRhythmSettings.TryJSON('{"schema":1,"style":"rhythm-game","layers":'+
+      '{"style":"fighting","movie":true,"foreground":false,"plan":{"style":"fighting"}}}',Loaded) and
+      (Loaded.Style=rsFightingRush) and (Loaded.Plan.Key=''),'Retired fighting layer migration');
     Need(GroupStyleCount(sgBall)=2,'Ball family count');Need(StyleInfo(rsBall).Group=StyleInfo(rsBreakout).Group,'Pinball and breakout separated');
     Need((StyleInfo(rsRhythmGame).MiddleTitle='Type.V') and (StyleTitle(rsRhythmGame)='Type.V'),'Type.V label');
     Need((StyleInfo(rsStepGame).MiddleTitle='Type.D') and (StyleTitle(rsStepGame)='Type.D') and
@@ -43,7 +60,7 @@ begin Scene:=nil;Images:=nil;Names:=nil;Checks:=0;Combinations:=0;
       for I:=0 to High(Levels) do for J:=0 to High(Levels) do for K:=0 to High(Levels) do begin
         Expected:=0;
         if S in [rsRhythmGame,rsStepGame] then Expected:=Levels[K]+101
-        else if (S in [rsShooting,rsRunner,rsBreakout,rsRace,rsBombAction,rsFighting,rsMining,rsTrain,rsNaval,rsJumpAdventure,rsFightingRush,rsSideRace]) and (Levels[J]>=0) then Expected:=Levels[J]+1
+        else if (S in [rsShooting,rsRunner,rsBreakout,rsBombAction,rsMining,rsTrain,rsNaval,rsJumpAdventure,rsFightingRush,rsSideRace]) and (Levels[J]>=0) then Expected:=Levels[J]+1
         else if S=rsFireworks then begin Expected:=Levels[I];if Expected<0 then Expected:=0;end;
         Need(StyleVariant(S,Levels[I],Levels[J],Levels[K])=Expected,'Variant recipe changed');
       end;
@@ -73,8 +90,8 @@ begin Scene:=nil;Images:=nil;Names:=nil;Checks:=0;Combinations:=0;
     Need(not TryStyle('unknown',ParsedStyle) and (ParsedStyle=rsShooting),'Unknown ID handling');
     Stage:=0;Context.Progress:=procedure(Value:Integer) begin Stage:=Value;end;Context.SetStage(4);Need(Stage=4,'Progress callback');
     Context.Cancel:=function:Boolean begin Result:=True;end;Failed:=False;try Context.CheckCancel;except on E:EAbort do Failed:=True;end;Need(Failed,'Cancellation callback');
-    TFile.WriteAllText(TPath.Combine(Folder,'result.json'),Format('{"checks":%d,"groups":5,"styles":16,"smallChoices":19,"selectionTransitions":%d,"adapters":16,"gui":false}',[Checks,Combinations]),TEncoding.UTF8);
-    WriteLn('Style catalog PASS checks=',Checks,' groups=5 styles=16 transitions=',Combinations,' no GUI');
+    TFile.WriteAllText(TPath.Combine(Folder,'result.json'),Format('{"checks":%d,"groups":5,"styles":14,"smallChoices":17,"selectionTransitions":%d,"adapters":14,"gui":false}',[Checks,Combinations]),TEncoding.UTF8);
+    WriteLn('Style catalog PASS checks=',Checks,' groups=5 styles=14 transitions=',Combinations,' no GUI');
   except on E:Exception do begin WriteLn(E.ClassName,': ',E.Message);ExitCode:=1;end;end;
   Scene.Free;Images.Free;Names.Free;
 end.

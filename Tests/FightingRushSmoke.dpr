@@ -47,6 +47,7 @@ end;
 procedure Verify(Plan:TRushPlan;Audio:TRhythmAudio;Full:Boolean);
 var
   I,J,Bosses,BossArcs,AirHits,BossAirHits,GroundOrbs,AirOrbs,Parries,Crashes,Chases,GroupFinishes,EnemyOrbs:Integer;
+  Hp,HitsTaken,Recoveries,RecoveryHops:Integer;
   T:Double;
   P,Q,R:TPointF;
   A:TRushCue;
@@ -77,9 +78,14 @@ begin
   Chases:=0;
   GroupFinishes:=0;
   EnemyOrbs:=0;
+  Hp:=RushMaxHealth;
+  HitsTaken:=0;
+  Recoveries:=0;
+  RecoveryHops:=0;
   for I:=0 to High(Plan.Stages) do begin
     Include(Levels,Plan.Stages[I].Level);
     Include(Modes,Plan.Stages[I].Mode);
+    Need(Abs(Plan.Hero(Plan.Stages[I].StartTime).X-2*Plan.Stages[I].X)<0.001,'Travel speed did not double');
     if I=0 then Need(Plan.Stages[I].Level=1,'Opening difficulty');
     if I>0 then begin
       T:=Plan.Stages[I].StartTime;
@@ -93,6 +99,22 @@ begin
     Include(Sides,F.Side<0);
     Need(Audio.Hits[Audio.NearestHit(A.Time)].Time=A.Time,'Original accent moved');
     Need(Plan.MoveAt(A.Time)=I,'Pose hit missed beat');
+    Need(Plan.Health(A.Time-1E-6)=Hp,'Health changed ahead of the beat');
+    if A.Move=raHurt then begin
+      Dec(Hp);
+      Inc(HitsTaken);
+    end;
+    if A.Recovery then begin
+      Inc(Hp,2);
+      Inc(Recoveries);
+      Need(Plan.Hero(A.Time).Y>=0.72,'Heart was collected without a jump');
+      if A.RecoveryHop then begin
+        Inc(RecoveryHops);
+        Need((Plan.Hero(A.Time-RushRecoveryHalfSpan).Y<1E-5) and
+          (Plan.Hero(A.Time+RushRecoveryHalfSpan).Y<1E-5),'Pickup hop failed to meet the ground');
+      end;
+    end;
+    Need((Plan.Health(A.Time)=Hp) and InRange(Hp,1,RushMaxHealth),'Health is out of range or off beat');
     P:=Plan.Contact(I);
     Q:=Plan.Enemy(A.Foe,A.Time);
     Need(P.Distance(Q)<0.0006,'Opponent missed its contact');
@@ -152,6 +174,7 @@ begin
   WriteLn(Format('%.2fs: %d stages, %d cues, %d orbs ground / %d air, %d defences, %d collisions, %d chases, %d air strikes, %d bosses (%d types), %d boss arcs / %d boss air strikes',
     [Plan.Duration,Length(Plan.Stages),Length(Plan.Cues),GroundOrbs,AirOrbs,Parries,Crashes,Chases,AirHits,Bosses,J,BossArcs,BossAirHits]));
   WriteLn('Synchronized group finishers: ',GroupFinishes,' / enemy orbs: ',EnemyOrbs);
+  WriteLn('Hits taken: ',HitsTaken,' / hearts collected: ',Recoveries,' / dedicated jumps: ',RecoveryHops);
   if not Full then Exit;
   Need(Length(Plan.Cues)=Length(Audio.Hits),'Accent lost');
   Need((Levels=[1..5]) and (Modes=[Low(TRushMode)..High(TRushMode)]),'Missing level or scene');
@@ -160,6 +183,7 @@ begin
   Need(Sides=[False,True],'No attacks from behind');
   Need((J>=3) and (BossArcs>0) and (BossAirHits>0) and (Finishes<>[raSlam]),'Boss variation or combo missing');
   Need((rtKick in Threats) and (rtWeapon in Threats) and (EnemyOrbs>0),'Missing enemy attack types');
+  Need((HitsTaken>=8) and (Recoveries>=4) and (RecoveryHops>0),'Damage or heart pickups too rare');
 end;
 
 function FrameHash(Image:TBitmap):string;
@@ -174,7 +198,7 @@ procedure RenderProof(Plan:TRushPlan;Audio,Cold:TRhythmAudio;const Ref:TRhythmPl
 var R:TRhythmRenderer; Image:TBitmap; PNG:TPngImage;
   H:string; S,I,J,B:Integer; T,FromTime:Double;
   Saved:set of TRushMove;
-  BossFrame:Boolean;
+  BossFrame,HurtFrame,RecoveryFrame,FallFrames:Boolean;
 
   procedure Snapshot(const Name:string;Time:Double);
   begin
@@ -208,6 +232,9 @@ begin
     end;
     Saved:=[];
     BossFrame:=False;
+    HurtFrame:=False;
+    RecoveryFrame:=False;
+    FallFrames:=False;
     for I:=0 to High(Plan.Cues) do begin
       T:=Plan.Cues[I].Time;
       J:=Ord(Plan.Cues[I].Move);
@@ -220,8 +247,25 @@ begin
         Snapshot('boss-air-combo',T+0.012);
         BossFrame:=True;
       end;
+      if not HurtFrame and (Plan.Cues[I].Move=raHurt) then begin
+        Snapshot('enemy-hit',T);
+        HurtFrame:=True;
+      end;
+      if not RecoveryFrame and Plan.Cues[I].RecoveryHop then begin
+        Snapshot('heart-jump',T-0.12);
+        Snapshot('heart-pickup',T+0.015);
+        RecoveryFrame:=True;
+      end;
+      B:=Plan.Cues[I].Foe;
+      if not FallFrames and (T>0.10) and (T+0.55<Plan.Duration) and (I=Plan.Foes[B].Last) and
+        not Plan.Foes[B].Boss and (Plan.Cues[I].Move in [raPunch,raKick]) then begin
+        Snapshot('enemy-before-fall',T-0.08);
+        Snapshot('enemy-mid-fall',T+0.14);
+        Snapshot('enemy-after-fall',T+0.33);
+        FallFrames:=True;
+      end;
     end;
-    if (ParamCount>1) and SameText(ParamStr(2),'Scan') then begin
+    if SameText(ParamStr(1),'Scan') or ((ParamCount>1) and SameText(ParamStr(2),'Scan')) then begin
       Image.SetSize(480,270);
       for I:=0 to Ceil(Plan.Duration*30)-1 do begin
         R.Render(Image,Cold,I/30,0);
@@ -244,9 +288,9 @@ begin
   Plan:=nil;
   try
     Folder:=TPath.Combine(ExtractFileDir(ParamStr(0)),'Evidence');
-    if ParamCount>0 then Folder:=TPath.Combine(Folder,'Music');
+    if (ParamCount>0) and not SameText(ParamStr(1),'Scan') then Folder:=TPath.Combine(Folder,'Music');
     ForceDirectories(Folder);
-    if ParamCount=0 then begin
+    if (ParamCount=0) or SameText(ParamStr(1),'Scan') then begin
       Source:=TPath.Combine(Folder,'source.identity');
       Audio:=Fixture(Source);
     end else begin
@@ -271,7 +315,7 @@ begin
     Cold:=Ops.LoadAudio(Loaded.Plan,Source,0);
     Need(Length(Cold.PCM)=0,'Cold plan decoded PCM');
     Plan:=LoadRushPlan(Loaded.Plan,Cold,0);
-    Verify(Plan,Audio,ParamCount=0);
+    Verify(Plan,Audio,(ParamCount=0) or SameText(ParamStr(1),'Scan'));
     RenderProof(Plan,Audio,Cold,Ref,Folder);
     WriteLn('Fighting Rush PASS checks=',Checks);
   except

@@ -5,7 +5,7 @@ uses RhythmStyles,RhythmStyleOps,RhythmAudio,RhythmPlanRef;
 function StyleOperations(Style:TRhythmStyle):TStyleOperations;
 function LoadStyleAudio(Style:TRhythmStyle;const Ref:TRhythmPlanRef;const Source:string;Direction:Integer):TRhythmAudio;
 implementation
-uses System.SysUtils,RhythmShootingStyle,RhythmBallStyle,RhythmFireworksStyle,RhythmRunnerStyle,RhythmBreakoutStyle,RhythmRaceStyle,RhythmBombActionStyle,RhythmFightingStyle,RhythmMiningStyle,RhythmTrainStyle,RhythmNavalStyle,RhythmGameStyle,RhythmStepStyle,RhythmJumpStyle,RhythmRushStyle,RhythmSideRaceStyle;
+uses System.SysUtils,RhythmShootingStyle,RhythmBallStyle,RhythmFireworksStyle,RhythmRunnerStyle,RhythmBreakoutStyle,RhythmBombActionStyle,RhythmMiningStyle,RhythmTrainStyle,RhythmNavalStyle,RhythmGameStyle,RhythmStepStyle,RhythmJumpStyle,RhythmRushStyle,RhythmSideRaceStyle;
 type TOperationsFactory=function:TStyleOperations;
 const Factories:array[TRhythmStyle] of TOperationsFactory=(
   ShootingOperations,
@@ -13,17 +13,15 @@ const Factories:array[TRhythmStyle] of TOperationsFactory=(
   FireworksOperations,
   RunnerOperations,
   BreakoutOperations,
-  RaceOperations,
+  SideRaceOperations,
   BombActionOperations,
-  FightingOperations,
+  RushOperations,
   MiningOperations,
   TrainOperations,
   NavalOperations,
   GameOperations,
   StepOperations,
-  JumpOperations,
-  RushOperations,
-  SideRaceOperations
+  JumpOperations
 );
 function StyleOperations(Style:TRhythmStyle):TStyleOperations;
 begin Result:=Factories[Style]();

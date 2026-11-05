@@ -321,7 +321,7 @@ end;
 
 function TSideRacePlan.CarPose(Index:Integer;Time,EntryGap:Double):TSidePose;
 var F:TSideCar; H,Lead:TPointF; I,Nearest:Integer;
-  First,Finish,Gap,U,Age,Span,X,Y,ContactTime,Follow:Double; D:TSideDeck;
+  First,Finish,Gap,U,Age,Span,X,Y,ContactTime,Follow,ImpactAngle:Double; D:TSideDeck;
 begin
   F:=Cars[Index];
   H:=Hero(Time);
@@ -339,11 +339,15 @@ begin
     end;
   end else if Time>Finish then begin
     Age:=Time-Finish;
-    if F.Side=1 then
-      // 先に上へ離し、右の進入車と同じ高さを横切らないようにする。
-      Gap:=EntryGap*SideEase(Age/0.78)
-    else Gap:=(4.65+F.Kind*0.50)*(1-Exp(-3.9*Age));
-    Result.Angle:=HeroAngle(Finish)*0.70+F.Side*Age*(2.0+F.Kind*0.61);
+    ImpactAngle:=HeroAngle(Finish)*0.70;
+    if F.Side=1 then begin
+      // 上向きの蹴り出しの後、横方向の速度を一定に近づける。
+      Gap:=EntryGap*(Age-0.10*(1-Exp(-10*Age)))/0.68;
+      Result.Angle:=ImpactAngle-(7.75+F.Kind*0.26)*(Age-0.05*(1-Exp(-20*Age)));
+    end else begin
+      Gap:=(4.65+F.Kind*0.50)*(1-Exp(-3.9*Age));
+      Result.Angle:=ImpactAngle-Age*(2.0+F.Kind*0.61);
+    end;
   end else begin
     I:=CarCue(Index,Time);
     Gap:=0;
@@ -358,9 +362,14 @@ begin
   if Time>Finish then begin
     Age:=Time-Finish;
     Lead:=Hero(Finish);
-    if F.Side=1 then
-      Y:=Max(Y,Lead.Y+(4.25+F.Kind*0.11)*(1-Exp(-15*Age))-0.72*Sqr(Age))
-    else Y:=Max(Y,Lead.Y+Age*(4.8+F.Kind*0.43)-7.9*Sqr(Age));
+    if F.Side=1 then begin
+      // 放物線で上昇と下降をつなぎ、タイヤの接地基準から車体中央の回転へ補正する。
+      if Age<0.22 then U:=(Age-0.22)/0.22 else U:=(Age-0.22)/0.80;
+      Y:=Max(Y,Lead.Y+(3.68+F.Kind*0.07)*(1-Sqr(U)));
+      ImpactAngle:=HeroAngle(Finish)*0.70;
+      X:=X+0.53*(Sin(Result.Angle)-Sin(ImpactAngle));
+      Y:=Y+0.53*(Cos(ImpactAngle)-Cos(Result.Angle));
+    end else Y:=Max(Y,Lead.Y+Age*(4.8+F.Kind*0.43)-7.9*Sqr(Age));
   end else begin
     Nearest:=CarCue(Index,Time);
     if (Nearest>F.First) and (Abs(Time-Cues[Nearest-F.Stride].Time)<Abs(Time-Cues[Nearest].Time)) then

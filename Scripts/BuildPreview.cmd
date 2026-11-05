@@ -5,7 +5,7 @@ set "PREVIEW_CONFIG=%~2"
 if not defined PREVIEW_CONFIG set "PREVIEW_CONFIG=Debug"
 if not "%PREVIEW_CONFIG%"=="Debug" if not "%PREVIEW_CONFIG%"=="Release" exit /b 2
 set "PREVIEW_NAME="
-for %%M in (Ball Fireworks Runner Breakout Race BombAction Fighting Mining Train Naval Game) do if "%PREVIEW_PRODUCT%"=="SYNC_Rhythm%%M" set "PREVIEW_NAME=Rhythm%%MPreview"
+for %%M in (Ball Fireworks Runner Breakout BombAction Mining Train Naval Game) do if "%PREVIEW_PRODUCT%"=="SYNC_Rhythm%%M" set "PREVIEW_NAME=Rhythm%%MPreview"
 if "%PREVIEW_PRODUCT%"=="SYNC_RhythmShooter" set "PREVIEW_NAME=RhythmPreview"
 if not defined PREVIEW_NAME exit /b 2
 for %%I in ("%~dp0..") do set "PREVIEW_ROOT=%%~fI"
@@ -17,7 +17,7 @@ call "C:\Program Files (x86)\Embarcadero\Studio\37.0\bin\rsvars.bat"
 if errorlevel 1 exit /b %errorlevel%
 pushd "%PREVIEW_ROOT%\Tools"
 if errorlevel 1 exit /b %errorlevel%
-dcc64 -B -Q -E"%PREVIEW_OUTPUT%" -NU"%PREVIEW_OUTPUT%\ToolsDCU" -U"%BDS%\lib\Win64\release;%PREVIEW_ROOT%\Source\Shared\Audio;%PREVIEW_ROOT%\Source\Shared\Render;%PREVIEW_ROOT%\Source\Shared\Settings;%PREVIEW_ROOT%\Source\Shared\Common;%PREVIEW_ROOT%\Source\Shared\Assets;%PREVIEW_ROOT%\Source\Shared\UI;%PREVIEW_ROOT%\Source\Shared\Host;%PREVIEW_ROOT%\Source\Shared\Integrations;%PREVIEW_ROOT%\Source\Composition;%PREVIEW_ROOT%\Source\Shooting;%PREVIEW_ROOT%\Source\Ball;%PREVIEW_ROOT%\Source\Fireworks;%PREVIEW_ROOT%\Source\Runner;%PREVIEW_ROOT%\Source\Breakout;%PREVIEW_ROOT%\Source\Race;%PREVIEW_ROOT%\Source\BombAction;%PREVIEW_ROOT%\Source\Fighting;%PREVIEW_ROOT%\Source\Mining;%PREVIEW_ROOT%\Source\Train;%PREVIEW_ROOT%\Source\Naval;%PREVIEW_ROOT%\Source\SideRace;%PREVIEW_ROOT%\Source\FightingRush;%PREVIEW_ROOT%\Source\JumpAdventure;%PREVIEW_ROOT%\Source\RhythmGame;%PREVIEW_ROOT%\Source\Lib;%PREVIEW_ROOT%\Source\Lib\Process" "%PREVIEW_NAME%.dpr"
+dcc64 -B -Q -E"%PREVIEW_OUTPUT%" -NU"%PREVIEW_OUTPUT%\ToolsDCU" -U"%BDS%\lib\Win64\release;%PREVIEW_ROOT%\Source\Shared\Audio;%PREVIEW_ROOT%\Source\Shared\Render;%PREVIEW_ROOT%\Source\Shared\Settings;%PREVIEW_ROOT%\Source\Shared\Common;%PREVIEW_ROOT%\Source\Shared\Assets;%PREVIEW_ROOT%\Source\Shared\UI;%PREVIEW_ROOT%\Source\Shared\Host;%PREVIEW_ROOT%\Source\Shared\Integrations;%PREVIEW_ROOT%\Source\Composition;%PREVIEW_ROOT%\Source\Shooting;%PREVIEW_ROOT%\Source\Ball;%PREVIEW_ROOT%\Source\Fireworks;%PREVIEW_ROOT%\Source\Runner;%PREVIEW_ROOT%\Source\Breakout;%PREVIEW_ROOT%\Source\BombAction;%PREVIEW_ROOT%\Source\Mining;%PREVIEW_ROOT%\Source\Train;%PREVIEW_ROOT%\Source\Naval;%PREVIEW_ROOT%\Source\SideRace;%PREVIEW_ROOT%\Source\FightingRush;%PREVIEW_ROOT%\Source\JumpAdventure;%PREVIEW_ROOT%\Source\RhythmGame;%PREVIEW_ROOT%\Source\Lib;%PREVIEW_ROOT%\Source\Lib\Process" "%PREVIEW_NAME%.dpr"
 set "PREVIEW_RESULT=%errorlevel%"
 popd
 exit /b %PREVIEW_RESULT%
