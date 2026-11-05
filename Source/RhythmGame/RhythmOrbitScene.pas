@@ -78,22 +78,25 @@ begin
 end;
 procedure TOrbitAnimation.Draw(Surface:TAnimationRenderSurface;const Frame:TAnimationFrame);
 const MaxEffects=24;
-var W,H,S,T,StoryTime,Scale,Age,Alpha,U,Angle,D,Progress,HitRadius:Double;Camera:TOrbitCamera;
+var W,H,S,T,StoryTime,Scale,Age,Alpha,U,Angle,D,Progress,HitRadius:Double;View:TOrbitView;
   I,J,Hit,FromBody,ToBody,MarkerCount:Integer;L:TOrbitLeg;N:TOrbitTap;
   Markers:TOrbitMarkers;
-  P,Q,Ship,FirstPlanet,Destination:TOrbitPoint;C,Theme:TColor;V:TOrbitVisualState;HitScale,EffectScale,EffectLife,MarkRadius,X,Y:Double;
+  P,Q,Ship,FirstPlanet,Destination:TOrbitPoint;C,Theme:TColor;V:TOrbitVisualState;
+  HitScale,EffectScale,EffectLife,MarkRadius,X,Y,Zoom:Double;
   function Cursor(At:Double):TOrbitPoint;
-  begin Result:=FCourse.CursorAt(At);end;
+  begin Result:=View.Project(FCourse.CursorAt(At));end;
   procedure Dot(const P:TOrbitPoint;Radius:Double;Color:TColor;Opacity:Double);
   begin Surface.Circle(P.X,P.Y,Max(1.0,Radius),Color,True,1,Opacity);end;
   procedure Background;
-  var I,J:Integer;X,Y,Depth,Light,Size,Step,Offset,Focus,Pulse:Double;F:TOrbitPoint;Tint:TColor;
+  var I,J:Integer;X,Y,Depth,Light,Size,Step,Offset,Focus,Pulse,TravelX,TravelY:Double;F:TOrbitPoint;Tint:TColor;
     function QuietAt(X,Y:Double):Double;
     begin
       if (FPlan=nil) or (FPlan.Count=0) then Exit(1);
       Result:=0.30+0.70*EnsureRange((Hypot(X-F.X,Y-F.Y)/S-0.08)/0.15,0.0,1.0);
     end;
   begin
+    TravelX:=View.Center.X-View.ViewportCenter.X;
+    TravelY:=View.Center.Y-View.ViewportCenter.Y;
     F:=Ship;Pulse:=V.Pulse;if not TransparentBackground then begin Surface.FillRect(0,0,W,H,RGB(1,3,11));
     // 大きな色面は背景に置き、近い進路の周囲は明度を抑えて主線を残す。
     for I:=0 to 23 do begin
@@ -102,24 +105,27 @@ var W,H,S,T,StoryTime,Scale,Age,Alpha,U,Angle,D,Progress,HitRadius:Double;Camera
     end;
     end;
     for I:=0 to 5 do begin
-      X:=Wrap(Noise(I,17)-Camera.Center.X*0.008)*W;Y:=Wrap(Noise(I,81)-Camera.Center.Y*0.008)*H;
-      Tint:=Palette((I+ToBody*3+2) mod 8);Size:=S*(0.16+Noise(I,22)*0.18);
+      X:=Wrap(0.5+(Noise(I,17)-0.5)*Zoom-TravelX/W*0.08)*W;
+      Y:=Wrap(0.5+(Noise(I,81)-0.5)*Zoom-TravelY/H*0.08)*H;
+      Tint:=Palette((I+ToBody*3+2) mod 8);Size:=S*(0.16+Noise(I,22)*0.18)*Zoom;
       for J:=3 downto 1 do Surface.Circle(X,Y,Size*(0.7+J*0.3),Tint,True,1,(0.008+0.003*Pulse)*(4-J));
     end;
-    Step:=EnsureRange(H/(Camera.Span*0.6),S*0.08,S*0.25);
-    Offset:=Wrap(-Camera.Center.X*Scale*0.3/Step)*Step;
+    Step:=S*0.21*Zoom;
+    Offset:=Wrap(-TravelX*0.45/(S*0.21))*Step;
     for I:=-1 to Ceil(W/Step) do begin X:=Offset+I*Step;
       for J:=0 to 6 do begin Y:=H*J/7;Focus:=QuietAt(X,Y+H/14);
         Surface.Line(X,Y+3,X,Y+H/7-8,Theme,1,(0.065+0.025*Pulse)*Focus);
       end;
     end;
-    Offset:=Wrap(-Camera.Center.Y*Scale*0.3/Step)*Step;
+    Offset:=Wrap(-TravelY*0.45/(S*0.21))*Step;
     for I:=-1 to Ceil(H/Step) do begin Y:=Offset+I*Step;
       Surface.Line(0,Y,W,Y,Theme,1,0.045+0.012*Pulse);
     end;
     // 星の視差と短い星座線。ラップ境界を結んで画面を横断する線は作らない。
     for I:=0 to 511 do begin
-      Depth:=0.08+0.18*(I mod 3);X:=Wrap(Noise(I,13)-Camera.Center.X*Depth/18);Y:=Wrap(Noise(I,71)-Camera.Center.Y*Depth/13);
+      Depth:=0.08+0.18*(I mod 3);
+      X:=Wrap(0.5+(Noise(I,13)-0.5)*Zoom-TravelX/W*Depth);
+      Y:=Wrap(0.5+(Noise(I,71)-0.5)*Zoom-TravelY/H*Depth);
       Light:=(0.22+0.42*Noise(I,47)+0.10*Sin(T*0.6+I))*(1+0.14*Pulse)*QuietAt(X*W,Y*H);
       Size:=0.5+Noise(I,31)*1.25;
       if TransparentBackground then Surface.Circle(X*W,Y*H,Size,RGB(144,188,246),True,1,Min(0.75,Light*0.75))
@@ -136,15 +142,20 @@ var W,H,S,T,StoryTime,Scale,Age,Alpha,U,Angle,D,Progress,HitRadius:Double;Camera
     FStats.Stars:=512;
   end;
   procedure Planet(Index:Integer);
-  var Body:TOrbitBody;P:TOrbitPoint;K:Integer;Opacity:Double;Tint:TColor;
+  var Body:TOrbitBody;P:TOrbitPoint;K:Integer;Opacity,Halo:Double;Tint:TColor;
   begin
     Body:=FCourse.Body(Index);
+    Body.Center:=View.Project(Body.Center);
+    Body.Radius:=Body.Radius*Zoom;
+    Halo:=Body.Radius*(1.55+0.12*V.Pulse);
+    if (Body.Center.X+Halo<0) or (Body.Center.X-Halo>W) or
+      (Body.Center.Y+Halo<0) or (Body.Center.Y-Halo>H) then Exit;
     Opacity:=EnsureRange((Body.Clear-StoryTime)/0.8,0.0,1.0);
     if Index>ToBody then Opacity:=Opacity*0.48;
     if Index<FromBody then Opacity:=Opacity*0.58;
     if Opacity<=0 then Exit;
     Tint:=Palette(Body.Hue);
-    Dot(Body.Center,Body.Radius*(1.55+0.12*V.Pulse),Tint,(0.10+0.035*V.Pulse)*Opacity);
+    Dot(Body.Center,Halo,Tint,(0.10+0.035*V.Pulse)*Opacity);
     Dot(Body.Center,Body.Radius*1.20,Tint,0.14*Opacity);
     Dot(Body.Center,Body.Radius,Shade(Tint,0.22),Opacity);
     // 重なり円で惑星の輪郭と照らされた球体の陰影を保つ。
@@ -160,13 +171,20 @@ var W,H,S,T,StoryTime,Scale,Age,Alpha,U,Angle,D,Progress,HitRadius:Double;Camera
   begin
     if V.Horizon<=0 then Exit;
     Count:=FCourse.Route(FPlan,T,T+V.Horizon,Markers,MarkerCount,Points);
+    for I:=1 to Count do begin
+      P:=View.Project(Points[I].P);
+      if (P.X<0) or (P.X>W) or (P.Y<0) or (P.Y>H) then begin
+        Count:=I;
+        Break;
+      end;
+    end;
     FStats.RouteSegments:=Count;
     Horizon:=Points[Count].Time-T;
     ArrowScale:=S/3.7;
     // 通過点をサンプルに含め、連打で時刻が詰まっても線が丸を飛び越えない。
-    FarPoint:=Points[Count].P;
+    FarPoint:=View.Project(Points[Count].P);
     for I:=Count downto 1 do begin
-      NearPoint:=Points[I-1].P;
+      NearPoint:=View.Project(Points[I-1].P);
       Opacity:=(0.18+0.79*OrbitMarkerOpacity(Points[I-1].Time-T,Horizon))*V.PreviewAlpha;
       Surface.Line(NearPoint.X,NearPoint.Y,FarPoint.X,FarPoint.Y,Theme,Max(1.0,0.075*ArrowScale),Opacity*0.12);
       Surface.Line(NearPoint.X,NearPoint.Y,FarPoint.X,FarPoint.Y,Theme,Max(1.0,0.022*ArrowScale),Opacity);
@@ -187,7 +205,7 @@ var W,H,S,T,StoryTime,Scale,Age,Alpha,U,Angle,D,Progress,HitRadius:Double;Camera
     end;
   end;
   procedure FutureMarkers;
-  var I,K:Integer;Mark:TOrbitMarker;N:TOrbitTap;A,B:TOrbitPoint;
+  var I,K:Integer;Mark:TOrbitMarker;N:TOrbitTap;A,B,P:TOrbitPoint;
     Angle:Double;Kind:TOrbitMarkKind;
   begin
     for K:=MarkerCount-1 downto 0 do begin
@@ -196,7 +214,8 @@ var W,H,S,T,StoryTime,Scale,Age,Alpha,U,Angle,D,Progress,HitRadius:Double;Camera
       Kind:=OrbitMarkKind(N);
       if FPlan.IsRoll(I) then Kind:=omArrow;
       if Mark.TapCount>1 then Kind:=omChord;
-      DrawOrbitMark(Surface,Mark.Center.X,Mark.Center.Y,Mark.Radius,Angle,Mark.Opacity,Mark.Approach,
+      P:=View.Project(Mark.Center);
+      DrawOrbitMark(Surface,P.X,P.Y,Mark.Radius*Zoom,Angle,Mark.Opacity,Mark.Approach,
         Kind,OrbitMarkColor(N),Mark.Visibility);
       Inc(FStats.Markers);
     end;
@@ -219,23 +238,23 @@ begin
   HitRadius:=OrbitHitRadius(S);
   FStats:=Default(TOrbitRenderStats);V:=OrbitVisualState(FPlan,T);FStats.Horizon:=V.Horizon;FStats.Density:=V.Density;
   Theme:=Palette(0);FromBody:=0;ToBody:=0;Ship:=OrbitPoint(0,0);
-  Camera.Center:=OrbitPoint(0,0);Camera.Span:=8;StoryTime:=T;
+  StoryTime:=T;View.ViewportCenter:=OrbitPoint(W*0.5,H*0.5);View.Center:=View.ViewportCenter;View.Scale:=1;
   if (FPlan<>nil) and (FPlan.Count>0) then begin
     StoryTime:=FCourse.StoryTime(T);
     L:=FCourse.Leg(FCourse.LegAt(T));FromBody:=L.FromBody;ToBody:=L.ToBody;
     Theme:=Palette(FCourse.Body(ToBody).Hue);
-    Camera:=FPlan.CameraAt(StoryTime,W/H);
+    View:=FCourse.ViewAt(T);
     Ship:=Cursor(T);
-    FirstPlanet:=FCourse.Body(0).Center;
+    FirstPlanet:=View.Project(FCourse.Body(0).Center);
     Destination:=Cursor(FPlan.SoundEnd);
   end;
-  Scale:=H/Camera.Span;Background;
+  Zoom:=View.Scale;Scale:=S/8*Zoom;Background;
   if (FPlan=nil) or (FPlan.Count=0) then Exit;
   DrawOrbitShow(Surface,FPlan,StoryTime,W,H,FirstPlanet,Destination,False);
   Hit:=FCourse.HitIndex(T);
   // 現在と前後の惑星だけを空間に置く。全曲の惑星を最初から画面へ並べない。
   for I:=Min(FCourse.BodyCount-1,FromBody+1) downto Max(0,FromBody-1) do Planet(I);
-  HitScale:=S/3.7;
+  HitScale:=S/3.7*Zoom;
   for I:=Hit downto Max(V.FirstTap,Hit-MaxEffects+1) do begin
     N:=FPlan.Taps[I];Age:=T-N.Time;if Age>=0.18 then Break;
     // 予告された音だけ判定を発光させる。
@@ -251,7 +270,7 @@ begin
       Surface.Line(P.X,P.Y,P.X+Cos(Angle)*0.07*EffectScale,P.Y+Sin(Angle)*0.07*EffectScale,C,Max(1.0,0.012*EffectScale),Alpha);
     end;
     if Age<0.09 then begin
-      Surface.Circle(X,Y,MarkRadius*(0.72-0.22*Age/0.09),RGB(245,254,255),True,1,1-Age/0.09);
+      Surface.Circle(X,Y,MarkRadius*Zoom*(0.72-0.22*Age/0.09),RGB(245,254,255),True,1,1-Age/0.09);
       D:=0.32*EffectScale;
       Surface.Line(X-D,Y,X+D,Y,clWhite,Max(1.0,0.014*EffectScale),1-Age/0.09);
       Surface.Line(X,Y-D,X,Y+D,clWhite,Max(1.0,0.014*EffectScale),1-Age/0.09);

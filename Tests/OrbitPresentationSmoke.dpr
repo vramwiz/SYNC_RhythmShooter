@@ -60,10 +60,11 @@ end;
 procedure CheckMarkerLayout;
 const Widths:array[0..5] of Integer=(960,540,320,720,1920,576);
   Heights:array[0..5] of Integer=(540,960,180,720,1080,324);
-var State:TOrbitVisualState;Course:TOrbitCourse;Markers,LastMarkers:TOrbitMarkers;Point,Ship:TOrbitPoint;
+var State:TOrbitVisualState;Course:TOrbitCourse;Camera:TOrbitView;Markers,LastMarkers:TOrbitMarkers;
+  Point,Ship,Projected:TOrbitPoint;Route:TOrbitRoute;
   Previous,Current:TArray<Integer>;Entered:TArray<Boolean>;
-  View,Frame,Count,I,J,Index,LastIndex,MaxMarkers,Accepted:Integer;
-  Time,W,H,FullExtent,LeadStart:Double;Found:Boolean;
+  View,Frame,Count,I,J,Index,LastIndex,MaxMarkers,Accepted,Segments:Integer;
+  Time,W,H,FullExtent,LeadStart,Extent:Double;Found:Boolean;
 begin
   Need(OrbitGameplayStart(Plan)=3,'Opening length');
   Course.Prepare(Plan,960,540);
@@ -94,35 +95,45 @@ begin
       Time:=LeadStart+Frame/60;
       State:=OrbitVisualState(Plan,Time);
       Count:=Course.Visible(State,Time,Markers);
-      MaxMarkers:=Max(MaxMarkers,Count);Ship:=Course.CursorAt(Time);
+      MaxMarkers:=Max(MaxMarkers,Count);Ship:=Course.CursorAt(Time);Camera:=Course.ViewAt(Time);
       for I:=0 to Plan.Count-1 do Current[I]:=-1;
       for I:=0 to Count-1 do begin
         Index:=Markers[I].TapIndex;
         Current[Index]:=I;
         Need(Plan.Taps[Index].Time-Time<=State.Horizon+1E-9,'Preview marker exceeded the future guide');
-        Need(Markers[I].Radius>=OrbitMinimumMarkRadius(Min(W,H)),'Preview marker fell below its readable size');
+        Need(Markers[I].Radius*Camera.Scale>=OrbitMinimumMarkRadius(Min(W,H))-1E-9,'Preview marker fell below its readable size');
         Point:=Course.CursorAt(Plan.Taps[Index].Time);
         Need((Markers[I].Center.X=Point.X) and (Markers[I].Center.Y=Point.Y),
           'Cursor missed the fixed marker at its hit');
-        Need((Point.X>=Markers[I].Extent-1E-9) and (Point.X+Markers[I].Extent<=W+1E-9) and
-          (Point.Y>=Markers[I].Extent-1E-9) and (Point.Y+Markers[I].Extent<=H+1E-9),'Marker was clipped');
+        Projected:=Camera.Project(Point);
+        Extent:=OrbitMarkExtent(Markers[I].Radius*Camera.Scale,Markers[I].Approach);
+        Need((Projected.X>=Extent-1E-9) and (Projected.X+Extent<=W+1E-9) and
+          (Projected.Y>=Extent-1E-9) and (Projected.Y+Extent<=H+1E-9),'Marker was clipped');
         FullExtent:=OrbitMarkExtent(Course.HitRadiusAt(Plan.Taps[Index].Time),0.65)+0.055*Min(W,H)/3.7;
         if Hypot(Point.X-Ship.X,Point.Y-Ship.Y)<=FullExtent then Entered[Index]:=True
         else Need(not Entered[Index],'Ship passed over a visible target and left before its hit');
         LastIndex:=Previous[Index];
         if LastIndex>=0 then begin
           Need((Point.X=LastMarkers[LastIndex].Center.X) and (Point.Y=LastMarkers[LastIndex].Center.Y),
-            'Visible marker moved with the camera');
+            'Visible marker moved in the world');
           Need((Markers[I].Radius>=LastMarkers[LastIndex].Radius) and
             (Markers[I].Visibility>=LastMarkers[LastIndex].Visibility),'Visible marker shrank or faded before contact');
         end;
         Inc(Checks);
       end;
+      if Count>0 then begin
+        Segments:=Course.Route(Plan,Time,Plan.Taps[Markers[Count-1].TapIndex].Time,Markers,Count,Route);
+        for I:=0 to Segments do begin
+          Projected:=Camera.Project(Route[I].P);
+          Need((Projected.X>=-0.5) and (Projected.X<=W+0.5) and (Projected.Y>=-0.5) and (Projected.Y<=H+0.5),
+            'A visible target was beyond an offscreen part of the route');
+        end;
+      end;
       for I:=State.LastHit+1 to Plan.Count-1 do
         if Previous[I]>=0 then Need(Current[I]>=0,'Visible marker disappeared before contact');
       for I:=0 to Plan.Count-1 do Previous[I]:=Current[I];
       LastMarkers:=Markers;
-      CheckMarkers(Markers,Count,Time,OrbitMarkerGap(Min(W,H)));
+      CheckMarkers(Markers,Count,Time,OrbitMarkerGap(Min(W,H))/ORBIT_WIDE_SCALE);
     end;
     Accepted:=Course.HitCount(Plan.SoundEnd);
     Need((Accepted>10) and (Accepted<Plan.Count-OrbitOpeningTapCount(Plan)),
@@ -140,62 +151,73 @@ begin
 end;
 
 procedure CheckCrossingPreviews;
-const W=960;H=540;
-var Course:TOrbitCourse;Transfers:TArray<Double>;BeforeMarks,AfterMarks:TOrbitMarkers;
-  L:TOrbitLeg;I,J,K,Frame,BeforeCount,AfterCount,Revealed,Groups,EntryRevealed,ArcRevealed,AfterLeg,MarkLeg:Integer;
-  P,Q,Cross:TOrbitPoint;Time,Early,Later,ClearAt,MarkTime,Radius:Double;
-  function CrossingTime(FromBody:Integer;const Crossing:TOrbitPoint):Double;
-  var StartCenter,EndCenter,Position:TOrbitPoint;DX,DY:Double;
+const Widths:array[0..3] of Integer=(960,540,720,1280);
+  Heights:array[0..3] of Integer=(540,960,720,540);
+type TTransfer=record Start,Finish:Double;Leg:Integer;end;
+var Course:TOrbitCourse;Transfers:TArray<TTransfer>;BeforeMarks,AfterMarks:TOrbitMarkers;
+  L:TOrbitLeg;I,J,K,M,View,Frame,LegIndex,BeforeCount,AfterCount,Revealed,Groups,EntryRevealed,ArcRevealed,AfterLeg,MarkLeg:Integer;
+  Time,Early,Later,ClearAt,MarkTime,Radius:Double;
+  function CrossingTimes(const A,B:TTransfer;out Early,Later:Double):Boolean;
+  var P,Q,R,S:TOrbitPoint;DX,DY,EX,EY,Den,U,V:Double;
   begin
-    StartCenter:=Course.Body(FromBody).Center;
-    EndCenter:=Course.Body(FromBody+1).Center;
-    Position:=Course.CursorAt(Transfers[FromBody]);
-    DX:=EndCenter.X-StartCenter.X;DY:=EndCenter.Y-StartCenter.Y;
-    Result:=Transfers[FromBody]+((Crossing.X-Position.X)*DX+(Crossing.Y-Position.Y)*DY)/
-      (Hypot(DX,DY)*Course.Speed);
+    P:=Course.CursorAt(A.Start);Q:=Course.CursorAt(A.Finish);
+    R:=Course.CursorAt(B.Start);S:=Course.CursorAt(B.Finish);
+    DX:=Q.X-P.X;DY:=Q.Y-P.Y;EX:=S.X-R.X;EY:=S.Y-R.Y;
+    Den:=DX*EY-DY*EX;
+    if Abs(Den)<1E-8 then Exit(False);
+    U:=((R.X-P.X)*EY-(R.Y-P.Y)*EX)/Den;
+    V:=((R.X-P.X)*DY-(R.Y-P.Y)*DX)/Den;
+    Early:=A.Start+(A.Finish-A.Start)*U;
+    Later:=B.Start+(B.Finish-B.Start)*V;
+    Result:=(U>0) and (U<1) and (V>0) and (V<1);
   end;
 begin
-  Course.Prepare(Plan,W,H);
-  SetLength(Transfers,Course.BodyCount);
-  for Frame:=1 to Floor(Plan.SoundEnd*200) do begin
-    Time:=Frame/200;
-    L:=Course.Leg(Course.LegAt(Time));
-    if (L.Kind=1) and (Transfers[L.FromBody]=0) then Transfers[L.FromBody]:=Time;
-  end;
-
   Groups:=0;EntryRevealed:=0;ArcRevealed:=0;
-  Radius:=OrbitMinimumMarkRadius(H);
-  for I:=1 to Course.BodyCount-2 do begin
-    if (Transfers[I-1]=0) or (Transfers[I]=0) then Continue;
-    P:=Course.CursorAt(Transfers[I-1]);
-    Q:=Course.CursorAt(Transfers[I]);
-    if Odd(I) then Cross:=OrbitPoint(P.X,Q.Y) else Cross:=OrbitPoint(Q.X,P.Y);
-    Early:=CrossingTime(I-1,Cross);
-    Later:=CrossingTime(I,Cross);
-    if (Early<=3.01) or (Later<=Early) or (Later-Early>=ORBIT_MARKER_LEAD) then Continue;
-    AfterLeg:=Course.LegAt(Transfers[I]);
-    ClearAt:=Early+Min(Radius/Course.Speed,(Later-Course.Body(I).RX/Course.Speed-Early)*0.5);
-    BeforeCount:=Course.Visible(OrbitVisualState(Plan,Early-0.01),Early-0.01,BeforeMarks);
-    AfterCount:=Course.Visible(OrbitVisualState(Plan,ClearAt+0.002),ClearAt+0.002,AfterMarks);
-    Revealed:=0;
-    for J:=0 to AfterCount-1 do begin
-      MarkTime:=Plan.Taps[AfterMarks[J].TapIndex].Time;
-      if MarkTime-Early+0.01>=ORBIT_MARKER_LEAD then Continue;
-      MarkLeg:=Course.LegAt(MarkTime);
-      if MarkLeg=AfterLeg then begin
-        if Abs(MarkTime-Later)<Radius/Course.Speed then Continue;
-        if MarkTime<Later then Inc(EntryRevealed) else Inc(Revealed);
-      end else if (MarkLeg=AfterLeg+1) and (Course.Leg(MarkLeg).Kind=0) then Inc(ArcRevealed)
-      else Continue;
-      for K:=0 to BeforeCount-1 do
-        Need(BeforeMarks[K].TapIndex<>AfterMarks[J].TapIndex,
-          'A marker on the later branch appeared before the first crossing pass');
+  for View:=Low(Widths) to High(Widths) do begin
+    Course.Prepare(Plan,Widths[View],Heights[View]);
+    Transfers:=nil;
+    SetLength(Transfers,Course.BodyCount);
+    for Frame:=1 to Floor(Plan.SoundEnd*200) do begin
+      Time:=Frame/200;
+      LegIndex:=Course.LegAt(Time);
+      L:=Course.Leg(LegIndex);
+      if L.Kind<>1 then Continue;
+      if Transfers[L.FromBody].Start=0 then begin
+        Transfers[L.FromBody].Start:=Time;
+        Transfers[L.FromBody].Leg:=LegIndex;
+      end;
+      Transfers[L.FromBody].Finish:=Time;
     end;
-    if Revealed>=2 then Inc(Groups);
+
+    Radius:=OrbitMinimumMarkRadius(Min(Widths[View],Heights[View]))/ORBIT_WIDE_SCALE;
+    for I:=1 to Course.BodyCount-2 do for M:=0 to I-1 do begin
+      if (Transfers[M].Start=0) or (Transfers[I].Start=0) then Continue;
+      if not CrossingTimes(Transfers[M],Transfers[I],Early,Later) then Continue;
+      if (Early<=3.01) or (Later<=Early) or (Later-Early>=ORBIT_MARKER_LEAD) then Continue;
+      AfterLeg:=Transfers[I].Leg;
+      ClearAt:=Early+Min(Radius/Course.Speed,(Transfers[I].Start-Early)*0.5);
+      BeforeCount:=Course.Visible(OrbitVisualState(Plan,Early-0.01),Early-0.01,BeforeMarks);
+      AfterCount:=Course.Visible(OrbitVisualState(Plan,ClearAt+0.002),ClearAt+0.002,AfterMarks);
+      Revealed:=0;
+      for J:=0 to AfterCount-1 do begin
+        MarkTime:=Plan.Taps[AfterMarks[J].TapIndex].Time;
+        if MarkTime-Early+0.01>=ORBIT_MARKER_LEAD then Continue;
+        MarkLeg:=Course.LegAt(MarkTime);
+        if MarkLeg=AfterLeg then begin
+          if Abs(MarkTime-Later)<Radius/Course.Speed then Continue;
+          if MarkTime<Later then Inc(EntryRevealed) else Inc(Revealed);
+        end else if (MarkLeg=AfterLeg+1) and (Course.Leg(MarkLeg).Kind=0) then Inc(ArcRevealed)
+        else Continue;
+        for K:=0 to BeforeCount-1 do
+          Need(BeforeMarks[K].TapIndex<>AfterMarks[J].TapIndex,
+            'A marker on the later branch appeared before the first crossing pass');
+      end;
+      if Revealed>=2 then Inc(Groups);
+    end;
   end;
-  Need(Groups>0,'No crossing revealed a group of markers beyond the junction');
-  Need((EntryRevealed>0) and (ArcRevealed>0),'The fixture missed the branch entrance or its following arc');
   WriteLn('Type.V crossing groups revealed=',Groups,' entrance=',EntryRevealed,' following arc=',ArcRevealed);
+  Need(Groups>0,'No crossing revealed a group of markers beyond the junction');
+  Need(EntryRevealed>0,'The fixture missed the branch entrance');
 end;
 
 procedure CheckDensePreview;
@@ -231,12 +253,19 @@ begin
 end;
 procedure CheckUniformTravel;
 const Gaps:array[0..2] of Double=(0.04,0.11,0.23);
-var Audio:TRhythmAudio;Mixed:TOrbitPlan;Course:TOrbitCourse;Leg:TOrbitLeg;Planet:TOrbitBody;
-  LastPoint,Point,Other,Before,After:TOrbitPoint;Time,Gap,Start,Distance,Ratio,MinRatio,Sweep,PreviousTime:Double;
-  I,J,LegIndex,PreviousLeg,Visits,Transfers:Integer;
-  procedure CheckTangent(LowTime,HighTime:Double;OldLeg:Integer);
+var Audio:TRhythmAudio;Mixed:TOrbitPlan;Course:TOrbitCourse;Leg:TOrbitLeg;Planet,NextPlanet:TOrbitBody;
+  LastPoint,Point,Other,Before,After,Projected,LastProjected:TOrbitPoint;Camera:TOrbitView;
+  Time,Gap,Start,Distance,Ratio,MinRatio,Sweep,PreviousTime,MinZoom,Boundary,TransferStart:Double;
+  I,J,K,LegIndex,PreviousLeg,Visits,Transfers,Diagonals,Offscreen,ForwardSteps:Integer;
+  procedure CheckPlanetClearance(Index:Integer);
+  var Body:TOrbitBody;
+  begin
+    Body:=Course.Body(Index);
+    Need(Hypot(Point.X-Body.Center.X,Point.Y-Body.Center.Y)>Body.Radius*1.67,'Ship entered a planet halo');
+  end;
+  function CheckTangent(LowTime,HighTime:Double;OldLeg:Integer):Double;
   const Dt=1E-5;
-  var Step:Integer;Boundary:Double;A,B,C,D:TOrbitPoint;
+  var Step:Integer;Boundary:Double;A,B,C,D:TOrbitPoint;BeforeView,AfterView:TOrbitView;
   begin
     for Step:=1 to 32 do begin
       Boundary:=(LowTime+HighTime)*0.5;
@@ -247,12 +276,28 @@ var Audio:TRhythmAudio;Mixed:TOrbitPlan;Course:TOrbitCourse;Leg:TOrbitLeg;Planet
     C:=Course.CursorAt(Boundary+Dt);D:=Course.CursorAt(Boundary+2*Dt);
     Need(Hypot((B.X-A.X)-(D.X-C.X),(B.Y-A.Y)-(D.Y-C.Y))<Course.Speed*Dt*0.002,
       'Straight connector and orbit did not share a tangent');
+    BeforeView:=Course.ViewAt(Boundary-Dt);
+    AfterView:=Course.ViewAt(Boundary+Dt);
+    Need(Hypot(AfterView.Center.X-BeforeView.Center.X,AfterView.Center.Y-BeforeView.Center.Y)<=Course.Speed*Dt*2,
+      'Camera jumped at the tangent point');
+    Need(Abs(BeforeView.Scale-AfterView.Scale)<0.0001,'Zoom jumped at the tangent point');
+    Result:=Boundary;
+  end;
+  procedure CheckTransferMidpoint(TransferLeg:Integer;Start,Finish:Double);
+  var A,B:TOrbitPoint;View:TOrbitView;Transfer:TOrbitLeg;
+  begin
+    Transfer:=Course.Leg(TransferLeg);
+    A:=Course.Body(Transfer.FromBody).Center;B:=Course.Body(Transfer.ToBody).Center;
+    View:=Course.ViewAt((Start+Finish)*0.5);
+    Need(Hypot(View.Center.X-(A.X+B.X)*0.5,View.Center.Y-(A.Y+B.Y)*0.5)<1E-6,
+      'Transfer midpoint was not centered between the planets');
+    Need(Abs(View.Scale-ORBIT_WIDE_SCALE)<1E-9,'The widest framing was not at the midpoint');
   end;
 begin
   Audio:=TRhythmAudio.Create;Mixed:=nil;
   try
-    Audio.Duration:=32;Audio.SoundEnd:=32;
-    SetLength(Audio.Hits,215);
+    Audio.Duration:=40;Audio.SoundEnd:=40;
+    SetLength(Audio.Hits,275);
     Time:=0;
     for I:=0 to High(Audio.Hits) do begin
       Audio.Hits[I].Time:=Time;Audio.Hits[I].Strength:=0.8;
@@ -264,7 +309,13 @@ begin
     Audio.Hits[High(Audio.Hits)].Strength:=0.8;
     Mixed:=TOrbitPlan.Build(Audio,20);
     Course.Prepare(Mixed,960,540);
-    Visits:=0;Transfers:=0;PreviousLeg:=-1;MinRatio:=1;Sweep:=0;PreviousTime:=0;
+    Visits:=0;Transfers:=0;Diagonals:=0;Offscreen:=0;ForwardSteps:=0;
+    PreviousLeg:=-1;MinRatio:=1;MinZoom:=1;Sweep:=0;PreviousTime:=0;TransferStart:=-1;
+    Need(Course.BodyCount>=12,'The route did not visit all twelve sites');
+    for I:=1 to 11 do for K:=0 to I-1 do begin
+      Before:=Course.Body(I).Center;After:=Course.Body(K).Center;
+      Need(Hypot(Before.X-After.X,Before.Y-After.Y)>24,'Two of the twelve sites were too close to distinguish');
+    end;
     for I:=1 to Mixed.Count-1 do begin
       Start:=Mixed.Taps[I-1].Time;
       Gap:=Mixed.Taps[I].Time-Start;
@@ -277,9 +328,39 @@ begin
         LegIndex:=Course.LegAt(Time);
         Leg:=Course.Leg(LegIndex);
         Planet:=Course.Body(Leg.FromBody);
-        Need(Hypot(Point.X-Planet.Center.X,Point.Y-Planet.Center.Y)>Planet.Radius,'Route entered a planet');
+        Camera:=Course.ViewAt(Time);
+        Projected:=Camera.Project(Point);
+        Need((Projected.X>=0) and (Projected.X<=960) and (Projected.Y>=0) and (Projected.Y<=540),
+          'Ship left the viewport');
+        if Leg.Kind=1 then begin
+          Other:=Course.Body(Leg.ToBody).Center;
+          Need((Camera.Scale>=ORBIT_WIDE_SCALE-1E-9) and (Camera.Scale<=1),'Transfer zoom outside the viewing range');
+          MinZoom:=Min(MinZoom,Camera.Scale);
+          if PreviousLeg=LegIndex then begin
+            Need((Projected.X-LastProjected.X)*(Other.X-Planet.Center.X)+
+              (Projected.Y-LastProjected.Y)*(Other.Y-Planet.Center.Y)>0,'The ship reversed on a straight transfer');
+            Inc(ForwardSteps);
+          end;
+        end else if (Leg.Kind=0) and (Camera.Scale=1) then begin
+          Need((Camera.Center.X=Planet.Center.X) and (Camera.Center.Y=Planet.Center.Y),'Orbit camera drifted from its planet');
+          if Leg.FromBody+1<Course.BodyCount then begin
+            NextPlanet:=Course.Body(Leg.FromBody+1);
+            Other:=Camera.Project(NextPlanet.Center);
+            Need((Other.X+NextPlanet.Radius<0) or (Other.X-NextPlanet.Radius>960) or
+              (Other.Y+NextPlanet.Radius<0) or (Other.Y-NextPlanet.Radius>540),'Next planet was already inside the orbit view');
+            Inc(Offscreen);
+          end;
+        end;
+        for K:=Max(0,Leg.FromBody-1) to Min(Course.BodyCount-1,Leg.FromBody+1) do CheckPlanetClearance(K);
         if LegIndex<>PreviousLeg then begin
-          if (PreviousLeg>=0) and (LegIndex=PreviousLeg+1) then CheckTangent(PreviousTime,Time,PreviousLeg);
+          if (PreviousLeg>=0) and (LegIndex=PreviousLeg+1) then begin
+            Boundary:=CheckTangent(PreviousTime,Time,PreviousLeg);
+            if Leg.Kind=1 then TransferStart:=Boundary
+            else if (Course.Leg(PreviousLeg).Kind=1) and (TransferStart>=0) then begin
+              CheckTransferMidpoint(PreviousLeg,TransferStart,Boundary);
+              TransferStart:=-1;
+            end;
+          end;
           Need(Sweep<2*Pi,'Ship made a full lap before leaving a planet');
           Sweep:=0;
           if Leg.Kind=0 then Inc(Visits);
@@ -287,6 +368,7 @@ begin
             Inc(Transfers);
             Other:=Course.Body(Leg.ToBody).Center;
             Need(Hypot(Other.X-Planet.Center.X,Other.Y-Planet.Center.Y)>180,'Two planets shared a screen position');
+            if (Abs(Other.X-Planet.Center.X)>30) and (Abs(Other.Y-Planet.Center.Y)>30) then Inc(Diagonals);
           end;
           PreviousLeg:=LegIndex;
         end else if Leg.Kind=0 then begin
@@ -294,7 +376,7 @@ begin
           After:=OrbitPoint(Point.X-Planet.Center.X,Point.Y-Planet.Center.Y);
           Sweep:=Sweep+Abs(ArcTan2(Before.X*After.Y-Before.Y*After.X,Before.X*After.X+Before.Y*After.Y));
         end;
-        LastPoint:=Point;PreviousTime:=Time;
+        LastPoint:=Point;LastProjected:=Projected;PreviousTime:=Time;
       end;
       Ratio:=Distance/(Course.Speed*Gap);
       MinRatio:=Min(MinRatio,Ratio);
@@ -303,7 +385,8 @@ begin
     end;
     Need(Sweep<2*Pi,'Final orbit contained a full lap');
     Need((Visits>=3) and (Transfers=Visits-1),Format('Incomplete planetary journey (%d visits, %d transfers)',[Visits,Transfers]));
-    WriteLn('Type.V visits=',Visits,' transfers=',Transfers,' minimum travel ratio=',MinRatio:0:6);
+    Need((Diagonals>=6) and (MinZoom<0.85) and (Offscreen>0) and (ForwardSteps>0),'The fixture missed offscreen travel');
+    WriteLn('Type.V visits=',Visits,' transfers=',Transfers,' diagonals=',Diagonals,' minimum travel ratio=',MinRatio:0:6);
   finally
     Mixed.Free;Audio.Free;
   end;
