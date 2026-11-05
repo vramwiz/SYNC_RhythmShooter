@@ -167,7 +167,7 @@ begin
     if L.Kind<>0 then Continue;
     ScoredStart:=Max(L.Start,OrbitGameplayStart(Plan));
     ScoredLength:=L.Finish-ScoredStart;
-    if ScoredLength<2.0 then Continue;
+    if ScoredLength<1.5 then Continue;
     StartTap:=Plan.Before(ScoredStart,False)+1;
     AfterTap:=Plan.Before(L.Finish,False)+1;
     Count:=0;
@@ -176,8 +176,10 @@ begin
       StartTap:=Plan.Before(Plan.Taps[StartTap].Time)+1;
     end;
     // 連続して音が多い区間は同じ惑星を周回せず、途中の惑星を増やす。
-    if Count>=6*ScoredLength then
+    if (ScoredLength>=2.0) and (Count>=6*ScoredLength) then
       Visits[L.FromBody]:=Min(Ceil(ScoredLength/1.65),Ceil(Count/NotesPerVisit));
+    // 短い譜面でも周回に時間と音が揃えば、途中で次の空域へ渡る。
+    if (Plan.BodyCount=1) and (Count>=4) then Visits[L.FromBody]:=Max(2,Visits[L.FromBody]);
   end;
 
   BodyTotal:=0;
@@ -233,13 +235,14 @@ begin
 end;
 
 procedure TOrbitCourse.PrepareTrack(Plan:TOrbitPlan);
-const
-  // 表示領域を単位とした次の惑星への変位。曲が長くても画面内の配置へ折り返さない。
-  StepX:array[0..11] of Double=(0.14,0.70,0.17,-0.62,0.24,0.76,0.22,-0.62,0.28,0.72,0.22,-0.62);
-  StepY:array[0..11] of Double=(0.67,-0.19,-0.62,0.12,0.69,0.11,-0.62,0.19,0.68,0.09,-0.64,-0.10);
-var I,J,Site,Steps,Last:Integer;L:TOrbitLeg;Section:TSection;
-  EntryPhase,ExitPhase,Advance,S,Padding,Radius,Length:Double;
+var I,J,Steps,Last:Integer;L:TOrbitLeg;Section:TSection;LayoutState:Cardinal;
+  EntryPhase,ExitPhase,Advance,S,Padding,Radius,Length,Forward,Lateral,PreviousLateral:Double;
   P,Q,Center:TOrbitPoint;
+  function LayoutFraction:Double;
+  begin
+    LayoutState:=Cardinal((UInt64(LayoutState)*1664525+1013904223) and $FFFFFFFF);
+    Result:=(LayoutState shr 8)/16777216.0;
+  end;
   function ConnectorAngle(FromBody,ToBody:Integer):Double;
   var A,B:TOrbitPoint;
   begin
@@ -286,11 +289,20 @@ begin
   Radius:=S*0.29;
   if System.Length(FBodies)=1 then Radius:=S*0.32;
   Center:=OrbitPoint(FWidth*0.5,FHeight*0.5);
+  LayoutState:=Cardinal(Plan.Count) xor Cardinal(Round(Frac(Plan.SoundEnd)*1000000));
+  if Plan.Count>0 then LayoutState:=LayoutState xor Cardinal(Round(Frac(Plan.Taps[Plan.Count div 3].Time)*1000000));
+  PreviousLateral:=0;
   for I:=0 to High(FBodies) do begin
     FBodies[I].Center:=Center;
-    Site:=I mod System.Length(StepX);
-    if FWidth>=FHeight then Center:=OrbitPoint(Center.X+StepX[Site]*FWidth,Center.Y+StepY[Site]*FHeight)
-    else Center:=OrbitPoint(Center.X-StepY[Site]*FWidth,Center.Y+StepX[Site]*FHeight);
+    // 長辺方向に次の画面へ進みながら、距離と斜め方向を訪問ごとに変える。
+    Forward:=0.63+0.24*LayoutFraction;
+    Lateral:=1.12*(LayoutFraction-0.5);
+    if Abs(Lateral-PreviousLateral)<0.22 then begin
+      if Lateral>=0 then Lateral:=Lateral-0.56 else Lateral:=Lateral+0.56;
+    end;
+    PreviousLateral:=Lateral;
+    if FWidth>=FHeight then Center:=OrbitPoint(Center.X+Forward*FWidth,Center.Y+Lateral*FHeight)
+    else Center:=OrbitPoint(Center.X-Lateral*FWidth,Center.Y+Forward*FHeight);
   end;
   for I:=0 to High(FBodies) do begin
     FBodies[I].RX:=Radius;FBodies[I].RY:=Radius;FBodies[I].Rotation:=0;

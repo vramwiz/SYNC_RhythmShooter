@@ -220,35 +220,50 @@ begin
   Need(EntryRevealed>0,'The fixture missed the branch entrance');
 end;
 
-procedure CheckDensePreview;
-var Audio:TRhythmAudio;Dense:TOrbitPlan;State:TOrbitVisualState;Course:TOrbitCourse;
-  Markers:TOrbitMarkers;I,Count:Integer;Time:Double;
+procedure CheckShortPreviews;
+var Audio:TRhythmAudio;ShortPlan:TOrbitPlan;State:TOrbitVisualState;Course:TOrbitCourse;
+  Markers:TOrbitMarkers;I,Count:Integer;Time:Double;A,B:TOrbitPoint;
 begin
-  Audio:=TRhythmAudio.Create;Dense:=nil;
+  Audio:=TRhythmAudio.Create;ShortPlan:=nil;
   try
     Audio.Duration:=7.5;Audio.SoundEnd:=7.5;
     SetLength(Audio.Hits,7000);
     for I:=0 to High(Audio.Hits) do begin
       Audio.Hits[I].Time:=I*0.001;Audio.Hits[I].Strength:=0.5;
     end;
-    Dense:=TOrbitPlan.Build(Audio,20);
-    Course.Prepare(Dense,960,540);
-    Need((Course.HitCount(Dense.SoundEnd)>5) and (Course.HitCount(Dense.SoundEnd)<Dense.Count div 10),
+    ShortPlan:=TOrbitPlan.Build(Audio,20);
+    Course.Prepare(ShortPlan,960,540);
+    Need((Course.HitCount(ShortPlan.SoundEnd)>5) and (Course.HitCount(ShortPlan.SoundEnd)<ShortPlan.Count div 10),
       'Millisecond chart did not select a readable set of marks');
     for I:=3001 to 6999 do begin
-      Time:=Dense.Taps[I].Time-0.0005;
-      State:=OrbitVisualState(Dense,Time);
+      Time:=ShortPlan.Taps[I].Time-0.0005;
+      State:=OrbitVisualState(ShortPlan,Time);
       Count:=Course.Visible(State,Time,Markers);
       CheckMarkers(Markers,Count,Time,OrbitMarkerGap(540));
     end;
-    FreeAndNil(Dense);
+    FreeAndNil(ShortPlan);
+    // 連打に頼らない短曲でも、最初の惑星から画面外の次の空域へ渡る。
+    SetLength(Audio.Hits,20);
+    for I:=0 to High(Audio.Hits) do begin
+      Audio.Hits[I].Time:=I*0.37;Audio.Hits[I].Strength:=0.8;
+    end;
+    ShortPlan:=TOrbitPlan.Build(Audio,20);
+    Need(ShortPlan.BodyCount=1,'Short fixture already had a planet transfer');
+    Course.Prepare(ShortPlan,960,540);
+    Need(Course.BodyCount=2,'Short song stayed at one planet');
+    A:=Course.Body(0).Center;B:=Course.Body(1).Center;
+    Need(B.X-A.X>=0.62*960,'Short song did not travel to the next screen');
+    Course.Prepare(ShortPlan,540,960);
+    A:=Course.Body(0).Center;B:=Course.Body(1).Center;
+    Need(B.Y-A.Y>=0.62*960,'Portrait short song did not travel to the next screen');
+    FreeAndNil(ShortPlan);
     SetLength(Audio.Hits,1);
     Audio.Hits[0].Time:=Audio.SoundEnd;
-    Dense:=TOrbitPlan.Build(Audio,20);
-    Course.Prepare(Dense,960,540);
-    Need(Course.Visible(OrbitVisualState(Dense,7.4),7.4,Markers)=1,'Final note was never previewed');
+    ShortPlan:=TOrbitPlan.Build(Audio,20);
+    Course.Prepare(ShortPlan,960,540);
+    Need(Course.Visible(OrbitVisualState(ShortPlan,7.4),7.4,Markers)=1,'Final note was never previewed');
   finally
-    Dense.Free;Audio.Free;
+    ShortPlan.Free;Audio.Free;
   end;
 end;
 procedure CheckUniformTravel;
@@ -311,11 +326,18 @@ begin
     Course.Prepare(Mixed,960,540);
     Visits:=0;Transfers:=0;Diagonals:=0;Offscreen:=0;ForwardSteps:=0;
     PreviousLeg:=-1;MinRatio:=1;MinZoom:=1;Sweep:=0;PreviousTime:=0;TransferStart:=-1;
-    Need(Course.BodyCount>=12,'The route did not visit all twelve sites');
-    for I:=1 to 11 do for K:=0 to I-1 do begin
-      Before:=Course.Body(I).Center;After:=Course.Body(K).Center;
-      Need(Hypot(Before.X-After.X,Before.Y-After.Y)>24,'Two of the twelve sites were too close to distinguish');
+    Need(Course.BodyCount>=14,'The fixture did not cover the old twelve-step cycle');
+    for I:=1 to Course.BodyCount-1 do begin
+      Before:=Course.Body(I-1).Center;After:=Course.Body(I).Center;
+      Need(After.X-Before.X>=0.62*960,'A transfer doubled back or stayed within the same screen');
+      if I>=2 then begin
+        Other:=Course.Body(I-2).Center;
+        Need(Abs((After.Y-Before.Y)-(Before.Y-Other.Y))>=0.21*540,'Successive transfers repeated the same diagonal');
+      end;
     end;
+    Before:=Course.Body(1).Center;After:=Course.Body(13).Center;Other:=Course.Body(12).Center;
+    Need(Hypot(Before.X-Course.Body(0).Center.X-(After.X-Other.X),
+      Before.Y-Course.Body(0).Center.Y-(After.Y-Other.Y))>1,'The old twelve-step cycle repeated');
     for I:=1 to Mixed.Count-1 do begin
       Start:=Mixed.Taps[I-1].Time;
       Gap:=Mixed.Taps[I].Time-Start;
@@ -475,7 +497,7 @@ begin A:=nil;Meta:=nil;Plan:=nil;Render:=nil;Surface:=nil;Image:=nil;PNG:=nil;Ch
     Plan:=TOrbitPlan.Build(A,20);Ref:=NewPlanRef(A.Key,50,0,rsRhythmGame,121);Ref.SourceRevision:=Revision;Plan.Save(Ref,A);Meta:=TOrbitPlan.LoadAudioMetadata(Ref,Source,0);
     CheckMarkerLayout;
     CheckCrossingPreviews;
-    CheckDensePreview;
+    CheckShortPreviews;
     CheckUniformTravel;
     Render:=TRhythmRenderer.Create;
     if GetEnvironmentVariable('RHYTHM_ORBIT_BENCHMARK')='1' then MeasureFrames
