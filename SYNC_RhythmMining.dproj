@@ -42,7 +42,7 @@
         <GenDll>true</GenDll>
         <DCC_DcuOutput>.\$(Platform)\RhythmMining\$(Config)\DCU</DCC_DcuOutput>
         <DCC_ExeOutput>.\$(Platform)\RhythmMining\$(Config)</DCC_ExeOutput>
-        <DCC_UnitSearchPath>Source\SideRace;Source\FightingRush;Source\JumpAdventure;Source\RhythmGame;Source\Mining;Source\Train;Source\Naval;Source\BombAction;Source\Runner;Source\Breakout;Source\Shared\Audio;Source\Shared\Render;Source\Shared\Settings;Source\Shared\Common;Source\Shared\Assets;Source\Shared\UI;Source\Shared\Host;Source\Shared\Integrations;Source\Composition;Source\Shooting;Source\Ball;Source\Fireworks;Source\Lib;Source\Lib\Process;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
+        <DCC_UnitSearchPath>Source\MineCart;Source\SideRace;Source\FightingRush;Source\JumpAdventure;Source\RhythmGame;Source\Mining;Source\Train;Source\Naval;Source\BombAction;Source\Breakout;Source\Shared\Audio;Source\Shared\Render;Source\Shared\Settings;Source\Shared\Common;Source\Shared\Assets;Source\Shared\UI;Source\Shared\Host;Source\Shared\Integrations;Source\Composition;Source\Shooting;Source\Ball;Source\Fireworks;Source\Lib;Source\Lib\Process;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
         <DCC_Namespace>System;Xml;Data;Datasnap;Web;Soap;Winapi;Vcl;$(DCC_Namespace)</DCC_Namespace>
         <SanitizedProjectName>SYNC_RhythmMining</SanitizedProjectName>
     </PropertyGroup>
@@ -110,6 +110,11 @@
         <DCCReference Include="Source\SideRace\RhythmSideRaceCodec.pas"/>
         <DCCReference Include="Source\SideRace\RhythmSideRaceScene.pas"/>
         <DCCReference Include="Source\SideRace\RhythmSideRaceStyle.pas"/>
+        <DCCReference Include="Source\MineCart\RhythmCartPlan.pas"/>
+        <DCCReference Include="Source\MineCart\RhythmCartBuild.pas"/>
+        <DCCReference Include="Source\MineCart\RhythmCartCodec.pas"/>
+        <DCCReference Include="Source\MineCart\RhythmCartScene.pas"/>
+        <DCCReference Include="Source\MineCart\RhythmCartStyle.pas"/>
         <DCCReference Include="Source\RhythmGame\RhythmOrbitGuide.pas"/>
         <DCCReference Include="Source\RhythmGame\RhythmOrbitMarks.pas"/>
         <DCCReference Include="Source\RhythmGame\RhythmOrbitAudio.pas"/>
@@ -122,9 +127,6 @@
         <DCCReference Include="Source\Shared\Audio\RhythmAudioCache.pas"/>
         <DCCReference Include="Source\Shared\Audio\RhythmAudioDecode.pas"/>
         <DCCReference Include="Source\Ball\RhythmBallLegacyScene.pas"/>
-        <DCCReference Include="Source\Runner\RhythmRunnerAction.pas"/>
-        <DCCReference Include="Source\Runner\RhythmRunnerPixels.pas"/>
-        <DCCReference Include="Source\Runner\RhythmRunnerLegacyScene.pas"/>
         <DCCReference Include="Source\Breakout\RhythmBreakoutScoreTypes.pas"/>
         <DCCReference Include="Source\Breakout\RhythmBreakoutScoreGeometry.pas"/>
         <DCCReference Include="Source\Ball\RhythmBallCircuitPlan.pas"/>
@@ -147,8 +149,6 @@
         <DCCReference Include="Source\Breakout\RhythmBreakoutGeometry.pas"/>
         <DCCReference Include="Source\Breakout\RhythmBreakoutPlan.pas"/>
         <DCCReference Include="Source\Breakout\RhythmBreakoutScene.pas"/>
-        <DCCReference Include="Source\Runner\RhythmRunnerPlan.pas"/>
-        <DCCReference Include="Source\Runner\RhythmRunnerScene.pas"/>
         <DCCReference Include="Source\Shared\Settings\RhythmStyles.pas"/>
         <DCCReference Include="Source\Shared\Settings\RhythmProduct.pas"/>
         <DCCReference Include="Source\Shared\Settings\RhythmPlanRef.pas"/>
@@ -156,7 +156,6 @@
         <DCCReference Include="Source\Ball\RhythmBallGeometry.pas"/>
         <DCCReference Include="Source\Ball\RhythmBallPlan.pas"/>
         <DCCReference Include="Source\Ball\RhythmBallScene.pas"/>
-        <DCCReference Include="Source\Fireworks\RhythmFireworksPlan.pas"/>
         <DCCReference Include="Source\Fireworks\RhythmFireworksScene.pas"/>
         <DCCReference Include="Source\Composition\RhythmDesignTypes.pas"/>
         <DCCReference Include="Source\Shared\Assets\RhythmDesignImages.pas"/>

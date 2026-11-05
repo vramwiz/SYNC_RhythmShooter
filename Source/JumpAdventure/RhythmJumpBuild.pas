@@ -20,7 +20,9 @@ type
     procedure StageLayout;
     procedure ScheduleBeats;
     procedure ScheduleBosses;
+    procedure ScheduleRolls;
     procedure PlaceRoute;
+    procedure PlaceEnemies;
     procedure PlanLegs;
     procedure ClearLandings;
   public
@@ -98,14 +100,16 @@ begin
 end;
 
 procedure TJumpBuilder.ScheduleBeats;
+const
+  IsolatedStompGap=0.90;
 var
   Nodes:TList<TJumpNode>;
   Beats:TList<TJumpBeat>;
   Hit:TRhythmHit;
-  N:TJumpNode;
+  N,Previous:TJumpNode;
   B:TJumpBeat;
   I:Integer;
-  Last:Double;
+  LastContact,LastStomp:Double;
 
   procedure AddNode(Time:Double);
   begin
@@ -129,7 +133,8 @@ begin
   try
     Beats:=TList<TJumpBeat>.Create;
     AddNode(0);
-    Last:=-1;
+    LastContact:=-1;
+    LastStomp:=-1;
     for I:=0 to High(FAudio.Hits) do begin
       if I mod 128=0 then CheckCancel;
       Hit:=FAudio.Hits[I];
@@ -146,18 +151,21 @@ begin
       B.Time:=Hit.Time;
       B.Strength:=EnsureRange(Hit.Strength,0.0,1.0);
       B.Node:=-1;
-      if (Hit.Time>=Last+JumpMinBeatGap) and
+      if (Hit.Time>=LastContact+JumpMinBeatGap) and
         ((Hit.Time=0) or ((Hit.Time>=0.24) and (FFinish-Hit.Time>=0.27))) then begin
         FillTo(Hit.Time);
         if Hit.Time>0 then AddNode(Hit.Time);
         B.Node:=Nodes.Count-1;
-        Last:=Hit.Time;
-        if (B.Node>0) and (FFinish-Hit.Time>=0.16) and
-          ((Hit.Time-Nodes[B.Node-1].Time<0.49) or (Pick(7)<3)) then begin
-          N:=Nodes.Last;
-          N.Landing:=jlStomp;
-          N.Variant:=Pick(4);
-          Nodes[B.Node]:=N;
+        LastContact:=Hit.Time;
+        if B.Node>0 then begin
+          Previous:=Nodes[B.Node-1];
+          if (Previous.Landing<>jlStomp) and (Hit.Time-LastStomp>=IsolatedStompGap) and (Pick(7)<3) then begin
+            N:=Nodes.Last;
+            N.Landing:=jlStomp;
+            N.Variant:=Pick(4);
+            Nodes[B.Node]:=N;
+            LastStomp:=Hit.Time;
+          end;
         end;
       end;
       Beats.Add(B);
@@ -241,10 +249,62 @@ begin
   end;
 end;
 
+procedure TJumpBuilder.ScheduleRolls;
+const DenseBeatGap=0.24;
+var
+  Rolls:TList<TJumpRoll>;
+  Hits:TList<Double>;
+  Roll:TJumpRoll;
+  I,J,K,StartNode,EndNode,LastRoad:Integer;
+  StartTime,HitTime:Double;
+begin
+  Rolls:=TList<TJumpRoll>.Create;
+  Hits:=nil;
+  try
+    Hits:=TList<Double>.Create;
+    LastRoad:=0;
+    for I:=0 to High(FPlan.Beats)-3 do begin
+      if I mod 128=0 then CheckCancel;
+      StartNode:=FPlan.Beats[I].Node;
+      if StartNode<=LastRoad then Continue;
+      StartTime:=FPlan.Beats[I].Time;
+      if FPlan.Beats[I+1].Time-StartTime>DenseBeatGap then Continue;
+      EndNode:=FPlan.NodeAt(StartTime+1.98)+1;
+      if (EndNode>High(FPlan.Nodes)) or
+        (FPlan.StageAt(FPlan.Nodes[EndNode].Time)<>FPlan.StageAt(StartTime)) then Continue;
+      K:=StartNode;
+      while (K<=EndNode) and (FPlan.Nodes[K].Landing<>jlBoss) do Inc(K);
+      if K<=EndNode then Continue;
+      Hits.Clear;
+      HitTime:=StartTime;
+      for J:=I+1 to High(FPlan.Beats) do begin
+        if (FPlan.Beats[J].Time-StartTime>0.96) or
+          (FPlan.Beats[J].Time-FPlan.Beats[J-1].Time>DenseBeatGap) then Break;
+        // 半径分の間隔を確保し、敵同士が重ならない拍を使う。
+        if FPlan.Beats[J].Time-HitTime<0.09 then Continue;
+        HitTime:=FPlan.Beats[J].Time;
+        Hits.Add(HitTime);
+      end;
+      if Hits.Count<3 then Continue;
+      Roll.FirstNode:=StartNode;
+      Roll.LastNode:=EndNode;
+      Roll.Hits:=Hits.ToArray;
+      Rolls.Add(Roll);
+      FPlan.Nodes[StartNode].Landing:=jlRoll;
+      for J:=StartNode+1 to EndNode do FPlan.Nodes[J].Landing:=jlGround;
+      LastRoad:=EndNode;
+    end;
+    FPlan.Rolls:=Rolls.ToArray;
+  finally
+    Hits.Free;
+    Rolls.Free;
+  end;
+end;
+
 procedure TJumpBuilder.PlaceRoute;
 const Widths:array[1..5] of Double=(1.60,1.28,0.83,0.76,0.67);
 var
-  I,S,PreviousStage,Direction,MoveCooldown:Integer;
+  I,S,PreviousStage,Direction,MoveCooldown,Roll:Integer;
   N:TJumpNode;
   Prev:TJumpNode;
   Stage:TJumpStage;
@@ -271,7 +331,10 @@ begin
     N.Width:=Widths[Stage.Level]*(0.91+Pick(5)*0.045);
     N.X:=Prev.X;
     N.Y:=Prev.Y;
-    if Stage.Vertical then begin
+    Roll:=FPlan.RollAtNode(I);
+    if (Roll>=0) and (I>FPlan.Rolls[Roll].FirstNode) then begin
+      N.X:=N.X+4.6*Dt;
+    end else if Stage.Vertical then begin
       Step:=(1.8+Stage.Level*0.33)*Dt;
       if Abs(Prev.X+Direction*Step-Column)>2.65 then Direction:=-Direction;
       N.X:=N.X+Step*Direction;
@@ -288,7 +351,7 @@ begin
       if Stage.Level>1 then N.Width:=Min(N.Width,Max(0.22,Gap*0.62));
     end;
     if MoveCooldown>0 then Dec(MoveCooldown);
-    if (Stage.Level>=4) and (N.Landing<>jlBoss) and (Dt>=0.27) and
+    if (Roll<0) and (Stage.Level>=4) and (N.Landing in [jlGround,jlSpring]) and (Dt>=0.27) and
       (I<High(FPlan.Nodes)) and (MoveCooldown=0) then begin
       if Stage.Vertical or (Dt<0.58) or (Pick(2)=0) then N.MoveX:=0.27+Pick(4)*0.06
       else N.MoveY:=0.16+Pick(4)*0.05;
@@ -299,14 +362,43 @@ begin
   end;
 end;
 
+procedure TJumpBuilder.PlaceEnemies;
+var I,ArrivalStage,DepartureStage:Integer; Before,After:TJumpNode;
+  Lift:Double;
+begin
+  for I:=1 to High(FPlan.Nodes)-1 do begin
+    if I mod 128=0 then CheckCancel;
+    if FPlan.Nodes[I].Landing=jlRoll then FPlan.Nodes[I].Y:=FPlan.Nodes[I].Y+2*JumpRollRadius;
+    if FPlan.Nodes[I].Landing<>jlStomp then Continue;
+    Before:=FPlan.Nodes[I-1];
+    After:=FPlan.Nodes[I+1];
+    ArrivalStage:=FPlan.StageAt((Before.Time+FPlan.Nodes[I].Time)*0.5);
+    DepartureStage:=FPlan.StageAt((FPlan.Nodes[I].Time+After.Time)*0.5);
+    if (Before.Landing=jlGround) and (After.Landing=jlGround) and
+      not (FPlan.Stages[ArrivalStage].Vertical or FPlan.Stages[DepartureStage].Vertical) and
+      (Before.Y=FPlan.Nodes[I].Y) and (After.Y=FPlan.Nodes[I].Y) and
+      (Before.MoveY=0) and (After.MoveY=0) then begin
+      FPlan.Nodes[I].Enemy:=jeGround;
+      FPlan.Nodes[I].Y:=FPlan.Nodes[I].Y+2*JumpEnemyRadius;
+    end else begin
+      FPlan.Nodes[I].Enemy:=jeFlying;
+      Lift:=0.82;
+      if FPlan.Stages[DepartureStage].Vertical then
+        Lift:=Min(Lift,After.Y-FPlan.Nodes[I].Y-0.12);
+      FPlan.Nodes[I].Y:=FPlan.Nodes[I].Y+Lift;
+    end;
+  end;
+end;
+
 procedure TJumpBuilder.PlanLegs;
 var
-  I,S,B:Integer;
+  I,S,B,Roll:Integer;
   A,C:TJumpNode;
   Stage:TJumpStage;
   L:TJumpLeg;
   Dt,Span:Double;
   P:TPointF;
+  OnRollRoad:Boolean;
 begin
   SetLength(FPlan.Legs,Length(FPlan.Nodes)-1);
   for I:=0 to High(FPlan.Legs) do begin
@@ -314,23 +406,31 @@ begin
     C:=FPlan.Nodes[I+1];
     S:=FPlan.StageAt((A.Time+C.Time)*0.5);
     Stage:=FPlan.Stages[S];
+    Roll:=FPlan.RollAtNode(I);
+    OnRollRoad:=(Roll>=0) and (I<FPlan.Rolls[Roll].LastNode);
+    if OnRollRoad then begin
+      Stage.Vertical:=False;
+      Stage.Level:=1;
+    end;
     L:=Default(TJumpLeg);
     L.Takeoff:=A.Time;
     Dt:=C.Time-A.Time;
     if Stage.Vertical or ((Stage.Level>1) and (Dt<1.06)) or (A.Y<>C.Y) or
       (A.Landing<>jlGround) or (C.Landing<>jlGround) or
       (Abs(A.MoveX)+Abs(A.MoveY)+Abs(C.MoveX)+Abs(C.MoveY)>0) or
-      ((Dt>0.58) and (Dt<1.06) and (Pick(4)=0)) then begin
+      ((not OnRollRoad) and (Dt>0.58) and (Dt<1.06) and (Pick(4)=0)) then begin
       if (Dt>0.60) and (A.Landing in [jlGround,jlSpring]) then
         L.Takeoff:=A.Time+Min(0.23,Dt*0.22);
       Span:=C.Time-L.Takeoff;
       P:=FPlan.Platform(I,L.Takeoff);
-      if A.Landing in [jlStomp,jlBoss] then P.Y:=A.Y;
-      // 上方向の移動でも頂点を越えてから着地し、短い反動は低く抑える。
+      if A.Landing in [jlStomp,jlBoss,jlRoll] then P.Y:=A.Y;
+      // 上方向の移動でも頂点を越えてから着地する。
       if Stage.Vertical then
         L.Height:=Abs(C.Y-P.Y)*0.25+0.075+Span*0.13
       else
         L.Height:=Max(Abs(C.Y-P.Y)*0.29+0.026,Min(1.25,0.13+Span*0.82));
+      // 着地先が低い場合も、踏み台より通常のジャンプ分だけ上がる。
+      if A.Enemy=jeFlying then L.Height:=Max(L.Height,0.42+Max(0.0,P.Y-C.Y)*0.5);
       if A.Landing=jlSpring then L.Height:=L.Height+0.19;
     end;
     B:=Stage.Boss;
@@ -383,7 +483,9 @@ begin
   StageLayout;
   ScheduleBeats;
   ScheduleBosses;
+  ScheduleRolls;
   PlaceRoute;
+  PlaceEnemies;
   PlanLegs;
   ClearLandings;
 end;

@@ -13,6 +13,7 @@ type
   public
     destructor Destroy; override;
     procedure SetReference(const Ref:TRhythmPlanRef);
+    function GoalTime:Double; override;
     procedure Prepare(const Frame:TAnimationFrame); override;
     procedure Draw(Surface:TAnimationRenderSurface;const Frame:TAnimationFrame); override;
     function Notice:string; override;
@@ -695,5 +696,11 @@ end;
 function TSideRaceAnimation.Notice:string;
 begin
   Result:=FError;
+end;
+
+function TSideRaceAnimation.GoalTime:Double;
+begin
+  Result:=inherited GoalTime;
+  if FPlan<>nil then Result:=FPlan.Goal;
 end;
 end.

@@ -23,6 +23,8 @@ var
   Leg:TJumpLeg;
   Beat:TJumpBeat;
   Boss:TJumpBoss;
+  Roll:TJumpRoll;
+  HitTime:Double;
 
   procedure NewList(const Name:string);
   begin
@@ -75,6 +77,7 @@ begin
       Exact(Node.SolidUntil);
       Row.Add(Ord(Node.Landing));
       Row.Add(Node.Variant);
+      if Ref.Version>=2 then Row.Add(Ord(Node.Enemy));
     end;
     NewList('legs');
     for Leg in Plan.Legs do begin
@@ -97,6 +100,15 @@ begin
       Row.Add(Boss.LastNode);
       Row.Add(Boss.Variant);
     end;
+    if Ref.Version>=3 then begin
+      NewList('rolls');
+      for Roll in Plan.Rolls do begin
+        NewRow;
+        Row.Add(Roll.FirstNode);
+        Row.Add(Roll.LastNode);
+        for HitTime in Roll.Hits do Exact(HitTime);
+      end;
+    end;
     WritePreparedData(Root,Ref);
   finally
     Root.Free;
@@ -114,17 +126,18 @@ begin
   end;
 end;
 
-procedure ReadPlan(Root:TJSONObject;Plan:TJumpPlan;EventCount:Integer);
+procedure ReadPlan(Root:TJSONObject;Plan:TJumpPlan;EventCount,Version:Integer);
 var
   List,Row:TJSONArray;
-  I,J,StageIndex:Integer;
-  Previous:Double;
+  I,J,StageIndex,LastRollNode,MaxLanding:Integer;
+  Previous,GroundY:Double;
   P:TPointF;
   Stage:TJumpStage;
   Node:TJumpNode;
   Leg:TJumpLeg;
   Beat:TJumpBeat;
   Boss:TJumpBoss;
+  Roll:TJumpRoll;
 
   function Count(const Name:string;MinCount,MaxCount:Integer):Integer;
   begin
@@ -154,9 +167,11 @@ var
 
 begin
   SetLength(Plan.Nodes,Count('nodes',2,20000));
+  MaxLanding:=Ord(jlBoss);
+  if Version>=3 then MaxLanding:=Ord(jlRoll);
   Previous:=-1;
   for I:=0 to High(Plan.Nodes) do begin
-    GetRow(I,10);
+    GetRow(I,10+Ord(Version>=2));
     Node.Time:=Exact(0,0,Plan.Duration);
     Require(Node.Time>Previous,'node order');
     Node.X:=Exact(1,-1E5,1E5);
@@ -166,8 +181,14 @@ begin
     Node.MoveY:=Exact(5,0,0.5);
     Node.SolidFrom:=Exact(6,0,Node.Time);
     Node.SolidUntil:=Exact(7,Node.Time,Plan.Duration);
-    Node.Landing:=TJumpLanding(IntegerAt(8,0,Ord(High(TJumpLanding))));
+    Node.Landing:=TJumpLanding(IntegerAt(8,0,MaxLanding));
     Node.Variant:=IntegerAt(9,0,3);
+    Node.Enemy:=jeFixed;
+    if Version>=2 then begin
+      Node.Enemy:=TJumpEnemy(IntegerAt(10,0,Ord(High(TJumpEnemy))));
+      Require((Node.Enemy<>jeFixed)=(Node.Landing=jlStomp),'enemy type');
+      if Node.Enemy<>jeFixed then Require((Node.MoveX=0) and (Node.MoveY=0),'enemy platform motion');
+    end;
     if Node.Landing=jlBoss then Require(Node.Variant<3,'weak point');
     Plan.Nodes[I]:=Node;
     Previous:=Node.Time;
@@ -183,9 +204,9 @@ begin
     Leg.Height:=Exact(1,0,2.5);
     Leg.Attack:=IntegerAt(2,0,3);
     Require((Leg.Takeoff<Plan.Nodes[I+1].Time) and (Leg.Takeoff<=Node.SolidUntil),'takeoff');
-    if Node.Landing in [jlStomp,jlBoss] then Require(Leg.Takeoff=Node.Time,'stomp rebound');
+    if Node.Landing in [jlStomp,jlBoss,jlRoll] then Require(Leg.Takeoff=Node.Time,'stomp rebound');
     P:=Plan.Platform(I,Leg.Takeoff);
-    if Node.Landing in [jlStomp,jlBoss] then P.Y:=Node.Y;
+    if Node.Landing in [jlStomp,jlBoss,jlRoll] then P.Y:=Node.Y;
     if Leg.Height>0 then
       Require(Abs(Plan.Nodes[I+1].Y-P.Y)<4*Leg.Height,'jump tangent')
     else
@@ -243,6 +264,36 @@ begin
       Require(J<Length(Plan.Bosses),'boss index');
       Require(Plan.StageAt(Plan.Nodes[Plan.Bosses[J].FirstNode].Time)=I,'stage boss index');
     end;
+  if Version>=3 then begin
+    SetLength(Plan.Rolls,Count('rolls',0,Length(Plan.Nodes) div 2));
+    LastRollNode:=0;
+    for I:=0 to High(Plan.Rolls) do begin
+      Require(List.Items[I] is TJSONArray,'roll row');
+      Row:=TJSONArray(List.Items[I]);
+      Require((Row.Count>=5) and (Row.Count<=13),'roll hit count');
+      Roll.FirstNode:=IntegerAt(0,LastRollNode+1,High(Plan.Nodes)-1);
+      Roll.LastNode:=IntegerAt(1,Roll.FirstNode+1,High(Plan.Nodes));
+      Require(Plan.Nodes[Roll.FirstNode].Landing=jlRoll,'roll item');
+      GroundY:=Plan.Nodes[Roll.FirstNode].Y-2*JumpRollRadius;
+      for J:=Roll.FirstNode+1 to Roll.LastNode do
+        Require((Plan.Nodes[J].Landing=jlGround) and (Abs(Plan.Nodes[J].Y-GroundY)<1E-6) and
+          (Plan.Nodes[J].X>Plan.Nodes[J-1].X),'roll road');
+      SetLength(Roll.Hits,Row.Count-2);
+      Previous:=Plan.Nodes[Roll.FirstNode].Time;
+      for J:=0 to High(Roll.Hits) do begin
+        Roll.Hits[J]:=Exact(J+2,Previous+0.089999,Plan.Nodes[Roll.FirstNode].Time+0.96);
+        Previous:=Roll.Hits[J];
+      end;
+      Plan.Rolls[I]:=Roll;
+      Require(Plan.RollEnemyTop(I,Previous).X+JumpEnemyRadius<=Plan.Nodes[Roll.LastNode].X,'roll road length');
+      LastRollNode:=Roll.LastNode;
+    end;
+    for I:=0 to High(Plan.Nodes) do
+      if Plan.Nodes[I].Landing=jlRoll then begin
+        J:=Plan.RollAtNode(I);
+        Require((J>=0) and (Plan.Rolls[J].FirstNode=I),'orphan roll item');
+      end;
+  end;
 end;
 
 function LoadJumpPlan(const Ref:TRhythmPlanRef;Audio:TRhythmAudio;Direction:Integer):TJumpPlan;
@@ -258,7 +309,7 @@ begin
     try
       Result.Duration:=ReadPreparedExact(Root.GetValue('duration'));
       Require((Result.Duration>0) and (Abs(Result.Duration-Audio.Duration)<1E-6),'duration');
-      ReadPlan(Root,Result,Length(Audio.Hits));
+      ReadPlan(Root,Result,Length(Audio.Hits),Ref.Version);
     except
       Result.Free;
       raise;

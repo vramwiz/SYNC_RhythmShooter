@@ -1,6 +1,6 @@
 # バリエーション分類と共通ディスパッチ
 
-2026-11-05 / 旧3Dレースと旧格闘を廃止し、2Dハイウェイと格闘ラッシュを含む14種類。後半の検証記録は当時の構成。
+2026-11-05 / 選択できるバリエーションは13種類。トロッコアクションは列車と別に選べる。花火は共通のゴール演出。後半の検証記録は当時の構成。
 
 設定画面の種類選択を大・中・小の3段に整理。ピンボールとブロック崩しをボールアクションへまとめ、宇宙シューティングの縦／横を小分類へ配置した。各種類の生成・準備・保存後読戻し・PCMなし復元・描画接続を専用アダプターへ移し、RhythmStyleRegistryの登録表から一括で分岐する。
 
@@ -13,17 +13,16 @@
 | シューティング | 海戦 | 見下ろし（固定） |
 | ボールアクション | ピンボール | 縦スクロール／横スクロール |
 | ボールアクション | ブロック崩し | 固定盤面 |
-| アクション | 横スクロールアクション | 右方向へ進行（固定） |
+| アクション | ジャンプアドベンチャー | 横・縦の自動切替 |
 | アクション | 爆弾アクション | 見下ろし（固定） |
 | アクション | 格闘ラッシュ | 地上戦・空中戦 |
 | アクション | 掘削アクション | 見下ろし（固定） |
-| アクション | ジャンプアドベンチャー | 横・縦の自動切替 |
+| アクション | トロッコアクション | 鉱山の横スクロール |
 | レース | 2Dハイウェイ | 横スクロール（固定） |
 | 音楽・演出 | Type.V | MV重ね（透過） |
 | 音楽・演出 | Type.D | 縦 |
-| 音楽・演出 | Type.F | 縦構図／横構図 |
 
-小分類が1つの種類では説明を表示して選択を無効化する。ピンボール・花火の2方向は元のdirectionの意味を保持する。分類変更後は先頭の中分類へ切り替え、実際の種類変更時だけ方向を0へ戻す。同じ分類・種類を選び直しても元の方向を保つ。大→中→小の操作は500ms待機し、ドロップダウンが開いている間は準備を待たせる。
+小分類が1つの種類では説明を表示して選択を無効化する。ピンボールの2方向は元のdirectionの意味を保持する。分類変更後は先頭の中分類へ切り替え、実際の種類変更時だけ方向を0へ戻す。同じ分類・種類を選び直しても元の方向を保つ。大→中→小の操作は500ms待機し、ドロップダウンが開いている間は準備を待たせる。
 
 ## 分類の考え方と公式資料
 
@@ -32,7 +31,7 @@
 - ボール反射を主体とするピンボール／ブロック崩しを同じ大分類へ。[任天堂ストアのジービー](https://store-jp.nintendo.com/list/software/D70010000104509.html)は両要素を持つ公式の実例。
 - シューティングの縦／横はゲームジャンルの別列挙にせず視点の小分類へ。[任天堂の沙羅曼蛇紹介](https://www.nintendo.com/jp/topics/article/890c8deb-ebd8-405b-b14f-08ce42a90730)に両スクロールの公式説明がある。列車と海戦は当リポジトリの砲撃・迎撃中心の内容を基準に同じ大分類へ置く。
 - 爆弾・格闘・掘削・足場ジャンプをアクションへ。[コナミのボンバーマン公式](https://www.konami.com/games/bomberman/collection/jp/ja/)も爆弾アクションの参考とした。
-- レースは車両走行、音楽・演出はリズムゲームと花火。[バンダイナムコの公式ジャンル一覧](https://www.bandainamcoent.co.jp/license/detail3/)のリズムゲームという種類を参照。素材・UIは転用しない。
+- レースは車両走行、音楽・演出はリズムゲーム。[バンダイナムコの公式ジャンル一覧](https://www.bandainamcoent.co.jp/license/detail3/)のリズムゲームという種類を参照。
 
 ## 責務と登録の境界
 
@@ -58,8 +57,7 @@
 |---|---|---:|
 | `rsShooting` | `Source/Shooting/RhythmShootingStyle.pas` | 29 |
 | `rsBall` | `Source/Ball/RhythmBallStyle.pas` | 43 |
-| `rsFireworks` | `Source/Fireworks/RhythmFireworksStyle.pas` | 44 |
-| `rsRunner` | `Source/Runner/RhythmRunnerStyle.pas` | 46 |
+| `rsJumpAdventure` | `Source/JumpAdventure/RhythmJumpStyle.pas` | 74 |
 | `rsBreakout` | `Source/Breakout/RhythmBreakoutStyle.pas` | 51 |
 | `rsSideRace` | `Source/SideRace/RhythmSideRaceStyle.pas` | 72 |
 | `rsBombAction` | `Source/BombAction/RhythmBombActionStyle.pas` | 45 |
@@ -68,6 +66,8 @@
 | `rsTrain` | `Source/Train/RhythmTrainStyle.pas` | 45 |
 | `rsNaval` | `Source/Naval/RhythmNavalStyle.pas` | 45 |
 | `rsRhythmGame` | `Source/RhythmGame/RhythmGameStyle.pas` | 46 |
+| `rsStepGame` | `Source/RhythmGame/RhythmStepStyle.pas` | 80 |
+| `rsMineCart` | `Source/MineCart/RhythmCartStyle.pas` | 68 |
 
 全114ユニット、最大1442行、1500行超・循環・フィールド宣言順違反は0。新しい15ユニットは目的ヘッダーとUTF8 BOM/CRLFを統一。目的・所有／借用・分類値を保存しない理由・固定direction維持・キャンセル・音ゲー専用反応のフォールバックをコメントし、既存の個別計画/描画コメントは保持。
 

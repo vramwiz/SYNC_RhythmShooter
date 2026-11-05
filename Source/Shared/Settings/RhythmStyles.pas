@@ -1,12 +1,12 @@
 ﻿unit RhythmStyles;
 // 保存ID/計画版の契約と、設定画面だけの分類・機能カタログ。分類値はJSONやホストへ保存しない。
 interface
-type TRhythmStyle=(rsShooting,rsBall,rsFireworks,rsRunner,rsBreakout,rsSideRace,rsBombAction,rsFightingRush,rsMining,rsTrain,rsNaval,rsRhythmGame,rsStepGame,rsJumpAdventure);
+type TRhythmStyle=(rsShooting,rsBall,rsJumpAdventure,rsBreakout,rsSideRace,rsBombAction,rsFightingRush,rsMining,rsTrain,rsNaval,rsRhythmGame,rsStepGame,rsMineCart);
 type
   TRhythmStyleGroup=(sgShooting,sgBall,sgAction,sgRace,sgMusic);
-  TStyleSmallKind=(skFixed,skScroll,skComposition);
-  TStyleVariantKind=(svNone,svBoss,svRichness,svRhythm);
-  TStyleFeature=(sfBoss,sfPrepared,sfAssets,sfDesigns,sfRichness,sfThreshold,sfTransparent,sfDefaultBoss50);
+  TStyleSmallKind=(skFixed,skScroll);
+  TStyleVariantKind=(svNone,svBoss,svRhythm);
+  TStyleFeature=(sfBoss,sfPrepared,sfAssets,sfDesigns,sfThreshold,sfTransparent,sfDefaultBoss50);
   TStyleFeatures=set of TStyleFeature;
   TStyleInfo=record
     Id,Title,MiddleTitle,FixedSmall,ProgressText:string;
@@ -39,7 +39,6 @@ function BossFrequencyFromVariant(Variant:Integer):Integer;
 const FIREWORKS_DEFAULT_RICHNESS=50;BOSS_DEFAULT_FREQUENCY=50;AUDIO_DEFAULT_DENSITY=20;
   TYPE_V_TITLE='Type.V';
   TYPE_D_TITLE='Type.D';
-  TYPE_F_TITLE='Type.F';
 implementation
 uses System.SysUtils,System.Math;
 const
@@ -47,8 +46,7 @@ const
   Catalog:array[TRhythmStyle] of TStyleInfo=(
     (Id:'shooting';Title:'シューティング';MiddleTitle:'宇宙シューティング';FixedSmall:'';ProgressText:'敵・弾・命中を準備中';Group:sgShooting;Order:0;SmallKind:skScroll;Version:1;Versions:[1];Features:[sfBoss,sfAssets,sfDesigns];VariantKind:svBoss),
     (Id:'ball';Title:'ボール（ピンボール）';MiddleTitle:'ピンボール';FixedSmall:'';ProgressText:'障害物と軌道を準備中';Group:sgBall;Order:0;SmallKind:skScroll;Version:6;Versions:[4,5,6];Features:[sfPrepared];VariantKind:svNone),
-    (Id:'fireworks';Title:TYPE_F_TITLE;MiddleTitle:TYPE_F_TITLE;FixedSmall:'';ProgressText:'打ち上げと開花を準備中';Group:sgMusic;Order:2;SmallKind:skComposition;Version:3;Versions:[2,3];Features:[sfPrepared,sfRichness];VariantKind:svRichness),
-    (Id:'runner';Title:'ランナー';MiddleTitle:'横スクロールアクション';FixedSmall:'右方向へ進行';ProgressText:'足場とジャンプ軌道を準備中';Group:sgAction;Order:0;SmallKind:skFixed;Version:7;Versions:[1,2,3,4,5,6,7];Features:[sfPrepared,sfBoss];VariantKind:svBoss),
+    (Id:'jump-adventure';Title:'ジャンプアドベンチャー';MiddleTitle:'ジャンプアドベンチャー';FixedSmall:'横・縦の自動切替';ProgressText:'音時刻から足場・踏みつけ・ボス戦を逆算中';Group:sgAction;Order:0;SmallKind:skFixed;Version:3;Versions:[1,2,3];Features:[sfPrepared,sfBoss,sfDefaultBoss50];VariantKind:svBoss),
     (Id:'breakout';Title:'ブロック崩し';MiddleTitle:'ブロック崩し';FixedSmall:'固定盤面';ProgressText:'破壊時刻から逆算・配置・前向き検証中';Group:sgBall;Order:1;SmallKind:skFixed;Version:10;Versions:[1,2,3,4,5,6,7,8,9,10];Features:[sfPrepared,sfBoss,sfAssets];VariantKind:svBoss),
     (Id:'side-race';Title:'2Dハイウェイ';MiddleTitle:'2Dハイウェイ';FixedSmall:'横スクロール';ProgressText:'高速道路・ジャンプ・前後の衝突を音時刻から逆算中';Group:sgRace;Order:0;SmallKind:skFixed;Version:1;Versions:[1];Features:[sfPrepared,sfBoss,sfDefaultBoss50];VariantKind:svBoss),
     (Id:'bomb-action';Title:'爆弾アクション';MiddleTitle:'爆弾アクション';FixedSmall:'見下ろし';ProgressText:'音時刻から設置・連鎖・破壊・ボス回避を逆算/検証中';Group:sgAction;Order:1;SmallKind:skFixed;Version:2;Versions:[1,2];Features:[sfPrepared,sfBoss,sfDefaultBoss50];VariantKind:svBoss),
@@ -58,7 +56,7 @@ const
     (Id:'naval';Title:'海戦';MiddleTitle:'海戦';FixedSmall:'見下ろし';ProgressText:'艦隊・砲撃・ボスを逆算/保存検証中';Group:sgShooting;Order:2;SmallKind:skFixed;Version:1;Versions:[1];Features:[sfPrepared,sfBoss,sfDefaultBoss50];VariantKind:svBoss),
     (Id:'rhythm-game';Title:TYPE_V_TITLE;MiddleTitle:TYPE_V_TITLE;FixedSmall:'MV重ね（透過）';ProgressText:'音時刻からマーク・カーソル軌道・連打を逆算/保存検証中';Group:sgMusic;Order:0;SmallKind:skFixed;Version:4;Versions:[1,2,3,4];Features:[sfPrepared,sfThreshold,sfTransparent];VariantKind:svRhythm),
     (Id:'prism-step';Title:TYPE_D_TITLE;MiddleTitle:TYPE_D_TITLE;FixedSmall:'縦';ProgressText:'音時刻から4レーン譜面を準備中';Group:sgMusic;Order:1;SmallKind:skFixed;Version:3;Versions:[1,2,3];Features:[sfPrepared,sfThreshold];VariantKind:svRhythm),
-    (Id:'jump-adventure';Title:'ジャンプアドベンチャー';MiddleTitle:'ジャンプアドベンチャー';FixedSmall:'横・縦の自動切替';ProgressText:'音時刻から足場・踏みつけ・ボス戦を逆算中';Group:sgAction;Order:4;SmallKind:skFixed;Version:1;Versions:[1];Features:[sfPrepared,sfBoss,sfDefaultBoss50];VariantKind:svBoss)
+    (Id:'mine-cart';Title:'トロッコアクション';MiddleTitle:'トロッコアクション';FixedSmall:'鉱山の横スクロール';ProgressText:'コインの接触・線路・回避を逆算中';Group:sgAction;Order:4;SmallKind:skFixed;Version:2;Versions:[1,2];Features:[sfPrepared,sfBoss,sfDefaultBoss50];VariantKind:svBoss)
   );
   GroupTitles:array[TRhythmStyleGroup] of string=('シューティング','ボールアクション','アクション','レース','音楽・演出');
 function StyleInfo(Style:TRhythmStyle):TStyleInfo;
@@ -83,7 +81,6 @@ function StyleSmallTitle(Style:TRhythmStyle;Index:Integer):string;
 begin if (Index<0) or (Index>=StyleSmallCount(Style)) then raise EArgumentOutOfRangeException.Create('Small category index');
   case Catalog[Style].SmallKind of
     skScroll:if Index=0 then Result:='縦スクロール' else Result:='横スクロール';
-    skComposition:if Index=0 then Result:='縦構図' else Result:='横構図';
     else Result:=Catalog[Style].FixedSmall;
   end;
 end;
@@ -102,7 +99,6 @@ function StyleVariant(Style:TRhythmStyle;FireworksRichness:Integer;BossFrequency
 begin Result:=0;case Catalog[Style].VariantKind of
   svRhythm:Result:=EnsureRange(GameThreshold,-100,100)+101;
   svBoss:if BossFrequency>=0 then Result:=Min(BossFrequency,100)+1;
-  svRichness:Result:=EnsureRange(FireworksRichness,0,100);
 end;end;
 function AudioDensityKey(Style:TRhythmStyle;Value:Integer):Integer;
 begin

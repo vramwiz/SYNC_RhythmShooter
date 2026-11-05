@@ -57,7 +57,7 @@ function ImageHash:string;
 var S:TMemoryStream;B:TBytes;H:THashSHA2;
 begin S:=TMemoryStream.Create;try Image.SaveToStream(S);SetLength(B,S.Size);S.Position:=0;S.ReadBuffer(B[0],Length(B));H:=THashSHA2.Create;H.Update(B);Result:=H.HashAsString;finally S.Free;end;end;
 function ProductForStyle:string;
-begin case Style of rsBall:Result:='SYNC_RhythmBall';rsFireworks:Result:='SYNC_RhythmFireworks';rsRunner:Result:='SYNC_RhythmRunner';rsBreakout:Result:='SYNC_RhythmBreakout';rsBombAction:Result:='SYNC_RhythmBombAction';rsMining:Result:='SYNC_RhythmMining';rsTrain:Result:='SYNC_RhythmTrain';rsNaval:Result:='SYNC_RhythmNaval';rsRhythmGame,rsStepGame:Result:='SYNC_RhythmGame';else Result:='SYNC_RhythmShooter';end;end;
+begin case Style of rsBall:Result:='SYNC_RhythmBall';rsBreakout:Result:='SYNC_RhythmBreakout';rsBombAction:Result:='SYNC_RhythmBombAction';rsMining:Result:='SYNC_RhythmMining';rsTrain:Result:='SYNC_RhythmTrain';rsNaval:Result:='SYNC_RhythmNaval';rsRhythmGame,rsStepGame:Result:='SYNC_RhythmGame';else Result:='SYNC_RhythmShooter';end;end;
 procedure CaptureHost(Buffer:PPIXEL_RGBA;W,H:Integer);cdecl;
 begin CapturedWidth:=W;CapturedHeight:=H;SetLength(Captured,W*H*4);Move(Buffer^,Captured[0],Length(Captured));end;
 procedure VerifyHost;

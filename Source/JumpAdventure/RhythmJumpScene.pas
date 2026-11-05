@@ -13,6 +13,7 @@ type
   public
     destructor Destroy; override;
     procedure SetReference(const Ref:TRhythmPlanRef);
+    function GoalTime:Double; override;
     procedure Prepare(const Frame:TAnimationFrame); override;
     procedure Draw(Surface:TAnimationRenderSurface;const Frame:TAnimationFrame); override;
     function Notice:string; override;
@@ -39,7 +40,9 @@ type
     procedure Backdrop(CamX,CamY,Climb,Profile:Double);
     procedure Platform(Index:Integer);
     procedure Bridge(Index:Integer);
-    procedure Enemy(const P:TPointF;Variant:Integer;Age:Double);
+    procedure Enemy(Index:Integer);
+    procedure EnemyBody(const P:TPointF;Kind:TJumpEnemy;Variant:Integer;Age:Double);
+    procedure RollingItem(Index:Integer);
     procedure Boss(Index:Integer);
     procedure Hazard(Index:Integer);
     procedure Pulse(const P:TPointF;Age,Power:Double;Color:TColor);
@@ -173,14 +176,23 @@ begin
 end;
 
 procedure TJumpPainter.Bridge(Index:Integer);
-var A,B:TJumpNode; TopY:Double; Stage:TJumpStage;
+var A,B:TJumpNode; TopY:Double; Stage:TJumpStage; Roll:Integer;
 begin
   A:=Plan.Nodes[Index];
   B:=Plan.Nodes[Index+1];
   Stage:=Plan.Stages[Plan.StageAt((A.Time+B.Time)*0.5)];
-  if Stage.Vertical or (B.X<=A.X) or ((Stage.Level<>1) and (Plan.Legs[Index].Height>0)) then Exit;
-  TopY:=A.Y;
-  if Plan.Legs[Index].Height>0 then TopY:=Min(A.Y,B.Y)-0.42;
+  Roll:=Plan.RollAtNode(Index);
+  if (Roll>=0) and (Index<Plan.Rolls[Roll].LastNode) then TopY:=Plan.Platform(Index,A.Time).Y
+  else begin
+    if Stage.Vertical or (B.X<=A.X) or (A.Enemy=jeFlying) or (B.Enemy=jeFlying) then Exit;
+    if A.Enemy=jeGround then TopY:=Plan.Platform(Index,A.Time).Y
+    else if B.Enemy=jeGround then TopY:=Plan.Platform(Index+1,B.Time).Y
+    else begin
+      if (Stage.Level<>1) and (Plan.Legs[Index].Height>0) then Exit;
+      TopY:=A.Y;
+      if Plan.Legs[Index].Height>0 then TopY:=Min(A.Y,B.Y)-0.42;
+    end;
+  end;
   Box(A.X,TopY,B.X-A.X,0.41,Palette.Stone);
   Box(A.X,TopY,B.X-A.X,0.075,Palette.Edge);
 end;
@@ -189,6 +201,7 @@ procedure TJumpPainter.Platform(Index:Integer);
 var N:TJumpNode; P:TPointF; X,Ready:Double; C,Deck:TColor;
 begin
   N:=Plan.Nodes[Index];
+  if N.Enemy=jeFlying then Exit;
   P:=Plan.Platform(Index,Time);
   if (P.X<Left-2) or (P.X>Left+W/Scale+2) or (P.Y>Top+2) or (P.Y<Top-H/Scale-2) then Exit;
   X:=P.X-N.Width*0.5;
@@ -215,36 +228,90 @@ begin
   end;
 end;
 
-procedure TJumpPainter.Enemy(const P:TPointF;Variant:Integer;Age:Double);
-var X,Y,U,R:Double; C:TColor;
+procedure TJumpPainter.Enemy(Index:Integer);
+var N:TJumpNode;
 begin
+  N:=Plan.Nodes[Index];
+  if N.Landing=jlStomp then
+    EnemyBody(Plan.EnemyTop(Index,Min(Time,N.Time)),N.Enemy,N.Variant,Time-N.Time);
+end;
+
+procedure TJumpPainter.EnemyBody(const P:TPointF;Kind:TJumpEnemy;Variant:Integer;Age:Double);
+var
+  X,Y,U,R,BaseY,WingY:Double;
+  C:TColor;
+begin
+  if Age>=0.33 then Exit;
+  if (P.X<Left-2) or (P.X>Left+W/Scale+2) or (P.Y>Top+2) or (P.Y<Top-H/Scale-2) then Exit;
   X:=P.X;
   Y:=P.Y;
   C:=Enemies[Variant];
-  R:=0.23;
+  R:=JumpEnemyRadius;
+  BaseY:=Y-2*R;
+  if Kind=jeFixed then begin
+    R:=0.23;
+    BaseY:=Y-0.32;
+  end;
   if Age>=0 then begin
     U:=Age/0.33;
-    if U>=1 then Exit;
     case Variant of
-      0:Box(X-R*(1+U),Y-0.21,R*2*(1+U),0.10*(1-U),C);
-      1:Dot(X+U*0.52,Y+0.58*U*(1-U)-0.20,R*0.61*(1-U),C);
+      0:Box(X-R*(1+U),BaseY+0.10,R*2*(1+U),0.10*(1-U),C);
+      1:Dot(X+U*0.52,BaseY+0.12+0.58*U*(1-U),R*0.61*(1-U),C);
       2:begin
-        Dot(X-R-U*0.21,Y+0.13*U-0.16,R*(1-U)*0.57,C);
-        Dot(X+R+U*0.21,Y+0.21*U-0.16,R*(1-U)*0.57,White);
+        Dot(X-R-U*0.21,BaseY+0.16+0.13*U,R*(1-U)*0.57,C);
+        Dot(X+R+U*0.21,BaseY+0.16+0.21*U,R*(1-U)*0.57,White);
       end;
-      3:ContactDust(P,Age,0.65,C);
+      3:ContactDust(PointF(X,BaseY),Age,0.65,C);
     end;
     Exit;
   end;
+  if Kind=jeFlying then begin
+    WingY:=Y-R*(0.94+0.36*Sin(Age*21));
+    Stroke(X-R*0.65,Y-R*1.02,X-R*1.40,WingY,0.123,Ink);
+    Stroke(X+R*0.65,Y-R*1.02,X+R*1.40,WingY,0.123,Ink);
+    Stroke(X-R*0.65,Y-R*1.02,X-R*1.40,WingY,0.077,White);
+    Stroke(X+R*0.65,Y-R*1.02,X+R*1.40,WingY,0.077,White);
+  end;
   Dot(X,Y-R,R,Ink);
   Dot(X,Y-R*0.98,R*0.84,C);
-  if Variant in [1,3] then begin
+  if Kind=jeGround then begin
+    Box(X-R*0.88,BaseY+R*0.26,R*0.75,R*0.26,Ink);
+    Box(X+R*0.13,BaseY+R*0.26,R*0.75,R*0.26,Ink);
+  end else if (Kind=jeFixed) and (Variant in [1,3]) then begin
     Stroke(X-R*0.44,Y-R*0.62,X-R*1.13,Y-R*0.13,0.065,C);
     Stroke(X+R*0.44,Y-R*0.62,X+R*1.13,Y-R*0.13,0.065,C);
-  end else
+  end else if Kind=jeFixed then
     Box(X-R,Y-R*1.49,R*2,R*0.62,Tint(C,Ink,0.26));
   Box(X-R*0.49,Y-R*0.58,R*0.27,R*0.39,White);
   Box(X+R*0.18,Y-R*0.58,R*0.27,R*0.39,White);
+  Dot(X-R*0.34,Y-R*0.84,R*0.08,Ink);
+  Dot(X+R*0.30,Y-R*0.84,R*0.08,Ink);
+end;
+
+procedure TJumpPainter.RollingItem(Index:Integer);
+var Roll:TJumpRoll; P:TPointF; I:Integer; Age,Angle,R,Finish,Clock:Double;
+begin
+  Roll:=Plan.Rolls[Index];
+  Finish:=Roll.Hits[High(Roll.Hits)];
+  if Time>=Finish+0.33 then Exit;
+  for I:=0 to High(Roll.Hits) do begin
+    Age:=Time-Roll.Hits[I];
+    P:=Plan.RollEnemyTop(Index,Roll.Hits[I]);
+    EnemyBody(P,jeGround,I mod 4,Age);
+    if Age>=0 then ContactDust(P,Age,0.52,White);
+  end;
+  Clock:=Min(Time,Finish+0.12);
+  P:=Plan.RollCenter(Index,Clock);
+  R:=JumpRollRadius*(1-Smooth((Time-Finish-0.10)/0.23));
+  if R<=0 then Exit;
+  P.Y:=P.Y-JumpRollRadius+R;
+  Angle:=-Max(0.0,Clock-Plan.Nodes[Roll.FirstNode].Time)*JumpRollSpeed/JumpRollRadius;
+  Dot(P.X,P.Y,R,Ink);
+  Dot(P.X,P.Y,R*0.84,$006CD8F5);
+  Dot(P.X,P.Y,R*0.63,$00418DAE);
+  for I:=0 to 3 do
+    Stroke(P.X,P.Y,P.X+R*0.70*Cos(Angle+I*Pi/2),P.Y+R*0.70*Sin(Angle+I*Pi/2),0.05,White);
+  Dot(P.X,P.Y,R*0.22,$00C5F3FF);
 end;
 
 procedure TJumpPainter.Pulse(const P:TPointF;Age,Power:Double;Color:TColor);
@@ -399,6 +466,27 @@ var
     Dot(HandX,HandY,0.058,Skin);
   end;
 
+  procedure Face;
+  const Hair=$00433227; HairLight=$00655039; Skin=$009BD9FF;
+  var CX,CY:Double;
+  begin
+    CX:=X+Tilt;
+    CY:=Y+Height;
+    Dot(CX,CY,0.24,Ink);
+    Dot(CX-Direction*0.024,CY+0.032,0.198,Hair);
+    Dot(CX+Direction*0.031,CY-0.047,0.167,Skin);
+    Dot(CX-Direction*0.144,CY-0.027,0.049,Skin);
+    Dot(CX-Direction*0.045,CY+0.108,0.126,Hair);
+    Stroke(CX-Direction*0.122,CY+0.153,CX+Direction*0.033,CY+0.171,0.028,HairLight);
+    Stroke(CX+Direction*0.057,CY+0.119,CX-Direction*0.017,CY+0.044,0.049,Hair);
+    Dot(CX-Direction*0.038,CY+0.004,0.038,White);
+    Dot(CX+Direction*0.103,CY+0.011,0.048,White);
+    Dot(CX-Direction*0.026,CY-0.002,0.019,Ink);
+    Dot(CX+Direction*0.116,CY+0.006,0.024,Ink);
+    Dot(CX+Direction*0.160,CY-0.048,0.034,Skin);
+    Stroke(CX+Direction*0.027,CY-0.090,CX+Direction*0.087,CY-0.087,0.022,$005862A0);
+  end;
+
 begin
   I:=Plan.NodeAt(Time);
   Finish:=Plan.Nodes[High(Plan.Nodes)].Time;
@@ -422,10 +510,10 @@ begin
   Stride:=Direction*ArmSwing*0.58;
   if Air then begin
     Stride:=JumpBlend(Stride,Direction*0.13,AirPose);
-    if Plan.Nodes[I+1].Landing in [jlStomp,jlBoss] then
+    if Plan.Nodes[I+1].Landing in [jlStomp,jlBoss,jlRoll] then
       Stride:=Stride*Smooth((Plan.Nodes[I+1].Time-Time)/0.075);
   end;
-  if Plan.Nodes[I].Landing in [jlStomp,jlBoss] then
+  if Plan.Nodes[I].Landing in [jlStomp,jlBoss,jlRoll] then
     Stride:=Stride*Smooth((Time-Plan.Nodes[I].Time)/0.075);
   Tilt:=Direction*(0.09-0.04*Climb)*(1-Rest);
   Height:=0.69-0.09*Crouch;
@@ -437,10 +525,7 @@ begin
   Box(X-Stride-0.125,Y+0.085,0.25,0.085,$007FBEFA);
   Dot(X+Tilt,Y+0.38-Crouch*0.045,0.22,Ink);
   Dot(X+Tilt,Y+0.40-Crouch*0.045,0.17,$00D4B054);
-  Dot(X+Tilt,Y+Height,0.24,Ink);
-  Dot(X+Tilt,Y+Height,0.194,$0081CFFD);
-  Box(X+Tilt-0.155,Y+Height+0.048,0.31,0.139,$00544634);
-  Box(X+Tilt+Direction*0.058-0.04,Y+Height+0.025,0.079,0.045,White);
+  Face;
   Arm(True);
 end;
 
@@ -522,22 +607,18 @@ begin
   for I:=0 to High(Plan.Bosses) do Boss(I);
   J:=Plan.NodeAt(Time);
   for I:=Max(0,J-1) to Min(High(Plan.Legs),J+2) do Hazard(I);
-  I:=Plan.BeatFrom(Time-0.40);
+  for I:=First to Last do Enemy(I);
+  for I:=0 to High(Plan.Rolls) do
+    if (Plan.Rolls[I].FirstNode<=Last) and (Plan.Rolls[I].LastNode>=First) then RollingItem(I);
+  I:=Plan.BeatFrom(Time-0.18);
   while I<Length(Plan.Beats) do begin
     Beat:=Plan.Beats[I];
     Age:=Time-Beat.Time;
-    if Age< -1.36 then Break;
+    if Age<0 then Break;
     if Beat.Node>=0 then begin
       N:=Plan.Nodes[Beat.Node];
       P:=PointF(N.X,N.Y);
-      if N.Landing=jlStomp then begin
-        if Age<0 then begin
-          P:=Plan.Platform(Beat.Node,Time);
-          P.Y:=P.Y+0.32;
-        end;
-        Enemy(P,N.Variant,Age);
-      end;
-      if Age>=0 then ContactDust(P,Age,0.38+Beat.Strength*0.45,Palette.Light);
+      ContactDust(P,Age,0.38+Beat.Strength*0.45,Palette.Light);
     end;
     Inc(I);
   end;
@@ -586,5 +667,11 @@ begin
   Painter.Surface:=Surface;
   Painter.Plan:=FPlan;
   Painter.Draw(Frame);
+end;
+
+function TJumpAnimation.GoalTime:Double;
+begin
+  Result:=inherited GoalTime;
+  if FPlan<>nil then Result:=FPlan.Nodes[High(FPlan.Nodes)].Time;
 end;
 end.

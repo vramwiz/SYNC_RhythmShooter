@@ -16,6 +16,7 @@ type
     destructor Destroy; override;
     procedure SetReference(const Ref:TRhythmPlanRef);
     property Audio:TRhythmAudio read FAudio write FAudio;
+    function GoalTime:Double; override;
     procedure Prepare(const Frame:TAnimationFrame); override;
     procedure Draw(Surface:TAnimationRenderSurface;const Frame:TAnimationFrame); override;
     function Notice:string; override;
@@ -574,5 +575,11 @@ begin
   if Clock>=FinishAt then begin U:=EnsureRange((Clock-FinishAt)/(FPlan.EndTime-FinishAt),0.0,1.0);
     Circle(Hero,0.25+0.15*U,RGB(134,230,223),False,0.025);
   end;
+end;
+
+function TBombActionAnimation.GoalTime:Double;
+begin
+  Result:=inherited GoalTime;
+  if FPlan<>nil then Result:=FPlan.GoalTime;
 end;
 end.

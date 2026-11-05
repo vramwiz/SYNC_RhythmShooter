@@ -29,7 +29,7 @@ type
     property Stage:Integer read GetStage;
   end;
 implementation
-uses System.SysUtils,Winapi.Windows,RhythmStyleOps,RhythmStyleRegistry,RhythmOrbitAudio;
+uses System.SysUtils,System.Math,Winapi.Windows,RhythmStyleOps,RhythmStyleRegistry,RhythmOrbitAudio,RhythmFireworksScene;
 
 function TRhythmPrepareThread.GetStage:Integer;
 begin Result:=InterlockedCompareExchange(FStage,0,0);
@@ -79,6 +79,7 @@ begin
     if Audio=nil then Audio:=LoadRhythmAudio(FSource,FSensitivity,function:Boolean begin Result:=Terminated;end);
     if Terminated then Abort;
     BuildPlan(FStyle,FVariant,Plan,PreviewEnd,Summary);
+    PreviewEnd:=Max(PreviewEnd,Audio.Duration+GoalFireworksDuration);
   except on E:Exception do begin
       Cancelled:=Terminated;
       if Cancelled then Error:='準備を中止しました。'

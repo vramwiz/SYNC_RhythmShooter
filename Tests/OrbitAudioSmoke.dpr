@@ -91,8 +91,8 @@ begin Audio:=nil;Snapshot:=nil;Pool:=nil;Root:=nil;Checks:=0;DenseGain:=0;QuietE
         try Need(Worker.Error='','Dense worker '+Worker.Error);Audio:=Worker.TakeAudio;Need((Length(Audio.Hits)=Stats.Legacy) and (BytesHash(Audio.PCM)=PCMHash),'Worker leaked private dense events');
           Meta:=TGamePlan.LoadAudioMetadata(Worker.Plan,Source,0);try Need(Length(Meta.Hits)>Length(Audio.Hits),'Worker saved classic instead of dense');finally Meta.Free;end;
         finally Worker.Free;end;
-        Worker:=TRhythmPrepareThread.Create(Source,50,0,rsRunner,False,Audio,2,101);Audio:=nil;Worker.Start;Worker.WaitFor;
-        try Need(Worker.Error='','Style switch '+Worker.Error);Audio:=Worker.TakeAudio;Need((Length(Audio.Hits)=Stats.Legacy) and (BytesHash(Audio.PCM)=PCMHash),'Dense events contaminated Runner');
+        Worker:=TRhythmPrepareThread.Create(Source,50,0,rsJumpAdventure,False,Audio,2,101);Audio:=nil;Worker.Start;Worker.WaitFor;
+        try Need(Worker.Error='','Style switch '+Worker.Error);Audio:=Worker.TakeAudio;Need((Length(Audio.Hits)=Stats.Legacy) and (BytesHash(Audio.PCM)=PCMHash),'Dense events contaminated Jump Adventure');
         finally Worker.Free;end;
       end;
       WriteLn('Audio case ',C,' old=',Length(Audio.Hits),' new=',Row.GetValue<Integer>('newLeft'));Flush(Output);FreeAndNil(Pool);FreeAndNil(Audio);

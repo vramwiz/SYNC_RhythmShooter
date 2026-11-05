@@ -3,10 +3,15 @@
 interface
 uses System.Types;
 
-const JumpMinBeatGap=0.28;
+const
+  JumpMinBeatGap=0.48;
+  JumpEnemyRadius=0.28;
+  JumpRollRadius=0.32;
+  JumpRollSpeed=7.4;
 
 type
-  TJumpLanding=(jlGround,jlStomp,jlSpring,jlBoss);
+  TJumpLanding=(jlGround,jlStomp,jlSpring,jlBoss,jlRoll);
+  TJumpEnemy=(jeFixed,jeGround,jeFlying); // jeFixed は旧計画の踏みつけと敵のいない地点。
   TJumpStage=record
     StartTime:Double;
     Vertical:Boolean;
@@ -17,6 +22,7 @@ type
     SolidFrom,SolidUntil:Double; // 一方向足場の接地が有効な時間。
     Landing:TJumpLanding;
     Variant:Integer; // 敵の種類またはボスの弱点番号。
+    Enemy:TJumpEnemy;
   end;
   TJumpLeg=record
     Takeoff,Height:Double; // Height=0 は接地したまま走る。
@@ -28,6 +34,10 @@ type
   end;
   TJumpBoss=record
     FirstNode,LastNode,Variant:Integer;
+  end;
+  TJumpRoll=record
+    FirstNode,LastNode:Integer;
+    Hits:TArray<Double>;
   end;
   TJumpHazard=record
     StartTime,EndTime,X,Y,Height:Double;
@@ -42,11 +52,16 @@ type
     Legs:TArray<TJumpLeg>;
     Beats:TArray<TJumpBeat>;
     Bosses:TArray<TJumpBoss>;
+    Rolls:TArray<TJumpRoll>;
     function StageAt(Time:Double):Integer;
     function NodeAt(Time:Double):Integer;
     function BeatFrom(Time:Double):Integer;
     function Foot(Time:Double):TPointF;
     function Platform(Index:Integer;Time:Double):TPointF;
+    function EnemyTop(Index:Integer;Time:Double):TPointF;
+    function RollAtNode(Index:Integer):Integer;
+    function RollCenter(Index:Integer;Time:Double):TPointF;
+    function RollEnemyTop(Index:Integer;HitTime:Double):TPointF;
     function BossAt(Time:Double):Integer;
     function BossCore(Index:Integer;Time:Double):TPointF;
     function Hazard(Index:Integer):TJumpHazard;
@@ -115,8 +130,13 @@ function DeckHeight(const N:TJumpNode):Double;
 begin
   Result:=N.Y;
   case N.Landing of
-    jlStomp:Result:=Result-0.32;
+    jlStomp:
+      case N.Enemy of
+        jeFixed:Result:=Result-0.32;
+        jeGround:Result:=Result-2*JumpEnemyRadius;
+      end;
     jlBoss:Result:=Result-0.56;
+    jlRoll:Result:=Result-2*JumpRollRadius;
   end;
 end;
 
@@ -129,6 +149,51 @@ begin
   Result:=PointF(N.X+N.MoveX*Wave,Top+N.MoveY*Wave);
 end;
 
+function TJumpPlan.EnemyTop(Index:Integer;Time:Double):TPointF;
+var N:TJumpNode; Wave:Double;
+begin
+  N:=Nodes[Index];
+  if N.Enemy=jeFixed then begin
+    Result:=Platform(Index,Time);
+    Result.Y:=Result.Y+0.32;
+    Exit;
+  end;
+  Result:=PointF(N.X,N.Y);
+  if N.Enemy=jeFlying then begin
+    // 踏む時刻を波の原点に置き、足と敵の上端を同じ座標に合わせる。
+    Wave:=Sin((Time-N.Time)*3.4);
+    if Odd(N.Variant) then Result.Y:=Result.Y+0.18*Wave
+    else Result.X:=Result.X+0.30*Wave;
+  end;
+end;
+
+function TJumpPlan.RollAtNode(Index:Integer):Integer;
+var Lo,Hi,Mid:Integer;
+begin
+  Lo:=0;
+  Hi:=Length(Rolls);
+  while Lo<Hi do begin
+    Mid:=(Lo+Hi) div 2;
+    if Rolls[Mid].LastNode<Index then Lo:=Mid+1 else Hi:=Mid;
+  end;
+  if (Lo<Length(Rolls)) and (Rolls[Lo].FirstNode<=Index) then Exit(Lo);
+  Result:=-1;
+end;
+
+function TJumpPlan.RollCenter(Index:Integer;Time:Double):TPointF;
+var N:TJumpNode;
+begin
+  N:=Nodes[Rolls[Index].FirstNode];
+  Result:=PointF(N.X+JumpRollSpeed*Max(0.0,Time-N.Time),N.Y-JumpRollRadius);
+end;
+
+function TJumpPlan.RollEnemyTop(Index:Integer;HitTime:Double):TPointF;
+begin
+  Result:=RollCenter(Index,HitTime);
+  Result.X:=Result.X+JumpRollRadius+JumpEnemyRadius;
+  Result.Y:=Result.Y-JumpRollRadius+2*JumpEnemyRadius;
+end;
+
 function TJumpPlan.Foot(Time:Double):TPointF;
 var I:Integer; A,B:TJumpNode; Leg:TJumpLeg; P:TPointF; U:Double;
 begin
@@ -138,7 +203,7 @@ begin
   B:=Nodes[I+1];
   Leg:=Legs[I];
   P:=Platform(I,Leg.Takeoff);
-  if A.Landing in [jlStomp,jlBoss] then P:=PointF(A.X,A.Y);
+  if A.Landing in [jlStomp,jlBoss,jlRoll] then P:=PointF(A.X,A.Y);
   if Time<Leg.Takeoff then Exit(Platform(I,Time));
   U:=(Time-Leg.Takeoff)/(B.Time-Leg.Takeoff);
   Result:=PointF(JumpBlend(P.X,B.X,U),
@@ -208,10 +273,11 @@ begin
   A:=Nodes[LegIndex];
   B:=Nodes[LegIndex+1];
   D:=Nodes[DeckIndex];
+  if D.Enemy=jeFlying then Exit;
   P:=Platform(LegIndex,L.Takeoff);
   StartX:=P.X;
   StartY:=P.Y;
-  if A.Landing in [jlStomp,jlBoss] then StartY:=A.Y;
+  if A.Landing in [jlStomp,jlBoss,jlRoll] then StartY:=A.Y;
   if (D.X+Abs(D.MoveX)+D.Width/2<Min(StartX,B.X)-0.10) or
     (D.X-Abs(D.MoveX)-D.Width/2>Max(StartX,B.X)+0.10) then Exit;
   Span:=B.Time-L.Takeoff;

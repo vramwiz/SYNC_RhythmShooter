@@ -4,7 +4,7 @@ set "LOCAL_PRODUCT=%~1"
 set "LOCAL_CONFIG=%~2"
 if not defined LOCAL_CONFIG set "LOCAL_CONFIG=Debug"
 if not "%LOCAL_CONFIG%"=="Debug" if not "%LOCAL_CONFIG%"=="Release" exit /b 2
-if not "%LOCAL_PRODUCT%"=="SYNC_RhythmShooter" if not "%LOCAL_PRODUCT%"=="SYNC_RhythmBall" if not "%LOCAL_PRODUCT%"=="SYNC_RhythmFireworks" if not "%LOCAL_PRODUCT%"=="SYNC_RhythmRunner" if not "%LOCAL_PRODUCT%"=="SYNC_RhythmBreakout" if not "%LOCAL_PRODUCT%"=="SYNC_RhythmBombAction" if not "%LOCAL_PRODUCT%"=="SYNC_RhythmMining" if not "%LOCAL_PRODUCT%"=="SYNC_RhythmTrain" if not "%LOCAL_PRODUCT%"=="SYNC_RhythmNaval" if not "%LOCAL_PRODUCT%"=="SYNC_RhythmGame" exit /b 2
+if not "%LOCAL_PRODUCT%"=="SYNC_RhythmShooter" if not "%LOCAL_PRODUCT%"=="SYNC_RhythmBall" if not "%LOCAL_PRODUCT%"=="SYNC_RhythmBreakout" if not "%LOCAL_PRODUCT%"=="SYNC_RhythmBombAction" if not "%LOCAL_PRODUCT%"=="SYNC_RhythmMining" if not "%LOCAL_PRODUCT%"=="SYNC_RhythmTrain" if not "%LOCAL_PRODUCT%"=="SYNC_RhythmNaval" if not "%LOCAL_PRODUCT%"=="SYNC_RhythmGame" exit /b 2
 call "C:\Program Files (x86)\Embarcadero\Studio\37.0\bin\rsvars.bat"
 if errorlevel 1 exit /b %errorlevel%
 pushd "%~dp0.."

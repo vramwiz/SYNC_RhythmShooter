@@ -123,6 +123,8 @@ var
     // 廃止した種類は選択を後継へ移し、旧計画は従来のID照合で破棄する。
     if Id='race' then begin Style:=rsSideRace;Exit(True);end;
     if Id='fighting' then begin Style:=rsFightingRush;Exit(True);end;
+    if Id='fireworks' then begin Style:=rsShooting;Exit(True);end;
+    if Id='runner' then begin Style:=rsJumpAdventure;Exit(True);end;
     Result:=TryStyle(Id,Style);
   end;
 
@@ -198,8 +200,6 @@ begin
           ExpectedVariant:=StyleVariant(Value.Style,Value.FireworksRichness,Value.BossFrequency,Value.GameThreshold);
           if (Value.Style=rsRhythmGame) and (Value.Plan.Version=1) then ExpectedVariant:=0;
           if (Value.Style=rsRhythmGame) and (Value.Plan.Version=2) then ExpectedVariant:=Value.GameThreshold+1;
-          if (Value.Style=rsRunner) and (Value.Plan.Version<=5) then ExpectedVariant:=0;
-          if (Value.Style=rsRunner) and (Value.Plan.Variant=0) and (Value.BossFrequency=100) then ExpectedVariant:=0;
           if (Value.Style in [rsShooting,rsBreakout]) and (Value.Plan.Variant=0) and (Value.BossFrequency=100) then ExpectedVariant:=0;
           if (Value.Plan.AudioDensity<>AudioDensityKey(Value.Style,Value.GameThreshold)) or
             not Value.Plan.Matches(Value.Plan.SourceKey,Value.Sensitivity,Value.Direction,Value.Style,ExpectedVariant) or not ValidDigest(Value.Plan.SourceKey) or

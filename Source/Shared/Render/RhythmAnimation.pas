@@ -15,6 +15,7 @@ type
     procedure Prepare(const Frame:TAnimationFrame);virtual;abstract;
     procedure Draw(Surface:TAnimationRenderSurface;const Frame:TAnimationFrame);virtual;abstract;
     function Notice:string;virtual;
+    function GoalTime:Double;virtual;
   end;
   TAnimationRenderer=class
   private
@@ -46,6 +47,8 @@ implementation
 uses System.SysUtils,System.Types,System.Math,Winapi.Windows,RhythmParallax;
 function TAnimationScene.Notice:string;
 begin Result:='';end;
+function TAnimationScene.GoalTime:Double;
+begin Result:=-1;end;
 constructor TAnimationRenderer.Create(Scene:TAnimationScene;Images:TAnimationImageBank);
 begin
   inherited Create;FClearColor:=RGB(7,13,29);FScene:=Scene;FSurface:=TAnimationRenderSurface.Create(Images);

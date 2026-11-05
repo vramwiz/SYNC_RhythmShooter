@@ -13,6 +13,7 @@ type
     destructor Destroy; override;
     procedure SetReference(const Ref:TRhythmPlanRef);
     property Audio:TRhythmAudio read FAudio write FAudio;
+    function GoalTime:Double; override;
     procedure Prepare(const Frame:TAnimationFrame); override;
     procedure Draw(Surface:TAnimationRenderSurface;const Frame:TAnimationFrame); override;
     function Notice:string; override;
@@ -393,5 +394,11 @@ begin
   if Top>0 then begin Surface.FillRect(0,0,Frame.Width,Top,RGB(10,18,29));
     Surface.FillRect(0,Frame.Height-Top,Frame.Width,Frame.Height,RGB(10,18,29));
   end;
+end;
+
+function TTrainAnimation.GoalTime:Double;
+begin
+  Result:=inherited GoalTime;
+  if FPlan<>nil then Result:=FPlan.GoalTime;
 end;
 end.

@@ -22,7 +22,7 @@ begin
   Audio:=nil;Meta:=nil;Plan:=nil;Cold:=nil;Renderer:=nil;Image:=nil;PNG:=nil;
   try
     ConfigureRhythmProduct('SYNC_RhythmTrain','Train',rsTrain);OutDir:=ExtractFileDir(ParamStr(0));
-    Need((Ord(rsTrain)=9) and (StylePlanVersion(rsTrain)=1),'Train registry');
+    Need((StyleId(rsTrain)='train') and (StylePlanVersion(rsTrain)=1),'Train registry');
     for C:=0 to 8 do begin
       D:=96;Gap:=0.18;Frequency:=50;
       case C of 1:Frequency:=0;2:begin D:=12;Gap:=0.09;Frequency:=100;end;

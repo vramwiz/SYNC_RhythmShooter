@@ -17,6 +17,7 @@ type
     function Notice:string;override;
   end;
 implementation
+uses RhythmFireworksScene;
 constructor TRhythmPresentationScene.Create(Inner:TAnimationScene;ActivityFunction:TStyleActivity);
 begin inherited Create;FInner:=Inner;FActivity:=ActivityFunction;end;
 destructor TRhythmPresentationScene.Destroy;
@@ -30,9 +31,14 @@ begin Result:=Default(TEqualizerActivity);
   else Result:=EqualizerActivity(Audio,Time);
 end;
 procedure TRhythmPresentationScene.Draw(Surface:TAnimationRenderSurface;const Frame:TAnimationFrame);
+var Goal:Double;
 begin
   if IncludeEqualizer then DrawEqualizer(Surface,Frame.Width,Frame.Height,Activity(Frame.Time),True);
   FInner.Draw(Surface,Frame);
+  if (Audio=nil) or Frame.BackgroundOnly or (FInner.Notice<>'') then Exit;
+  Goal:=FInner.GoalTime;
+  if Goal<0 then Goal:=Audio.SoundEnd;
+  if Goal>0 then DrawGoalFireworks(Surface,Frame.Width,Frame.Height,Frame.Time-Goal);
 end;
 function TRhythmPresentationScene.Notice:string;
 begin Result:=FInner.Notice;end;

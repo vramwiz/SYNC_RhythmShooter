@@ -6,7 +6,7 @@ function SaveLayerShootingAudio(Audio:TRhythmAudio):string;
 function LoadLayerAudio(const Ref:TRhythmPlanRef;const Source:string;Direction:Integer):TRhythmAudio;
 implementation
 uses System.SysUtils,System.IOUtils,System.Hash,RhythmPaths,RhythmStyles,RhythmAudioCache,
-  RhythmBallPlan,RhythmFireworksPlan,RhythmRunnerPlan,RhythmBreakoutPlan,RhythmBombPlan,
+  RhythmBallPlan,RhythmBreakoutPlan,RhythmBombPlan,
   RhythmMiningPlan,RhythmTrainPlan,RhythmNavalPlan;
 function ShootingEvents(const Ref:TRhythmPlanRef):string;
 begin Result:=TPath.Combine(CacheFolder,Ref.SourceKey+'-s'+IntToStr(Ref.Sensitivity)+'-events-v1.json');end;
@@ -26,8 +26,6 @@ begin
       if Result=nil then raise Exception.Create('Movie shooting cache missing; prepare again');
     end;
     rsBall:Result:=TRhythmBallPlan.LoadAudioMetadata(Ref,Source,Direction);
-    rsFireworks:Result:=TFireworksPlan.LoadAudioMetadata(Ref,Source,Direction);
-    rsRunner:Result:=TRunnerPlan.LoadAudioMetadata(Ref,Source,Direction);
     rsBreakout:Result:=TBreakoutPlan.LoadAudioMetadata(Ref,Source,Direction);
     rsBombAction:Result:=TBombActionPlan.LoadAudioMetadata(Ref,Source,Direction);
     rsMining:Result:=TMiningPlan.LoadAudioMetadata(Ref,Source,Direction);

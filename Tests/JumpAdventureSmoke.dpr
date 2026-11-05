@@ -48,27 +48,31 @@ end;
 
 procedure Verify(const Plan:TJumpPlan;Audio:TRhythmAudio;LongFixture:Boolean);
 var
-  I,J,K,Stomps,Unassigned,Attacks,HitsOnBoss,UnassignedOnBoss,Springs,WrongCrossings,ShortBounces:Integer;
+  I,J,K,Stomps,Unassigned,Attacks,HitsOnBoss,UnassignedOnBoss,Springs,WrongCrossings:Integer;
+  RollHits,GroundEnemies:Integer;
   T,PrevY,EndTime,Offset,Crossing,Side:Double;
   N,A:TJumpNode;
   P,Q,Weak:TPointF;
   B:TJumpBoss;
+  Roll:TJumpRoll;
   H:TJumpHazard;
   Levels,Moving:TLevelSets;
-  BossDirections:set of Boolean;
+  BossDirections,FlightAxes:set of Boolean;
   OldBoss:Integer;
 begin
   Levels:=Default(TLevelSets);
   Moving:=Default(TLevelSets);
   Stomps:=0;
+  RollHits:=0;
+  GroundEnemies:=0;
   Unassigned:=0;
   Attacks:=0;
   HitsOnBoss:=0;
   UnassignedOnBoss:=0;
   Springs:=0;
   WrongCrossings:=0;
-  ShortBounces:=0;
   BossDirections:=[];
+  FlightAxes:=[];
   OldBoss:=-1;
   for I:=0 to High(Plan.Stages) do begin
     Include(Levels[Plan.Stages[I].Vertical],Plan.Stages[I].Level);
@@ -89,14 +93,31 @@ begin
     Need(Plan.Foot(N.Time-1E-6).Distance(P)<0.00004,'Arrival discontinuity');
     if N.Landing in [jlGround,jlSpring] then
       Need(Plan.Platform(I,N.Time).Distance(P)<0.00003,'Platform contact');
+    if N.Landing=jlStomp then begin
+      Need(Plan.EnemyTop(I,N.Time).Distance(P)<0.00003,'Enemy contact');
+      if N.Enemy=jeFlying then begin
+        T:=(N.Time+Plan.Nodes[I+1].Time)*0.5;
+        Need(Plan.Foot(T).Y>=N.Y+0.4199,'Flying enemy did not give a full rebound');
+        Q:=Plan.EnemyTop(I,N.Time-0.30);
+        if Odd(N.Variant) then Need((Q.X=P.X) and (Abs(Q.Y-P.Y)>0.08),'Vertical enemy drift')
+        else Need((Q.Y=P.Y) and (Abs(Q.X-P.X)>0.16),'Horizontal enemy drift');
+        Include(FlightAxes,Odd(N.Variant));
+      end else begin
+        Need(N.Enemy=jeGround,'Missing enemy type');
+        Inc(GroundEnemies);
+        Q:=Plan.Platform(I,N.Time);
+        Need((Abs(P.Y-Q.Y-2*JumpEnemyRadius)<0.00003) and
+          (Abs(Q.Y-A.Y)<0.00003) and (Abs(Q.Y-Plan.Nodes[I+1].Y)<0.00003),'Enemy is not on the flat road');
+      end;
+    end;
     J:=Plan.StageAt((A.Time+N.Time)*0.5);
     if (N.MoveX<>0) or (N.MoveY<>0) then
       Include(Moving[Plan.Stages[J].Vertical],Plan.Stages[J].Level);
     if N.Landing=jlSpring then Inc(Springs);
-    if Plan.Stages[J].Vertical then Need(N.Y>A.Y,'Climb did not gain height')
+    K:=Plan.RollAtNode(I-1);
+    if (K>=0) and (I<=Plan.Rolls[K].LastNode) then Need(N.X>A.X,'Rolling road must progress right')
+    else if Plan.Stages[J].Vertical then Need(N.Y>A.Y,'Climb did not gain height')
     else Need(N.X>A.X,'Horizontal route did not progress right');
-    if (N.Time-A.Time<0.49) and (A.Landing in [jlStomp,jlBoss]) and
-      (Plan.Legs[I-1].Height<0.5) then Inc(ShortBounces);
     EndTime:=N.Time;
     T:=Plan.Legs[I-1].Takeoff;
     P:=Plan.Foot(T);
@@ -104,6 +125,7 @@ begin
     if Plan.Legs[I-1].Height>0 then begin
       // 接地足の下向き通過を調べる。下から上がる一方向の足場は通過できる。
       for J:=Max(0,Plan.NodeAt(A.Time-7)-1) to Min(High(Plan.Nodes),Plan.NodeAt(N.Time+7)+1) do begin
+        if Plan.Nodes[J].Enemy=jeFlying then Continue;
         Need(not Plan.EarlierLanding(I-1,J,Crossing,Side),'Unresolved solid platform crossing');
         PrevY:=P.Y-Plan.Platform(J,T).Y;
         for K:=1 to 32 do begin
@@ -132,7 +154,6 @@ begin
   for I:=0 to High(Plan.Beats) do begin
     T:=Plan.Beats[I].Time;
     Need(Audio.Hits[Audio.NearestHit(T)].Time=T,'Accent timing changed');
-    J:=Plan.StageAt(T);
     K:=Plan.Beats[I].Node;
     if K<0 then begin
       Inc(Unassigned);
@@ -141,8 +162,10 @@ begin
     end;
     if Plan.Nodes[K].Landing=jlStomp then begin
       Inc(Stomps);
+      Need(Plan.Nodes[K-1].Landing<>jlStomp,'Consecutive enemy stomps');
     end;
     if Plan.Nodes[K].Landing<>jlBoss then Continue;
+    J:=Plan.StageAt(T);
     Inc(HitsOnBoss);
     B:=Plan.Bosses[Plan.Stages[J].Boss];
     P:=Plan.BossCore(Plan.Stages[J].Boss,T);
@@ -157,15 +180,33 @@ begin
     K:=Plan.BeatFrom(Plan.Nodes[B.LastNode].Time);
     Need((K<Length(Plan.Beats)) and (Plan.Beats[K].Node=B.LastNode),'Kill not on beat');
   end;
-  WriteLn(Format('%.2fs, %d stages, %d accents, %d stomps, %d unassigned accents, %d short bounces, %d springs, %d bosses, %d boss hits, %d unassigned boss accents, %d dodges, %d early platform crossings',
-    [Plan.Duration,Length(Plan.Stages),Length(Plan.Beats),Stomps,Unassigned,ShortBounces,Springs,
+  for I:=0 to High(Plan.Rolls) do begin
+    Roll:=Plan.Rolls[I];
+    T:=Plan.Nodes[Roll.FirstNode].Time;
+    P:=Plan.RollCenter(I,T);
+    Q:=Plan.Foot(T);
+    Need((Abs(Q.X-P.X)<0.00003) and (Abs(Q.Y-P.Y-JumpRollRadius)<0.00003),'Item activation missed');
+    for T in Roll.Hits do begin
+      Need(Audio.Hits[Audio.NearestHit(T)].Time=T,'Rolling hit moved off beat');
+      P:=Plan.RollCenter(I,T);
+      Q:=Plan.RollEnemyTop(I,T);
+      Need((Abs(Q.X-JumpEnemyRadius-P.X-JumpRollRadius)<0.00010) and
+        (Q.X+JumpEnemyRadius<Plan.Nodes[Roll.LastNode].X),'Rolling item missed the enemy on the road');
+      Inc(RollHits);
+    end;
+  end;
+  WriteLn(Format('%.2fs, %d stages, %d accents, %d stomps, %d unassigned foot accents, %d springs, %d bosses, %d boss hits, %d unassigned boss accents, %d dodges, %d early platform crossings',
+    [Plan.Duration,Length(Plan.Stages),Length(Plan.Beats),Stomps,Unassigned,Springs,
      Length(Plan.Bosses),HitsOnBoss,UnassignedOnBoss,Attacks,WrongCrossings]));
   Need(WrongCrossings=0,'Earlier landing found by independent sampler');
+  WriteLn('Rolling items: ',Length(Plan.Rolls),' / timed enemy hits: ',RollHits);
   if LongFixture then begin
     Need(Length(Plan.Beats)=Length(Audio.Hits),'Missing distinct accents');
     Need((Levels[False]=[1..5]) and (Levels[True]=[1..5]),'Missing direction/level coverage');
     Need((Moving[False]=[4,5]) and (Moving[True]=[4,5]),'Missing moving platforms');
-    Need((Stomps>0) and (Unassigned>0) and (ShortBounces>0) and (Springs>0),'Missing dense/gimmick coverage');
+    Need((Stomps>0) and (Unassigned>0) and (Springs>0),'Missing traversal coverage');
+    Need((Length(Plan.Rolls)>0) and (RollHits>=3),'Missing fast chains with rolling items');
+    Need((GroundEnemies>0) and (FlightAxes=[False,True]),'Missing ground or flying enemies');
     Need(BossDirections=[False,True],'Both boss directions not generated');
     Need((HitsOnBoss>5) and (UnassignedOnBoss>0) and (Attacks>0),'Missing boss attacks or dense accents');
   end;
@@ -228,13 +269,24 @@ begin
         Break;
       end;
     for I:=1 to High(Plan.Nodes) do
-      if Plan.Nodes[I].Landing=jlStomp then begin
+      if Plan.Nodes[I].Enemy=jeFlying then begin
         T:=Plan.Nodes[I].Time;
         Snapshot('jump-forward-hand',JumpBlend(Plan.Legs[I-1].Takeoff,T,0.50));
         Snapshot('stomp-before',T-0.018);
         Snapshot('stomp-contact',T);
         Break;
       end;
+    for I:=1 to High(Plan.Nodes) do
+      if (Plan.Nodes[I].Enemy=jeGround) and (Plan.Nodes[I].Time>1.60) then begin
+        T:=Plan.Nodes[I].Time;
+        Snapshot('ground-enemy-approach',T-1.60);
+        Snapshot('ground-enemy-before',T-0.10);
+        Break;
+      end;
+    if Length(Plan.Rolls)>0 then begin
+      Snapshot('rolling-item-before',Plan.Nodes[Plan.Rolls[0].FirstNode].Time-0.15);
+      Snapshot('rolling-item-contact',Plan.Rolls[0].Hits[1]);
+    end;
 
     // 同じ保存計画から足が触れないアクセントを除いても、画素が変わらない。
     if ParamCount=0 then begin

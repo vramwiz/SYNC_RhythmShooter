@@ -21,6 +21,7 @@ type
   public
     // Audio is borrowed from the existing host/preview cache; never freed here.
     property Audio:TRhythmAudio read FAudio write FAudio;
+    function GoalTime:Double; override;
     procedure Prepare(const Frame:TAnimationFrame);override;
     procedure Draw(Surface:TAnimationRenderSurface;const Frame:TAnimationFrame);override;
   end;
@@ -254,5 +255,11 @@ begin
   end;
   Sprite(Surface,6+Direction,StagePoint(Time,Schedule.EntryEnd,Schedule.ExitStart,Schedule.ExitEnd,Schedule.HoldTime),0.078,Width,Height,Direction);
 
+end;
+
+function TShootingAnimation.GoalTime:Double;
+begin
+  Result:=inherited GoalTime;
+  if FAudio<>nil then Result:=FSchedule.ClearTime;
 end;
 end.

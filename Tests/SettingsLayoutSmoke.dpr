@@ -105,7 +105,7 @@ begin
     if TComboBox(Form.FindComponent('ScrollDirection')).Items.Count<>StyleSmallCount(Style) then raise Exception.Create('Small category restore');
     if Form.FindComponent('MovieLayerStyle')<>nil then raise Exception.Create('Duplicate middle selection');
     if (Form.FindComponent('RhythmLayerVisible')<>nil) or (Form.FindComponent('MovieLayerVisible')<>nil) then raise Exception.Create('Obsolete layer controls');
-    if TTrackBar(Form.FindComponent('BossFrequency')).Parent.Visible<>(Style in [rsShooting,rsRunner,rsBreakout,rsBombAction,rsMining,rsTrain,rsNaval,rsJumpAdventure,rsFightingRush,rsSideRace]) then raise Exception.Create('Boss frequency visibility');
+    if TTrackBar(Form.FindComponent('BossFrequency')).Parent.Visible<>(Style in [rsShooting,rsBreakout,rsBombAction,rsMining,rsTrain,rsNaval,rsJumpAdventure,rsFightingRush,rsSideRace,rsMineCart]) then raise Exception.Create('Boss frequency visibility');
     if not TTrackBar(Form.FindComponent('GameThreshold')).Parent.Visible then raise Exception.Create('Audio density visibility');
     CheckOptionCaption(Form,'GameThresholdCaption','GameThreshold');
     if (Form.FindComponent('EqualizerVisible')=nil) or not TCheckBox(Form.FindComponent('EqualizerVisible')).Visible then raise Exception.Create('Equalizer option missing');
@@ -117,9 +117,8 @@ begin
      Form.Constraints.MinWidth:=0;Form.ClientWidth:=MulDiv(LogicalWidth,DPIs[D],96);Form.ClientHeight:=MulDiv(760,DPIs[D],96);
      Form.Repaint;Application.ProcessMessages;CheckLayout(Form);
      CheckOptionCaption(Form,'CategoryCaption','AnimationCategory');CheckOptionCaption(Form,'StyleCaption','AnimationStyle');CheckOptionCaption(Form,'DirectionCaption','ScrollDirection');CheckOptionCaption(Form,'SensitivityCaption','Sensitivity');
-     if Style=rsFireworks then CheckOptionCaption(Form,'RichnessCaption','FireworksRichness');
      if W=1 then begin Bitmap:=Form.GetFormImage;PNG:=TPngImage.Create;try PNG.Assign(Bitmap);PNG.SaveToFile(TPath.Combine(Folder,StyleId(Style)+'-'+IntToStr(DPIs[D])+'.png'));finally PNG.Free;Bitmap.Free;end;end;
-     if (W=2) and (Style in [rsShooting,rsFireworks]) and (TControl(Form.FindComponent('AnimationOptions')).Height<=MulDiv(44,DPIs[D],96)) then raise Exception.Create('Narrow option rows did not wrap');
+     if (W=2) and (Style=rsShooting) and (TControl(Form.FindComponent('AnimationOptions')).Height<=MulDiv(44,DPIs[D],96)) then raise Exception.Create('Narrow option rows did not wrap');
     end;
     // Custom-design lifecycle is covered at real monitor DPI by SettingsFormSmoke.
     if (Style=rsShooting) and (DPIs[D]=96) then begin Form.ClientWidth:=MulDiv(850,DPIs[D],96);TButton(Form.FindComponent('DesignTab')).Click;Form.Repaint;Application.ProcessMessages;CheckLayout(Form);end;

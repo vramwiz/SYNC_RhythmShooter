@@ -106,7 +106,7 @@ begin
     Need(TRhythmSettings.TryJSON(Settings.ToJSON,Parsed) and (Parsed.Plan.Key=''),'Stale density plan accepted');
   end;
   Need(TRhythmSettings.TryJSON('{"schema":1,"style":"runner","gameThreshold":-80}',Parsed) and
-    (Parsed.GameThreshold=20),'Hidden legacy setting changed runner density');
+    (Parsed.Style=rsJumpAdventure) and (Parsed.GameThreshold=20),'Hidden legacy setting changed migrated density');
   Need(TRhythmSettings.TryJSON('{"schema":1,"style":"rhythm-game","gameThreshold":-80}',Parsed) and
     (Parsed.GameThreshold=-80),'Legacy game setting was lost');
   WriteLn('Density fixture base=',Length(Raw),' sparse=',Length(Sparse),' thinned=',Length(Thin),' restored-with-extras=',Length(Dense));
