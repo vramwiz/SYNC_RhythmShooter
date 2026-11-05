@@ -43,83 +43,163 @@ begin
     Flush(Output);
   end;
 end;
+procedure CheckMarkers(const Markers:TOrbitMarkers;Count:Integer;Time,MinGap:Double);
+var I,J:Integer;Gap,Distance:Double;
+begin
+  for I:=0 to Count-1 do
+    for J:=0 to I-1 do begin
+      Gap:=Markers[I].Extent+Markers[J].Extent+MinGap;
+      Distance:=Hypot(Markers[I].Center.X-Markers[J].Center.X,Markers[I].Center.Y-Markers[J].Center.Y);
+      if Distance<Gap-1E-9 then
+        Need(False,Format('Marker outlines overlap at %.4f s, taps %d and %d',
+          [Time,Markers[J].TapIndex,Markers[I].TapIndex]));
+      Inc(Checks);
+    end;
+end;
+
 procedure CheckMarkerLayout;
-const Widths:array[0..3] of Integer=(960,540,320,720);
-  Heights:array[0..3] of Integer=(540,960,180,720);
-var State:TOrbitVisualState;Layout:TOrbitCourse;Markers:TOrbitMarkers;Point:TOrbitPoint;
-  Previous,Current:TArray<Integer>;LastMarkers:TOrbitMarkers;
-  View,Frame,Count,I,J,Index,LastIndex:Integer;Time,W,H,Gap:Double;ReadableFollower,Found:Boolean;
+const Widths:array[0..5] of Integer=(960,540,320,720,1920,576);
+  Heights:array[0..5] of Integer=(540,960,180,720,1080,324);
+var State:TOrbitVisualState;Course:TOrbitCourse;Markers,LastMarkers:TOrbitMarkers;Point,Ship:TOrbitPoint;
+  Previous,Current:TArray<Integer>;Entered:TArray<Boolean>;
+  View,Frame,Count,I,J,Index,LastIndex,MaxMarkers,Accepted:Integer;
+  Time,W,H,FullExtent,LeadStart:Double;Found:Boolean;
 begin
   Need(OrbitGameplayStart(Plan)=3,'Opening length');
-  Layout.Prepare(Plan,960,540);
-  State:=OrbitVisualState(Plan,1.2);
+  Course.Prepare(Plan,960,540);
+  LeadStart:=3-ORBIT_MARKER_LEAD;
+  State:=OrbitVisualState(Plan,LeadStart-0.05);
   Need(not State.Playing and (State.Horizon=0) and (State.Pulse=0) and
-    (Layout.Visible(State,1.2,Markers)=0),'Opening leaked a cue too early');
-  State:=OrbitVisualState(Plan,1.7);
+    (Course.Visible(State,LeadStart-0.05,Markers)=0),'Opening leaked a cue too early');
+  State:=OrbitVisualState(Plan,LeadStart+0.10);
   Need((State.PreviewAlpha>0) and (State.PreviewAlpha<1) and not State.Playing,'Preview did not fade in before gameplay');
-  Count:=Layout.Visible(State,1.7,Markers);
-  Need((Count>0) and (Markers[0].TapIndex=75) and (Markers[0].Radius>=0.95*OrbitHitRadius(540)),
-    'Fast lead-in target was too small at the start of the preview');
-  State:=OrbitVisualState(Plan,1.8);
-  Count:=Layout.Visible(State,1.8,Markers);
-  Need((Count>0) and (Markers[0].TapIndex=75) and (Markers[0].Radius>=0.99*OrbitHitRadius(540)) and
-    (State.PreviewAlpha>=0.99) and not State.Playing,'Fast lead-in target stayed small until the hit');
-  State:=OrbitVisualState(Plan,2.25);
-  Count:=Layout.Visible(State,2.25,Markers);
-  Need((Count>0) and (Markers[0].TapIndex=75) and not State.Playing and (State.LastHit=74) and (State.Pulse=0),
-    'First target was not visible before its hit');
+  State:=OrbitVisualState(Plan,LeadStart+0.35);
+  Need((State.PreviewAlpha>=0.99) and not State.Playing,'The guide did not finish fading in during the lead-in');
+  State:=OrbitVisualState(Plan,2.5);
+  Count:=Course.Visible(State,2.5,Markers);
+  Need((Count>0) and (Markers[0].TapIndex=75) and (Markers[0].Radius>=0.99*Course.HitRadiusAt(3)) and
+    not State.Playing and (State.LastHit=74) and (State.Pulse=0),
+    'First target was not visible before gameplay');
   State:=OrbitVisualState(Plan,3);
   Need(State.Playing and (State.FirstTap=75) and (State.LastHit=75),'First hit did not start at its original time');
-  ReadableFollower:=False;
-  SetLength(Previous,Plan.Count);SetLength(Current,Plan.Count);
+  SetLength(Previous,Plan.Count);
+  SetLength(Current,Plan.Count);
+  SetLength(Entered,Plan.Count);
   for View:=Low(Widths) to High(Widths) do begin
     W:=Widths[View];H:=Heights[View];
-    Layout.Prepare(Plan,W,H);
-    for I:=0 to Plan.Count-1 do Previous[I]:=-1;
-    for Frame:=0 to Ceil((Plan.SoundEnd-1.4)*60)+1 do begin
-      Time:=1.4+Frame/60;
+    Course.Prepare(Plan,W,H);
+    MaxMarkers:=0;
+    for I:=0 to Plan.Count-1 do begin Previous[I]:=-1;Entered[I]:=False;end;
+    for Frame:=0 to Ceil((Plan.SoundEnd-LeadStart)*60)+1 do begin
+      Time:=LeadStart+Frame/60;
       State:=OrbitVisualState(Plan,Time);
-      Count:=Layout.Visible(State,Time,Markers);
+      Count:=Course.Visible(State,Time,Markers);
+      MaxMarkers:=Max(MaxMarkers,Count);Ship:=Course.CursorAt(Time);
       for I:=0 to Plan.Count-1 do Current[I]:=-1;
       for I:=0 to Count-1 do begin
-        Index:=Markers[I].TapIndex;Current[Index]:=I;LastIndex:=Previous[Index];
-        Point:=Layout.CursorAt(Plan,Plan.Taps[Index].Time);
-        Need((Markers[I].Center.X=Point.X) and (Markers[I].Center.Y=Point.Y),'Cursor missed the marker at its hit');
-        Need((Point.X>=0) and (Point.X<=W) and (Point.Y>=0) and (Point.Y<=H),'Marker center left the playfield');
+        Index:=Markers[I].TapIndex;
+        Current[Index]:=I;
+        Need(Plan.Taps[Index].Time-Time<=State.Horizon+1E-9,'Preview marker exceeded the future guide');
+        Need(Markers[I].Radius>=OrbitMinimumMarkRadius(Min(W,H)),'Preview marker fell below its readable size');
+        Point:=Course.CursorAt(Plan.Taps[Index].Time);
+        Need((Markers[I].Center.X=Point.X) and (Markers[I].Center.Y=Point.Y),
+          'Cursor missed the fixed marker at its hit');
+        Need((Point.X>=Markers[I].Extent-1E-9) and (Point.X+Markers[I].Extent<=W+1E-9) and
+          (Point.Y>=Markers[I].Extent-1E-9) and (Point.Y+Markers[I].Extent<=H+1E-9),'Marker was clipped');
+        FullExtent:=OrbitMarkExtent(Course.HitRadiusAt(Plan.Taps[Index].Time),0.65)+0.055*Min(W,H)/3.7;
+        if Hypot(Point.X-Ship.X,Point.Y-Ship.Y)<=FullExtent then Entered[Index]:=True
+        else Need(not Entered[Index],'Ship passed over a visible target and left before its hit');
+        LastIndex:=Previous[Index];
         if LastIndex>=0 then begin
-          Need((Markers[I].Center.X=LastMarkers[LastIndex].Center.X) and
-            (Markers[I].Center.Y=LastMarkers[LastIndex].Center.Y),'Marker drifted between frames');
+          Need((Point.X=LastMarkers[LastIndex].Center.X) and (Point.Y=LastMarkers[LastIndex].Center.Y),
+            'Visible marker moved with the camera');
           Need((Markers[I].Radius>=LastMarkers[LastIndex].Radius) and
-            (Markers[I].Visibility>=LastMarkers[LastIndex].Visibility),'Marker shrank or faded before the hit');
+            (Markers[I].Visibility>=LastMarkers[LastIndex].Visibility),'Visible marker shrank or faded before contact');
         end;
-        if (I>0) and (Plan.Taps[Index].Time-Time>=0.5) and
-          (Markers[I].Radius>=0.44*OrbitHitRadius(Min(W,H))-1E-9) then ReadableFollower:=True;
-        for J:=0 to I-1 do begin
-          Gap:=Markers[I].Extent+Markers[J].Extent+ORBIT_MARKER_GAP;
-          if Sqr(Markers[I].Center.X-Markers[J].Center.X)+Sqr(Markers[I].Center.Y-Markers[J].Center.Y)<Sqr(Gap) then
-            Need(False,Format('Displayed marker outlines overlap, view %d, t %.4f, taps %d and %d, radii %.2f and %.2f, gap %.2f',
-              [View,Time,Index,Markers[J].TapIndex,Markers[I].Radius,Markers[J].Radius,Gap]))
-          else Inc(Checks);
-        end;
+        Inc(Checks);
       end;
       for I:=State.LastHit+1 to Plan.Count-1 do
-        if Previous[I]>=0 then Need(Current[I]>=0,'Visible marker disappeared before its hit');
+        if Previous[I]>=0 then Need(Current[I]>=0,'Visible marker disappeared before contact');
       for I:=0 to Plan.Count-1 do Previous[I]:=Current[I];
       LastMarkers:=Markers;
+      CheckMarkers(Markers,Count,Time,OrbitMarkerGap(Min(W,H)));
     end;
+    Accepted:=Course.HitCount(Plan.SoundEnd);
+    Need((Accepted>10) and (Accepted<Plan.Count-OrbitOpeningTapCount(Plan)),
+      '40 ms fixture did not exercise readable cue selection');
     for I:=OrbitOpeningTapCount(Plan) to Plan.Count-1 do begin
-      Time:=Plan.Taps[I].Time-0.50;
-      Count:=Layout.Visible(OrbitVisualState(Plan,Time),Time,Markers);
+      if Course.HitIndex(Plan.Taps[I].Time)<>I then Continue;
+      Time:=Plan.Taps[I].Time-ORBIT_MIN_MARKER_LEAD+1E-9;
+      Count:=Course.Visible(OrbitVisualState(Plan,Time),Time,Markers);
       Found:=False;
-      for J:=0 to Count-1 do
-        if (Markers[J].TapIndex=I) and (Markers[J].Visibility>=0.99) then Found:=True;
-      Need(Found,'40 ms chart hit had no fully visible marker 500 ms before contact');
+      for J:=0 to Count-1 do if Markers[J].TapIndex=I then Found:=True;
+      Need(Found,'An accepted marker appeared without its minimum lead');
     end;
+    WriteLn('Type.V view ',View,' accepted targets=',Accepted,' peak visible targets=',MaxMarkers);
   end;
-  Need(ReadableFollower,'Dense previews stayed tiny until they were the next hit');
 end;
+
+procedure CheckCrossingPreviews;
+const W=960;H=540;
+var Course:TOrbitCourse;Transfers:TArray<Double>;BeforeMarks,AfterMarks:TOrbitMarkers;
+  L:TOrbitLeg;I,J,K,Frame,BeforeCount,AfterCount,Revealed,Groups,EntryRevealed,ArcRevealed,AfterLeg,MarkLeg:Integer;
+  P,Q,Cross:TOrbitPoint;Time,Early,Later,ClearAt,MarkTime,Radius:Double;
+  function CrossingTime(FromBody:Integer;const Crossing:TOrbitPoint):Double;
+  var StartCenter,EndCenter,Position:TOrbitPoint;DX,DY:Double;
+  begin
+    StartCenter:=Course.Body(FromBody).Center;
+    EndCenter:=Course.Body(FromBody+1).Center;
+    Position:=Course.CursorAt(Transfers[FromBody]);
+    DX:=EndCenter.X-StartCenter.X;DY:=EndCenter.Y-StartCenter.Y;
+    Result:=Transfers[FromBody]+((Crossing.X-Position.X)*DX+(Crossing.Y-Position.Y)*DY)/
+      (Hypot(DX,DY)*Course.Speed);
+  end;
+begin
+  Course.Prepare(Plan,W,H);
+  SetLength(Transfers,Course.BodyCount);
+  for Frame:=1 to Floor(Plan.SoundEnd*200) do begin
+    Time:=Frame/200;
+    L:=Course.Leg(Course.LegAt(Time));
+    if (L.Kind=1) and (Transfers[L.FromBody]=0) then Transfers[L.FromBody]:=Time;
+  end;
+
+  Groups:=0;EntryRevealed:=0;ArcRevealed:=0;
+  Radius:=OrbitMinimumMarkRadius(H);
+  for I:=1 to Course.BodyCount-2 do begin
+    if (Transfers[I-1]=0) or (Transfers[I]=0) then Continue;
+    P:=Course.CursorAt(Transfers[I-1]);
+    Q:=Course.CursorAt(Transfers[I]);
+    if Odd(I) then Cross:=OrbitPoint(P.X,Q.Y) else Cross:=OrbitPoint(Q.X,P.Y);
+    Early:=CrossingTime(I-1,Cross);
+    Later:=CrossingTime(I,Cross);
+    if (Early<=3.01) or (Later<=Early) or (Later-Early>=ORBIT_MARKER_LEAD) then Continue;
+    AfterLeg:=Course.LegAt(Transfers[I]);
+    ClearAt:=Early+Min(Radius/Course.Speed,(Later-Course.Body(I).RX/Course.Speed-Early)*0.5);
+    BeforeCount:=Course.Visible(OrbitVisualState(Plan,Early-0.01),Early-0.01,BeforeMarks);
+    AfterCount:=Course.Visible(OrbitVisualState(Plan,ClearAt+0.002),ClearAt+0.002,AfterMarks);
+    Revealed:=0;
+    for J:=0 to AfterCount-1 do begin
+      MarkTime:=Plan.Taps[AfterMarks[J].TapIndex].Time;
+      if MarkTime-Early+0.01>=ORBIT_MARKER_LEAD then Continue;
+      MarkLeg:=Course.LegAt(MarkTime);
+      if MarkLeg=AfterLeg then begin
+        if Abs(MarkTime-Later)<Radius/Course.Speed then Continue;
+        if MarkTime<Later then Inc(EntryRevealed) else Inc(Revealed);
+      end else if (MarkLeg=AfterLeg+1) and (Course.Leg(MarkLeg).Kind=0) then Inc(ArcRevealed)
+      else Continue;
+      for K:=0 to BeforeCount-1 do
+        Need(BeforeMarks[K].TapIndex<>AfterMarks[J].TapIndex,
+          'A marker on the later branch appeared before the first crossing pass');
+    end;
+    if Revealed>=2 then Inc(Groups);
+  end;
+  Need(Groups>0,'No crossing revealed a group of markers beyond the junction');
+  Need((EntryRevealed>0) and (ArcRevealed>0),'The fixture missed the branch entrance or its following arc');
+  WriteLn('Type.V crossing groups revealed=',Groups,' entrance=',EntryRevealed,' following arc=',ArcRevealed);
+end;
+
 procedure CheckDensePreview;
-var Audio:TRhythmAudio;Dense:TOrbitPlan;State:TOrbitVisualState;Layout:TOrbitCourse;
+var Audio:TRhythmAudio;Dense:TOrbitPlan;State:TOrbitVisualState;Course:TOrbitCourse;
   Markers:TOrbitMarkers;I,Count:Integer;Time:Double;
 begin
   Audio:=TRhythmAudio.Create;Dense:=nil;
@@ -130,64 +210,138 @@ begin
       Audio.Hits[I].Time:=I*0.001;Audio.Hits[I].Strength:=0.5;
     end;
     Dense:=TOrbitPlan.Build(Audio,20);
-    State:=OrbitVisualState(Dense,3);
-    Layout.Prepare(Dense,960,540);
-    Count:=Layout.Visible(State,3,Markers);
-    Need((Count>=40) and (Markers[0].TapIndex=State.LastHit+1),
-      'Full playfield did not preview the upcoming notes');
+    Course.Prepare(Dense,960,540);
+    Need((Course.HitCount(Dense.SoundEnd)>5) and (Course.HitCount(Dense.SoundEnd)<Dense.Count div 10),
+      'Millisecond chart did not select a readable set of marks');
     for I:=3001 to 6999 do begin
       Time:=Dense.Taps[I].Time-0.0005;
-      Count:=Layout.Visible(OrbitVisualState(Dense,Time),Time,Markers);
-      Need((Count>0) and (Markers[0].TapIndex=I),'Full playfield skipped the next hit');
+      State:=OrbitVisualState(Dense,Time);
+      Count:=Course.Visible(State,Time,Markers);
+      CheckMarkers(Markers,Count,Time,OrbitMarkerGap(540));
     end;
     FreeAndNil(Dense);
     SetLength(Audio.Hits,1);
     Audio.Hits[0].Time:=Audio.SoundEnd;
     Dense:=TOrbitPlan.Build(Audio,20);
-    State:=OrbitVisualState(Dense,7.4);
-    Layout.Prepare(Dense,960,540);
-    Need(Layout.Visible(State,7.4,Markers)=1,'Final note was never previewed');
+    Course.Prepare(Dense,960,540);
+    Need(Course.Visible(OrbitVisualState(Dense,7.4),7.4,Markers)=1,'Final note was never previewed');
   finally
     Dense.Free;Audio.Free;
   end;
 end;
-procedure CheckSensitivityCourse;
-var Sparse:TOrbitPlan;DenseCourse,SparseCourse:TOrbitCourse;I,J:Integer;
-  DenseDistance,SparseDistance,Time:Double;P,Q,PreviousDense,PreviousSparse:TOrbitPoint;
-  Moved:Boolean;
+procedure CheckUniformTravel;
+const Gaps:array[0..2] of Double=(0.04,0.11,0.23);
+var Audio:TRhythmAudio;Mixed:TOrbitPlan;Course:TOrbitCourse;Leg:TOrbitLeg;Planet:TOrbitBody;
+  LastPoint,Point,Other,Before,After:TOrbitPoint;Time,Gap,Start,Distance,Ratio,MinRatio,Sweep,PreviousTime:Double;
+  I,J,LegIndex,PreviousLeg,Visits,Transfers:Integer;
+  procedure CheckTangent(LowTime,HighTime:Double;OldLeg:Integer);
+  const Dt=1E-5;
+  var Step:Integer;Boundary:Double;A,B,C,D:TOrbitPoint;
+  begin
+    for Step:=1 to 32 do begin
+      Boundary:=(LowTime+HighTime)*0.5;
+      if Course.LegAt(Boundary)=OldLeg then LowTime:=Boundary else HighTime:=Boundary;
+    end;
+    Boundary:=(LowTime+HighTime)*0.5;
+    A:=Course.CursorAt(Boundary-2*Dt);B:=Course.CursorAt(Boundary-Dt);
+    C:=Course.CursorAt(Boundary+Dt);D:=Course.CursorAt(Boundary+2*Dt);
+    Need(Hypot((B.X-A.X)-(D.X-C.X),(B.Y-A.Y)-(D.Y-C.Y))<Course.Speed*Dt*0.002,
+      'Straight connector and orbit did not share a tangent');
+  end;
 begin
-  Sparse:=TOrbitPlan.Build(A,80);
+  Audio:=TRhythmAudio.Create;Mixed:=nil;
   try
-    DenseCourse.Prepare(Plan,960,540);
-    SparseCourse.Prepare(Sparse,960,540);
-    Need(Plan.Count>Sparse.Count*2,'Fixture does not exercise sensitivity');
-    Moved:=False;
-    for I:=OrbitOpeningTapCount(Sparse) to Sparse.Count-1 do begin
-      Time:=Sparse.Taps[I].Time;
-      J:=Plan.Before(Time);
-      Need((J>=0) and (Plan.Taps[J].Time=Time),'Sensitivity moved a common hit time');
-      P:=DenseCourse.Center(J);Q:=SparseCourse.Center(I);
-      if Hypot(P.X-Q.X,P.Y-Q.Y)>OrbitHitRadius(540) then Moved:=True;
+    Audio.Duration:=32;Audio.SoundEnd:=32;
+    SetLength(Audio.Hits,215);
+    Time:=0;
+    for I:=0 to High(Audio.Hits) do begin
+      Audio.Hits[I].Time:=Time;Audio.Hits[I].Strength:=0.8;
+      Time:=Time+Gaps[I mod Length(Gaps)];
+      if I=95 then Time:=Time+3;
     end;
-    Need(Moved,'Sensitivity did not change common hit positions');
-    DenseDistance:=0;SparseDistance:=0;
-    PreviousDense:=DenseCourse.CursorAt(Plan,4);
-    PreviousSparse:=SparseCourse.CursorAt(Sparse,4);
-    for I:=1 to 2400 do begin
-      Time:=4+I/240;
-      P:=DenseCourse.CursorAt(Plan,Time);
-      Q:=SparseCourse.CursorAt(Sparse,Time);
-      DenseDistance:=DenseDistance+Hypot(P.X-PreviousDense.X,P.Y-PreviousDense.Y);
-      SparseDistance:=SparseDistance+Hypot(Q.X-PreviousSparse.X,Q.Y-PreviousSparse.Y);
-      PreviousDense:=P;
-      PreviousSparse:=Q;
+    SetLength(Audio.Hits,Length(Audio.Hits)+1);
+    Audio.Hits[High(Audio.Hits)].Time:=Audio.SoundEnd;
+    Audio.Hits[High(Audio.Hits)].Strength:=0.8;
+    Mixed:=TOrbitPlan.Build(Audio,20);
+    Course.Prepare(Mixed,960,540);
+    Visits:=0;Transfers:=0;PreviousLeg:=-1;MinRatio:=1;Sweep:=0;PreviousTime:=0;
+    for I:=1 to Mixed.Count-1 do begin
+      Start:=Mixed.Taps[I-1].Time;
+      Gap:=Mixed.Taps[I].Time-Start;
+      LastPoint:=Course.CursorAt(Start);
+      Distance:=0;
+      for J:=1 to 160 do begin
+        Time:=Start+Gap*J/160;
+        Point:=Course.CursorAt(Time);
+        Distance:=Distance+Hypot(Point.X-LastPoint.X,Point.Y-LastPoint.Y);
+        LegIndex:=Course.LegAt(Time);
+        Leg:=Course.Leg(LegIndex);
+        Planet:=Course.Body(Leg.FromBody);
+        Need(Hypot(Point.X-Planet.Center.X,Point.Y-Planet.Center.Y)>Planet.Radius,'Route entered a planet');
+        if LegIndex<>PreviousLeg then begin
+          if (PreviousLeg>=0) and (LegIndex=PreviousLeg+1) then CheckTangent(PreviousTime,Time,PreviousLeg);
+          Need(Sweep<2*Pi,'Ship made a full lap before leaving a planet');
+          Sweep:=0;
+          if Leg.Kind=0 then Inc(Visits);
+          if Leg.Kind=1 then begin
+            Inc(Transfers);
+            Other:=Course.Body(Leg.ToBody).Center;
+            Need(Hypot(Other.X-Planet.Center.X,Other.Y-Planet.Center.Y)>180,'Two planets shared a screen position');
+          end;
+          PreviousLeg:=LegIndex;
+        end else if Leg.Kind=0 then begin
+          Before:=OrbitPoint(LastPoint.X-Planet.Center.X,LastPoint.Y-Planet.Center.Y);
+          After:=OrbitPoint(Point.X-Planet.Center.X,Point.Y-Planet.Center.Y);
+          Sweep:=Sweep+Abs(ArcTan2(Before.X*After.Y-Before.Y*After.X,Before.X*After.X+Before.Y*After.Y));
+        end;
+        LastPoint:=Point;PreviousTime:=Time;
+      end;
+      Ratio:=Distance/(Course.Speed*Gap);
+      MinRatio:=Min(MinRatio,Ratio);
+      Need((Ratio>=0.995) and (Ratio<=1.000001),'Cursor speed changed with the audio gap');
+      Inc(Checks);
     end;
-    Need(DenseDistance>1.8*SparseDistance,'Dense course did not increase travel and speed');
-    WriteLn('Type.V distance in 10 s, sparse=',SparseDistance:0:1,' px, dense=',DenseDistance:0:1,' px');
+    Need(Sweep<2*Pi,'Final orbit contained a full lap');
+    Need((Visits>=3) and (Transfers=Visits-1),Format('Incomplete planetary journey (%d visits, %d transfers)',[Visits,Transfers]));
+    WriteLn('Type.V visits=',Visits,' transfers=',Transfers,' minimum travel ratio=',MinRatio:0:6);
   finally
-    Sparse.Free;
+    Mixed.Free;Audio.Free;
   end;
 end;
+
+procedure CheckColdEqualizer;
+var Cold:TRhythmRenderer;First:string;
+begin
+  Cold:=TRhythmRenderer.Create;
+  try
+    Cold.ConfigureStyle(rsRhythmGame,Ref,100,1);
+    Cold.Render(Image,Meta,4.2,0);
+    First:=ImageHash;
+    Cold.Render(Image,Meta,8.2,0);
+    Cold.Render(Image,Meta,4.2,0);
+    Need(ImageHash=First,'First frame used the wrong planet for the equalizer');
+  finally
+    Cold.Free;
+  end;
+end;
+
+procedure SnapshotTransfer;
+var Course:TOrbitCourse;Time,Start:Double;
+begin
+  Course.Prepare(Plan,Image.Width,Image.Height);
+  Time:=OrbitGameplayStart(Plan);
+  while (Time<Plan.SoundEnd) and (Course.Leg(Course.LegAt(Time)).Kind<>1) do Time:=Time+0.005;
+  Need(Time<Plan.SoundEnd,'No interplanetary transfer in the presentation fixture');
+  Start:=Time;
+  while (Time<Plan.SoundEnd) and (Course.Leg(Course.LegAt(Time)).Kind=1) do Time:=Time+0.005;
+  Time:=(Start+Time)*0.5;
+  Render.UseD2D:=True;
+  Render.ConfigureStyle(rsRhythmGame,Ref,100,0);
+  Render.Render(Image,Meta,Time,0);
+  OverlayPreview(Image);
+  Snapshot('type-v-transfer');
+end;
+
 begin A:=nil;Meta:=nil;Plan:=nil;Render:=nil;Surface:=nil;Image:=nil;PNG:=nil;Checks:=0;Frames:=0;
   try
     ConfigureRhythmProduct('SYNC_RhythmGame','Presentation native',rsRhythmGame);
@@ -237,8 +391,9 @@ begin A:=nil;Meta:=nil;Plan:=nil;Render:=nil;Surface:=nil;Image:=nil;PNG:=nil;Ch
     SetLength(A.Hits,500);for I:=0 to High(A.Hits) do begin A.Hits[I].Time:=I*0.04;A.Hits[I].Strength:=0.3+(I mod 8)*0.1;end;
     Plan:=TOrbitPlan.Build(A,20);Ref:=NewPlanRef(A.Key,50,0,rsRhythmGame,121);Ref.SourceRevision:=Revision;Plan.Save(Ref,A);Meta:=TOrbitPlan.LoadAudioMetadata(Ref,Source,0);
     CheckMarkerLayout;
+    CheckCrossingPreviews;
     CheckDensePreview;
-    CheckSensitivityCourse;
+    CheckUniformTravel;
     Render:=TRhythmRenderer.Create;
     if GetEnvironmentVariable('RHYTHM_ORBIT_BENCHMARK')='1' then MeasureFrames
     else
@@ -261,6 +416,7 @@ begin A:=nil;Meta:=nil;Plan:=nil;Render:=nil;Surface:=nil;Image:=nil;PNG:=nil;Ch
       Render.ConfigureStyle(rsRhythmGame,Ref,100,0);Render.Render(Image,nil,2.4,0);OffHash:=ImageHash;
       Render.ConfigureStyle(rsRhythmGame,Ref,100,1);Render.Render(Image,nil,2.4,0);Need(ImageHash=OffHash,'No-audio overlay unsafe');
     end;
+    if GetEnvironmentVariable('RHYTHM_ORBIT_BENCHMARK')<>'1' then begin CheckColdEqualizer;SnapshotTransfer;end;
     Activity:=EqualizerActivity(nil,1);Need(not Activity.Valid,'Nil audio reaction');
     TFile.WriteAllText(TPath.Combine(Folder,'result.json'),Format('{"checks":%d,"frames":%d,"opaqueCore":true,"symbols":3,"settingsStyles":12,"planUnchanged":true}',[Checks,Frames]),TEncoding.UTF8);
     WriteLn('Orbit presentation PASS checks=',Checks,' frames=',Frames);

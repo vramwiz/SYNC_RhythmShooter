@@ -6,6 +6,7 @@ type TOrbitMarkKind=(omCircle,omArrow,omStar,omChord);
 function OrbitMarkKind(const Tap:TOrbitTap):TOrbitMarkKind;
 function OrbitMarkColor(const Tap:TOrbitTap):TColor;
 function OrbitHitRadius(ShortSide:Double):Double;
+function OrbitMinimumMarkRadius(ShortSide:Double):Double;
 function OrbitMarkExtent(Radius,Approach:Double):Double;
 procedure DrawOrbitMark(Surface:TAnimationRenderSurface;X,Y,Radius,Angle,Opacity,Approach:Double;
   Kind:TOrbitMarkKind;Color:TColor;Visibility:Double=1);
@@ -18,6 +19,10 @@ begin
   // 円の直径は画面の短辺の9.2%。予告の終点と判定の閃光で共通に使う。
   Result:=Max(1.0,ShortSide*0.046);
 end;
+function OrbitMinimumMarkRadius(ShortSide:Double):Double;
+begin
+  Result:=OrbitHitRadius(ShortSide)*0.72;
+end;
 function ApproachRadius(Radius,Approach:Double):Double;
 begin
   Result:=Radius*(1+0.75*(1-Approach));
@@ -26,9 +31,13 @@ function OutlineWidth(Radius:Double):Double;
 begin
   Result:=Max(1.0,Radius*0.16);
 end;
+function ApproachWidth(Radius:Double):Double;
+begin
+  Result:=Max(1.0,Radius*0.10);
+end;
 function OrbitMarkExtent(Radius,Approach:Double):Double;
 begin
-  Result:=Max(Radius+OutlineWidth(Radius)*0.5,ApproachRadius(Radius,Approach)+0.5);
+  Result:=Max(Radius+OutlineWidth(Radius)*0.5,ApproachRadius(Radius,Approach)+ApproachWidth(Radius)*0.5);
 end;
 function OrbitMarkKind(const Tap:TOrbitTap):TOrbitMarkKind;
 begin if Tap.Strength>=0.78 then Result:=omStar else if Tap.Chain>1 then Result:=omArrow else Result:=omCircle;end;
@@ -51,10 +60,10 @@ begin
   if (Opacity<=0) or (Radius<=0) or (Visibility<=0) then Exit;
   R:=Radius;
   // 出現時だけフェードし、表示後の予告は塗りつぶして背景から分離する。
-  Surface.Circle(X,Y,R,Dark(Color,0.30+0.20*Opacity),True,1,Visibility);
-  Surface.Circle(X,Y,R,Dark(Color,0.55+0.45*Opacity),False,OutlineWidth(R),Visibility);
-  Surface.Circle(X,Y,ApproachRadius(R,Approach),Color,False,1,Opacity*0.40*Visibility);
-  R:=R*0.53;Stroke:=Max(1.5,R*0.32);
+  Surface.Circle(X,Y,R,Dark(Color,0.36+0.18*Opacity),True,1,Visibility);
+  Surface.Circle(X,Y,R,Color,False,OutlineWidth(R),Visibility);
+  Surface.Circle(X,Y,ApproachRadius(R,Approach),Color,False,ApproachWidth(R),(0.48+0.26*Opacity)*Visibility);
+  R:=R*0.65;Stroke:=Max(1.5,R*0.30);
   case Kind of
     omCircle:Surface.Circle(X,Y,R*0.45,clWhite,True,1,Visibility);
     omChord:begin

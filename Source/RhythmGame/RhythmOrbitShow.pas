@@ -3,7 +3,7 @@
 interface
 uses RhythmOrbitPlan,RhythmOrbitTypes,RhythmRenderSurface;
 // 背景層と前景層を明示して合成。判定位置・カメラ・採用音は変更しない。
-procedure DrawOrbitShow(Surface:TAnimationRenderSurface;Plan:TOrbitPlan;Time,W,H:Double;const Camera:TOrbitCamera;Foreground:Boolean);
+procedure DrawOrbitShow(Surface:TAnimationRenderSurface;Plan:TOrbitPlan;Time,W,H:Double;const FirstPlanet,Destination:TOrbitPoint;Foreground:Boolean);
 // 遠方へ飛ぶ見た目の縮小だけを返す。保存された実接触位置はそのまま。
 function OrbitShipSize(Plan:TOrbitPlan;Time:Double):Double;
 implementation
@@ -14,10 +14,8 @@ function OrbitShipSize(Plan:TOrbitPlan;Time:Double):Double;
 begin Result:=1;if (Plan=nil) or (Plan.Version<3) or (Plan.Count=0) then Exit;
   if Time>Plan.Stages[1] then Result:=1-0.68*Smooth((Time-Plan.Stages[1])/(Plan.Stages[2]-Plan.Stages[1]));
 end;
-procedure DrawOrbitShow(Surface:TAnimationRenderSurface;Plan:TOrbitPlan;Time,W,H:Double;const Camera:TOrbitCamera;Foreground:Boolean);
-var I:Integer;U,V,Alpha,Angle,R,Length,Scale,S,X,Y:Double;Center:TOrbitPoint;L:TOrbitLeg;
-  function Screen(const P:TOrbitPoint):TOrbitPoint;
-  begin Result:=OrbitProject(P,Camera,W/H);Result.X:=Result.X*W;Result.Y:=Result.Y*H;end;
+procedure DrawOrbitShow(Surface:TAnimationRenderSurface;Plan:TOrbitPlan;Time,W,H:Double;const FirstPlanet,Destination:TOrbitPoint;Foreground:Boolean);
+var I:Integer;U,V,Alpha,Angle,R,Length,Scale,S,X,Y:Double;Center:TOrbitPoint;
   // Small original vector glyphs avoid installed-font and DPI differences in headless/export.
   function Glyph(C:Char):Cardinal;
   begin case C of
@@ -34,11 +32,11 @@ var I:Integer;U,V,Alpha,Angle,R,Length,Scale,S,X,Y:Double;Center:TOrbitPoint;L:T
   end;
 begin
   if (Plan=nil) or (Plan.Version<3) or (Plan.Count=0) then Exit;
-  S:=Min(W,H);Scale:=H/Camera.Span;
+  S:=Min(W,H);Scale:=S/3.7;
   if Time<Plan.Stages[0] then begin
     U:=EnsureRange(Time/Plan.Stages[0],0.0,1.0);V:=Smooth(U);Alpha:=Sqr(1-U);
     if Foreground then begin Caption('SYNC',0.78,Min(1.0,U*8)*(1-Smooth((U-0.58)/0.42)));Exit;end;
-    Center:=Screen(Plan.Bodies[0].Center);
+    Center:=FirstPlanet;
     // Layered star tunnel converges on the already planned first orbit, not a second route.
     for I:=0 to 79 do begin Angle:=I*2.399963;R:=0.05+Frac(I*0.618+U*1.9)*0.76;Length:=(0.018+0.13*V)*Alpha;
       X:=Cos(Angle);Y:=Sin(Angle);Surface.Line(Center.X+X*R*W,Center.Y+Y*R*H,Center.X+X*(R+Length)*W,Center.Y+Y*(R+Length)*H,RGB(111,205,255),1+I mod 2,Alpha*0.36);
@@ -53,10 +51,10 @@ begin
     end;
   end else if Time>=Plan.Stages[1] then begin
     U:=EnsureRange((Time-Plan.Stages[1])/(Plan.Stages[2]-Plan.Stages[1]),0.0,1.0);V:=Smooth(U);
-    L:=Plan.Legs[Plan.LegCount-1];Center:=Screen(L.D);Alpha:=Smooth(U*2);
+    Center:=Destination;Alpha:=Smooth(U*2);
     if Foreground then begin
-      if Time>=Plan.Stages[3] then begin Caption('CLEAR',0.17,Smooth((Time-Plan.Stages[3])/Max(0.002,Min(0.18,(Plan.SoundEnd-Plan.Stages[3])*0.6))));
-        Surface.Line(W*0.35,H*0.245,W*0.65,H*0.245,RGB(110,222,255),2,0.65);
+      if U>=0.85 then begin Caption('CLEAR',0.17,Smooth((U-0.85)/0.15));
+        Surface.Line(W*0.35,H*0.245,W*0.65,H*0.245,RGB(110,222,255),2,0.65*Smooth((U-0.85)/0.15));
       end;Exit;
     end;
     // The portal is the actual terminal point; the ship and final beats arrive on its center.

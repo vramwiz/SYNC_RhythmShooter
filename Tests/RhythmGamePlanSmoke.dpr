@@ -151,8 +151,11 @@ begin
           Snapshot('depart-portal-'+IntToStr(Backend),Plan.Stages[2]);Snapshot('clear-'+IntToStr(Backend),Duration-0.01);
           Leg:=Plan.Legs[1];Snapshot('orbit-close-'+IntToStr(Backend),(Leg.Start+Leg.Finish)/2);
           Leg:=Plan.Legs[2];for J:=0 to 4 do Snapshot('transfer-'+IntToStr(Backend)+'-'+IntToStr(J),Leg.Start+(Leg.Finish-Leg.Start)*J/4);
-          Tap:=Plan.Taps[24];Snapshot('tap-before-'+IntToStr(Backend),Tap.Time-0.05);Snapshot('tap-hit-'+IntToStr(Backend),Tap.Time);Snapshot('tap-fade-'+IntToStr(Backend),Tap.Time+0.16);
-          Course.Prepare(Plan,Image.Width,Image.Height);P:=Course.Center(24);Renderer.Render(Image,Tap.Time,0);
+          Course.Prepare(Plan,Image.Width,Image.Height);
+          J:=Course.HitIndex(Plan.SoundEnd*0.25);
+          Need(J>=0,'No readable marker in the planet fixture');
+          Tap:=Plan.Taps[J];Snapshot('tap-before-'+IntToStr(Backend),Tap.Time-0.05);Snapshot('tap-hit-'+IntToStr(Backend),Tap.Time);Snapshot('tap-fade-'+IntToStr(Backend),Tap.Time+0.16);
+          P:=Course.CursorAt(Tap.Time);Renderer.Render(Image,Tap.Time,0);
           Need(GetRValue(ColorToRGB(Image.Canvas.Pixels[Round(P.X),Round(P.Y)]))>200,'Raster contact missing');
         end;
         if C=3 then for J:=0 to 3 do Snapshot('roll-'+IntToStr(Backend)+'-'+IntToStr(J),8.1+J*0.05);
