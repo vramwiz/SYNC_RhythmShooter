@@ -3,6 +3,8 @@
 interface
 uses System.Types,Vcl.Graphics,RhythmImageBank,RhythmDesignTypes,RhythmD2D,RhythmAlphaRaster;
 type
+  TAnimationQuad=array[0..3] of TPoint;
+  PAnimationQuad=^TAnimationQuad;
   TAnimationScaledBuckets=array[0..2] of TBitmap;
   TAnimationRenderSurface=class
   private
@@ -15,7 +17,8 @@ type
     FAlphaLayer,FAlphaMask:TBitmap;
     FD2DActive,FUseD2D,FLastD2D:Boolean;
     // GDI用の形状被覆マスク。既定Opacity=1の描画経路は変更しない。
-    procedure BlendPrimitive(Kind:Integer;X1,Y1,X2,Y2,Stroke:Double;Color:TColor;Opacity:Double);
+    procedure BlendPrimitive(Kind:Integer;X1,Y1,X2,Y2,Stroke:Double;Color:TColor;Opacity:Double;
+      Quad:PAnimationQuad=nil);
     procedure ResetScaled;
     function GetCanvas:TCanvas;
   public
@@ -31,8 +34,7 @@ type
     procedure Circle(X,Y,Radius:Double;Color:TColor;Filled:Boolean;Stroke:Double=1;Opacity:Double=1);
     procedure Line(X1,Y1,X2,Y2:Double;Color:TColor;Stroke:Double=1;Opacity:Double=1);
     procedure FillRect(X1,Y1,X2,Y2:Double;Color:TColor;Opacity:Double=1);
-    // 不透明な四辺形だけを追加。既存プリミティブ・alpha経路には触れない。
-    procedure FillQuad(const A,B,C,D:TPointF;Color:TColor);
+    procedure FillQuad(const A,B,C,D:TPointF;Color:TColor;Opacity:Double=1);
     procedure ApplyChoices(const Choices:array of TRhythmDesign;Force:Boolean=False);
     property Images:TAnimationImageBank read FImages;
     property Canvas:TCanvas read GetCanvas;
@@ -139,23 +141,34 @@ begin
   if Opacity<1 then begin BlendPrimitive(0,X1,Y1,X2,Y2,1,Color,Opacity);Exit;end;
   Canvas.Brush.Style:=bsSolid;Canvas.Brush.Color:=Color;Canvas.FillRect(Rect(Round(X1),Round(Y1),Round(X2),Round(Y2)));
 end;
-procedure TAnimationRenderSurface.FillQuad(const A,B,C,D:TPointF;Color:TColor);
-var Points:array[0..3] of TPoint;
+procedure TAnimationRenderSurface.FillQuad(const A,B,C,D:TPointF;Color:TColor;Opacity:Double);
+var Points:TAnimationQuad;
 begin
-  if FD2DActive then begin FActiveD2D.FillQuad(A,B,C,D,Color);Exit;end;
-  if FAlphaRaster.Active then begin FAlphaRaster.FillQuad(A,B,C,D,Color);Exit;end;
+  if Opacity<=0 then Exit;
+  if FD2DActive then begin FActiveD2D.FillQuad(A,B,C,D,Color,Opacity);Exit;end;
+  if FAlphaRaster.Active then begin FAlphaRaster.FillQuad(A,B,C,D,Color,Opacity);Exit;end;
   Points[0]:=Point(Round(A.X),Round(A.Y));Points[1]:=Point(Round(B.X),Round(B.Y));
   Points[2]:=Point(Round(C.X),Round(C.Y));Points[3]:=Point(Round(D.X),Round(D.Y));
+  if Opacity<1 then begin BlendPrimitive(4,0,0,0,0,1,Color,Opacity,@Points);Exit;end;
   Canvas.Pen.Style:=psClear;Canvas.Brush.Style:=bsSolid;Canvas.Brush.Color:=Color;
   Canvas.Polygon(Points);Canvas.Pen.Style:=psSolid;
 end;
-procedure TAnimationRenderSurface.BlendPrimitive(Kind:Integer;X1,Y1,X2,Y2,Stroke:Double;Color:TColor;Opacity:Double);
+procedure TAnimationRenderSurface.BlendPrimitive(Kind:Integer;X1,Y1,X2,Y2,Stroke:Double;Color:TColor;Opacity:Double;
+  Quad:PAnimationQuad);
 type PPixel=^TPixel;TPixel=packed record B,G,R,A:Byte;end;
-var L,T,R,B,W,H,X,Y,Pad:Integer;Mask,Pixel:PPixel;C:Longint;Blend:TBlendFunction;Canvas:TCanvas;
+var L,T,R,B,W,H,X,Y,Pad,I:Integer;Mask,Pixel:PPixel;C:Longint;Blend:TBlendFunction;Canvas:TCanvas;
+  Points:TAnimationQuad;
 begin
   if (FTarget=nil) or (Opacity<=0) then Exit;
   Pad:=Ceil(Max(1.0,Stroke)*0.5)+2;
-  if Kind>=2 then begin
+  if Quad<>nil then begin
+    L:=Quad^[0].X; R:=L; T:=Quad^[0].Y; B:=T;
+    for I:=1 to High(Quad^) do begin
+      L:=Min(L,Quad^[I].X); R:=Max(R,Quad^[I].X);
+      T:=Min(T,Quad^[I].Y); B:=Max(B,Quad^[I].Y);
+    end;
+    Dec(L,Pad); Dec(T,Pad); Inc(R,Pad); Inc(B,Pad);
+  end else if Kind>=2 then begin
     L:=Floor(X1-X2)-Pad;R:=Ceil(X1+X2)+Pad;
     T:=Floor(Y1-X2)-Pad;B:=Ceil(Y1+X2)+Pad;
   end else begin
@@ -182,6 +195,11 @@ begin
     2,3:begin
       if Kind=2 then Canvas.Pen.Style:=psClear else Canvas.Brush.Style:=bsClear;
       Canvas.Ellipse(Round(X1-X2)-L,Round(Y1-X2)-T,Round(X1+X2)-L,Round(Y1+X2)-T);
+    end;
+    4:begin
+      for I:=0 to High(Points) do Points[I]:=Point(Quad^[I].X-L,Quad^[I].Y-T);
+      Canvas.Pen.Style:=psClear;
+      Canvas.Polygon(Points);
     end;
   end;
   GdiFlush;

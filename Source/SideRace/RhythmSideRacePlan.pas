@@ -3,7 +3,10 @@
 interface
 uses System.Types;
 
-const SideHeroHalf=0.96;
+const
+  SideHeroHalf=0.96;
+  SideFrontEntryGap=16.0;
+  SideTruckHeightScale=1.50;
 
 type
   TSideAction=(saFront,saRear,saBump,saRock,saLaunch,saLand,saRepair,
@@ -61,16 +64,17 @@ type
     function Health(Time:Double):Double;
     function CarCue(Index:Integer;Time:Double):Integer;
     function CarHalf(Index:Integer):Double;
-    function CarPose(Index:Integer;Time:Double):TSidePose;
+    function CarPose(Index:Integer;Time:Double;EntryGap:Double=SideFrontEntryGap):TSidePose;
     function ChainCue(Index:Integer):Integer;
-    function ChainCar(Index,Hit:Integer;Time:Double):TSidePose;
+    function ChainCar(Index,Hit:Integer;Time:Double;EntryGap:Double=SideFrontEntryGap):TSidePose;
     function BossRig(Index:Integer):TSideRig;
-    function BossPose(Index:Integer;Time:Double):TSidePose;
+    function BossPose(Index:Integer;Time:Double;EntryGap:Double=SideFrontEntryGap):TSidePose;
     function Contact(Index:Integer):TPointF;
   end;
 
 function SideMix(A,B,U:Double):Double;
 function SideEase(U:Double):Double;
+function SideFrontEntryLead(EntryGap:Double):Double;
 function SideBodyHit(Action:TSideAction):Boolean;
 
 implementation
@@ -85,6 +89,12 @@ function SideEase(U:Double):Double;
 begin
   U:=EnsureRange(U,0.0,1.0);
   Result:=U*U*(3-2*U);
+end;
+
+function SideFrontEntryLead(EntryGap:Double):Double;
+begin
+  // 接近区間を距離とともに伸ばして、広い画面でも前方車の速度を逆転させない。
+  Result:=EntryGap/8.8;
 end;
 
 function SideBodyHit(Action:TSideAction):Boolean;
@@ -248,6 +258,8 @@ begin
     if J.Roof>=0 then begin
       Roof:=Cues[J.Roof].Time;
       A:=BaseRoad(Distance(Roof))+BossRig(Cues[J.Roof].Boss).Roof;
+      // 保存済みの時刻を使い、高い荷台への進入と離脱に必要な余裕を確保する。
+      H:=Max(H,Max(Abs(A-Y0),Abs(A-Y1))*0.56+0.16);
       if Time<=Roof then begin T1:=Roof; Y1:=A; end
       else begin T0:=Roof; Y0:=A; end;
     end;
@@ -307,7 +319,7 @@ begin
   Result:=Sizes[Cars[Index].Kind];
 end;
 
-function TSideRacePlan.CarPose(Index:Integer;Time:Double):TSidePose;
+function TSideRacePlan.CarPose(Index:Integer;Time,EntryGap:Double):TSidePose;
 var F:TSideCar; H,Lead:TPointF; I,Nearest:Integer;
   First,Finish,Gap,U,Age,Span,X,Y,ContactTime,Follow:Double; D:TSideDeck;
 begin
@@ -317,13 +329,20 @@ begin
   Finish:=Cues[F.Last].Time;
   Result.Angle:=HeroAngle(Time)*0.70;
   if Time<First then begin
-    Span:=0.79+F.Kind*0.075;
-    if F.Stride=2 then Span:=Span+0.23;
-    U:=SideEase((First-Time)/Span);
-    Gap:=(5.9+F.Kind*0.58)*U;
+    if F.Side=1 then begin
+      Span:=SideFrontEntryLead(EntryGap)+F.Kind*0.038;
+      Gap:=EntryGap*SideEase((First-Time)/Span);
+    end else begin
+      Span:=0.79+F.Kind*0.075;
+      if F.Stride=2 then Span:=Span+0.23;
+      Gap:=(5.9+F.Kind*0.58)*SideEase((First-Time)/Span);
+    end;
   end else if Time>Finish then begin
     Age:=Time-Finish;
-    Gap:=(4.65+F.Kind*0.50)*(1-Exp(-3.9*Age));
+    if F.Side=1 then
+      // 先に上へ離し、右の進入車と同じ高さを横切らないようにする。
+      Gap:=EntryGap*SideEase(Age/0.78)
+    else Gap:=(4.65+F.Kind*0.50)*(1-Exp(-3.9*Age));
     Result.Angle:=HeroAngle(Finish)*0.70+F.Side*Age*(2.0+F.Kind*0.61);
   end else begin
     I:=CarCue(Index,Time);
@@ -339,7 +358,9 @@ begin
   if Time>Finish then begin
     Age:=Time-Finish;
     Lead:=Hero(Finish);
-    Y:=Max(Y,Lead.Y+Age*(4.8+F.Kind*0.43)-7.9*Sqr(Age));
+    if F.Side=1 then
+      Y:=Max(Y,Lead.Y+(4.25+F.Kind*0.11)*(1-Exp(-15*Age))-0.72*Sqr(Age))
+    else Y:=Max(Y,Lead.Y+Age*(4.8+F.Kind*0.43)-7.9*Sqr(Age));
   end else begin
     Nearest:=CarCue(Index,Time);
     if (Nearest>F.First) and (Abs(Time-Cues[Nearest-F.Stride].Time)<Abs(Time-Cues[Nearest].Time)) then
@@ -368,19 +389,28 @@ begin
   Result:=I;
 end;
 
-function TSideRacePlan.ChainCar(Index,Hit:Integer;Time:Double):TSidePose;
-var Source:TSidePose; Age,Shift:Double;
+function TSideRacePlan.ChainCar(Index,Hit:Integer;Time,EntryGap:Double):TSidePose;
+var Source:TSidePose; HitTime,Age,Shift,X,Y,Join:Double; Deck:TSideDeck;
 begin
-  Age:=Time-Cues[Hit].Time;
-  Source:=CarPose(Index,Min(Time,Cues[Hit].Time));
+  HitTime:=Cues[Hit].Time;
+  Age:=Time-HitTime;
+  Source:=CarPose(Index,HitTime,EntryGap);
+  X:=Source.Root.X+CarHalf(Index)+0.92+Distance(Time)-Distance(HitTime);
   Result.Angle:=Source.Angle*0.52;
-  Shift:=Max(0.0,-Age*1.6);
-  if Age>0 then begin
-    Shift:=Distance(Time)-Distance(Cues[Hit].Time)+3.5*(1-Exp(-4.2*Age));
-    Source.Root.Y:=Max(BaseRoad(Source.Root.X+Shift),Source.Root.Y+3.8*Age-6.3*Sqr(Age));
+  if Age<0 then begin
+    X:=X+EntryGap*SideEase(-Age/SideFrontEntryLead(EntryGap));
+    Road(X,Time,Y,Deck);
+    Join:=1-SideEase(-Age/0.32);
+    Y:=SideMix(Y,Source.Root.Y,Join);
+    Result.Angle:=Result.Angle*Join;
+  end else begin
+    Shift:=3.5*(1-Exp(-4.2*Age));
+    X:=X+Shift;
+    Y:=Source.Root.Y+3.8*Age-6.3*Sqr(Age);
+    Y:=Y+Max(0.0,BaseRoad(X)-Y)*SideEase(Age/0.12);
     Result.Angle:=Result.Angle+2.55*Age;
   end;
-  Result.Root:=PointF(Source.Root.X+CarHalf(Index)+0.92+Shift,Source.Root.Y);
+  Result.Root:=PointF(X,Y);
 end;
 
 function TSideRacePlan.BossRig(Index:Integer):TSideRig;
@@ -391,13 +421,13 @@ begin
   K:=Bosses[Index].Kind;
   L:=Stages[StageAt(Cues[Bosses[Index].Last].Time)].Level;
   Result.Half:=Body[K]+0.14*L;
-  Result.Roof:=Cargo[K]+0.065*L;
+  Result.Roof:=(Cargo[K]+0.065*L)*SideTruckHeightScale;
   Result.Rear:=Result.Half-0.84;
   Result.Wheels:=3+(K mod 3);
   Result.Finish:=K;
 end;
 
-function TSideRacePlan.BossPose(Index:Integer;Time:Double):TSidePose;
+function TSideRacePlan.BossPose(Index:Integer;Time,EntryGap:Double):TSidePose;
 var B:TSideBoss; Rig:TSideRig; I,J,K:Integer; D,Gap,Age,Shift,Roof,FromTime,EndTime,Approach,X:Double;
 begin
   B:=Bosses[Index];
@@ -420,7 +450,8 @@ begin
   for I:=Max(B.First,K-8) to Min(B.Last,K+8) do
     if SideBodyHit(Cues[I].Action) then D:=Min(D,Abs(Time-Cues[I].Time));
   Gap:=2.25*SideEase(D/0.45);
-  if Time<Cues[B.First].Time then Gap:=Gap+5.2*SideEase((Cues[B.First].Time-Time)/1.55);
+  if Time<Cues[B.First].Time then
+    Gap:=SideMix(Gap,EntryGap,SideEase((Cues[B.First].Time-Time)/SideFrontEntryLead(EntryGap)));
   Result.Root.X:=X+SideHeroHalf+Rig.Half+Gap;
   if J<0 then J:=JumpAt(Time+0.39);
   if (J<0) or (Jumps[J].Roof<0) or (Cues[Jumps[J].Roof].Boss<>Index) then Exit;

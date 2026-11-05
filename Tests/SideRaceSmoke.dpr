@@ -74,6 +74,83 @@ begin
   end;
 end;
 
+procedure VerifyFrontEntry(P:TSideRacePlan);
+const RightEdges:array[0..2] of Double=(13.056,18.0,30.0);
+var I,Hit,Count:Integer; Edge,Gap,Lead,T,AtHit:Double; Car:TSideCar; Pose:TSidePose;
+begin
+  Count:=0;
+  for Edge in RightEdges do begin
+    Gap:=Max(SideFrontEntryGap,Edge+2);
+    Lead:=SideFrontEntryLead(Gap);
+    for I:=0 to High(P.Cars) do begin
+      Car:=P.Cars[I];
+      if Car.Side<>1 then Continue;
+      AtHit:=P.Cues[Car.First].Time;
+      T:=AtHit-Lead-0.25;
+      if T>=0 then begin
+        Pose:=P.CarPose(I,T,Gap);
+        Need(Pose.Root.X-P.CarHalf(I)>P.Distance(T)+Edge,'Front car is visible at the entry boundary');
+        Need(P.CarPose(I,AtHit,Gap).Root.Distance(P.CarPose(I,AtHit).Root)<0.0002,
+          'Viewport altered the timed contact');
+        Inc(Count);
+      end;
+      Hit:=P.ChainCue(I);
+      if Hit<0 then Continue;
+      T:=P.Cues[Hit].Time-Lead;
+      if T<0 then Continue;
+      Pose:=P.ChainCar(I,Hit,T,Gap);
+      Need(Pose.Root.X-0.92>P.Distance(T)+Edge,'Chain car is visible at the entry boundary');
+      Inc(Count);
+    end;
+    for I:=0 to High(P.Bosses) do begin
+      T:=P.Cues[P.Bosses[I].First].Time-Lead;
+      if T<0 then Continue;
+      Pose:=P.BossPose(I,T,Gap);
+      Need(Pose.Root.X-P.BossRig(I).Half>P.Distance(T)+Edge,'Truck is visible at the entry boundary');
+      Inc(Count);
+    end;
+  end;
+  WriteLn('Off-screen entries checked: ',Count);
+end;
+
+procedure VerifyFrontEjection(P:TSideRacePlan);
+var I,J,K,Pairs:Integer; T,Hit,Half,Bottom,Top,Roof:Double;
+  Outgoing,Incoming:TSidePose; F,G:TSideCar;
+begin
+  Pairs:=0;
+  for I:=0 to High(P.Cars) do begin
+    F:=P.Cars[I];
+    if F.Side<>1 then Continue;
+    Hit:=P.Cues[F.Last].Time;
+    if Hit+0.10>P.Duration then Continue;
+    Outgoing:=P.CarPose(I,Hit+0.075);
+    Need(Outgoing.Root.Y>P.Hero(Hit).Y+2.2,'Front wreck did not rise immediately');
+    Need(Outgoing.Root.X-P.Distance(Hit+0.075)<SideHeroHalf+P.CarHalf(I)+0.60,
+      'Front wreck crossed the entry lane before rising');
+    Half:=P.CarHalf(I);
+    for J:=0 to 6 do begin
+      T:=Hit+0.10+J*0.07;
+      if T>P.Duration then Break;
+      Outgoing:=P.CarPose(I,T);
+      Roof:=0.94+0.085*(F.Kind mod 4);
+      Bottom:=Outgoing.Root.Y-Abs(Sin(Outgoing.Angle))*Half+Min(0.0,Cos(Outgoing.Angle)*Roof);
+      for K:=I+1 to High(P.Cars) do begin
+        G:=P.Cars[K];
+        if P.Cues[G.First].Time>T+SideFrontEntryLead(SideFrontEntryGap)+0.25 then Break;
+        if (G.Side<>1) or (P.Cues[G.Last].Time<=T) then Continue;
+        Incoming:=P.CarPose(K,T);
+        if Abs(Incoming.Root.X-Outgoing.Root.X)>=Half+P.CarHalf(K) then Continue;
+        Roof:=0.94+0.085*(G.Kind mod 4);
+        Top:=Incoming.Root.Y+Abs(Sin(Incoming.Angle))*P.CarHalf(K)+Max(0.0,Cos(Incoming.Angle)*Roof);
+        Need(Bottom>Top,Format('Front wreck %d overlaps incoming %d at %.3fs (age %.3f, lower %.2f, upper %.2f, launch %.2f)',
+          [I,K,T,T-Hit,Bottom,Top,P.Hero(Hit).Y]));
+        Inc(Pairs);
+      end;
+    end;
+  end;
+  WriteLn('Vertical separation checks: ',Pairs);
+end;
+
 procedure Verify(P:TSideRacePlan;Audio:TRhythmAudio;Full:Boolean);
 var
   I,K,B,SpanHits,Musical,Repairs,RoofHits,Rams,RearHits,FrontHits,Gaps,Lifts,Chains:Integer;
@@ -327,6 +404,8 @@ begin
     Need(Length(Cold.PCM)=0,'Cold plan decoded PCM');
     P:=LoadSideRace(Loaded.Plan,Cold,0);
     Verify(P,Audio,ParamCount=0);
+    VerifyFrontEntry(P);
+    VerifyFrontEjection(P);
     RenderProof(P,Audio,Cold,Ref,Folder);
     WriteLn('Side race PASS checks=',Checks);
   except

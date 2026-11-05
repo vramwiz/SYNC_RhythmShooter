@@ -44,9 +44,10 @@ type
     procedure Road;
     procedure SpeedLines(CameraX:Double);
     procedure Panel(const Shape:TVehicleShape;L,T,R,B:Double;Color:TColor);
+    procedure Headlight(const Shape:TVehicleShape;Nose,Height,Reach:Double);
     procedure Wheel(const Shape:TVehicleShape;X,Radius,Slip:Double;Detached:Boolean=False);
     procedure Car(const Pose:TSidePose;Half:Double;Kind:Integer;Hero:Boolean;Damage:Double);
-    procedure Truck(Index:Integer);
+    procedure Truck(Index:Integer;EntryGap:Double);
     procedure Props;
     procedure Impacts;
     procedure Sparks(const P:TPointF;Age,Power:Double;Color:TColor;Count:Integer);
@@ -271,6 +272,32 @@ begin
   Quad(Shape.Point(L,T),Shape.Point(R,T),Shape.Point(R,B),Shape.Point(L,B),Color);
 end;
 
+procedure TSidePainter.Headlight(const Shape:TVehicleShape;Nose,Height,Reach:Double);
+const LightColor=$00C9EEFF;
+var I:Integer; U,X,Y,Spread,Opacity:Double; A,B,C,D,P:TPointF;
+begin
+  Opacity:=SideEase((Darkness-0.13)/0.55);
+  if Opacity<=0 then Exit;
+  A:=Shape.Point(Nose,Height+0.036);
+  B:=Shape.Point(Nose,Height-0.043);
+  A:=Screen(A.X,A.Y);
+  B:=Screen(B.X,B.Y);
+  // 広く薄い光から、光源に近い明るい部分を重ねる。
+  for I:=0 to 5 do begin
+    U:=I/5;
+    X:=Nose+Reach*(1-0.76*U);
+    Y:=Height-0.25*(1-0.76*U);
+    Spread:=0.30-0.235*U;
+    C:=Shape.Point(X,Y-Spread);
+    D:=Shape.Point(X,Y+Spread);
+    Surface.FillQuad(A,B,Screen(C.X,C.Y),Screen(D.X,D.Y),LightColor,Opacity*(0.065+0.033*U));
+  end;
+  P:=Shape.Point(Nose,Height);
+  P:=Screen(P.X,P.Y);
+  Surface.Circle(P.X,P.Y,Max(2.0,Scale*0.17),LightColor,True,1,Opacity*0.28);
+  Surface.Circle(P.X,P.Y,Max(1.0,Scale*0.075),White,True,1,Opacity*0.74);
+end;
+
 procedure TSidePainter.Wheel(const Shape:TVehicleShape;X,Radius,Slip:Double;Detached:Boolean);
 var P:TPointF; U,A,R,Lift:Double; I:Integer;
 begin
@@ -291,7 +318,7 @@ begin
 end;
 
 procedure TSidePainter.Car(const Pose:TSidePose;Half:Double;Kind:Integer;Hero:Boolean;Damage:Double);
-var Shape,Body:TVehicleShape; C,D,Glass:TColor; A,B,E,F,P:TPointF; Roof,WheelR,Wobble,Age:Double; I:Integer;
+var Shape,Body:TVehicleShape; C,D,Glass:TColor; A,B,E,F:TPointF; Roof,WheelR,Wobble,Age:Double; I:Integer;
 begin
   Shape.Pose:=Pose;
   Shape.SinA:=Sin(Pose.Angle);
@@ -317,13 +344,7 @@ begin
   D:=Tint(C,Ink,0.30+0.20*Damage);
   Glass:=Tint($00BE9873,White,0.28);
   if Darkness>0.45 then Glass:=Tint(Glass,Ink,0.31);
-  if Darkness>0.20 then begin
-    P:=Body.Point(Half*0.98,0.52);
-    A:=Screen(P.X,P.Y);
-    B:=Screen(P.X+1.9,P.Y-0.27);
-    Surface.Line(A.X,A.Y,B.X,B.Y,Gold,Max(1.0,Scale*0.05),Darkness*0.29);
-    Surface.Circle(A.X,A.Y,Max(2.0,Scale*0.10),Gold,True,1,Darkness*0.37);
-  end;
+  if Hero or (Damage<1) then Headlight(Body,Half*0.98,0.53,2.42);
   Panel(Body,-Half,0.61,Half,0.29,Ink);
   Panel(Body,-Half,0.57,Half,0.36,C);
   Panel(Body,-Half*0.95,0.39,Half*0.95,0.29,D);
@@ -351,15 +372,21 @@ begin
   Wheel(Shape,Half*0.63,WheelR,Kind*0.73);
 end;
 
-procedure TSidePainter.Truck(Index:Integer);
+procedure TSidePainter.Truck(Index:Integer;EntryGap:Double);
 var B:TSideBoss; Rig:TSideRig; P,Q:TSidePose; Main,Cargo:TVehicleShape;
-  I,K:Integer; Age,U,X,H:Double; C,D,E:TColor; A,V:TPointF;
+  I,K:Integer; Age,U,X,H,CabTop:Double; C,D,E:TColor; A,V:TPointF;
+
+  function CargoY(Y:Double):Double;
+  begin
+    Result:=0.58+(Y-0.58)*(Rig.Roof-0.58)/(Rig.Roof/SideTruckHeightScale-0.58);
+  end;
 begin
   B:=Plan.Bosses[Index];
   Age:=Time-Plan.Cues[B.Last].Time;
-  if (Time<Plan.Cues[B.First].Time-1.8) or (Age>0.99) then Exit;
+  if (Time<Plan.Cues[B.First].Time-SideFrontEntryLead(EntryGap)) or (Age>0.99) then Exit;
   Rig:=Plan.BossRig(Index);
-  P:=Plan.BossPose(Index,Time);
+  P:=Plan.BossPose(Index,Time,EntryGap);
+  if P.Root.X-Rig.Half>Left+W/Scale+1.0 then Exit;
   K:=EnsureRange(Plan.CueFrom(Time),B.First,B.Last);
   U:=(K-B.First)/Max(1,B.Last-B.First);
   C:=TruckPaint[B.Kind];
@@ -379,21 +406,23 @@ begin
     Cargo.SinA:=Sin(Q.Angle);
     Cargo.CosA:=Cos(Q.Angle);
   end;
+  if Age<0 then Headlight(Main,H,0.65,2.85);
   Panel(Main,-H,0.60,H,0.32,Ink);
   Panel(Cargo,-H,Rig.Roof,H*0.37,0.58,Ink);
   Panel(Cargo,-H+0.10,Rig.Roof-0.09,H*0.37-0.075,0.67,C);
-  Panel(Cargo,-H+0.14,Rig.Roof-0.24,H*0.34,1.13,D);
+  Panel(Cargo,-H+0.14,Rig.Roof-0.24,H*0.34,CargoY(1.13),D);
   case B.Kind of
     0,2:for I:=0 to 4 do
-      Panel(Cargo,-H+0.28+I*H*0.247,Rig.Roof-0.18,-H+0.36+I*H*0.247,0.72,E);
+      Panel(Cargo,-H+0.28+I*H*0.247,Rig.Roof-0.18,-H+0.36+I*H*0.247,CargoY(0.72),E);
     1:for I:=0 to 2 do
       Panel(Cargo,-H+0.14,Rig.Roof-0.34-I*0.19,H*0.35,Rig.Roof-0.40-I*0.19,E);
     else for I:=0 to 3 do
-      Quad(Cargo.Point(-H+0.31+I*H*0.31,1.18),Cargo.Point(-H+0.57+I*H*0.31,Rig.Roof-0.14),
+      Quad(Cargo.Point(-H+0.31+I*H*0.31,CargoY(1.18)),Cargo.Point(-H+0.57+I*H*0.31,Rig.Roof-0.14),
         Cargo.Point(-H+0.71+I*H*0.31,Rig.Roof-0.14),Cargo.Point(-H+0.45+I*H*0.31,1.18),E);
   end;
-  Panel(Main,H*0.40,1.46+0.065*(B.Kind mod 3),H*0.91,0.57,C);
-  Panel(Main,H*0.52,1.37,H*0.90,0.91,$009C866D);
+  CabTop:=(1.46+0.065*(B.Kind mod 3))*SideTruckHeightScale;
+  Panel(Main,H*0.40,CabTop,H*0.91,0.57,C);
+  Panel(Main,H*0.52,CabTop-0.15,H*0.90,1.11,$009C866D);
   Panel(Main,H*0.78,0.94,H,0.42,D);
   Panel(Main,H*0.88,0.73,H,0.57,White);
   Panel(Main,-H,0.69,-H+0.19,0.55,$00636CFD);
@@ -542,7 +571,7 @@ end;
 
 procedure TSidePainter.Draw(const Frame:TAnimationFrame);
 var Root,Before,After:TPointF; Hero,Other:TSidePose; A:TSideCue; F:TSideCar;
-  CamX,CamY,Phase,U,Shake,Zoom,Age,Theme:Double; Stage,I,J,K,Limit,Chain:Integer;
+  CamX,CamY,Phase,U,Shake,Zoom,Age,Theme,EntryGap,EntryLead:Double; Stage,I,J,K,Limit,Chain:Integer;
 begin
   W:=Frame.Width;
   H:=Frame.Height;
@@ -573,7 +602,14 @@ begin
       if A.Action=saLand then CamY:=CamY+0.11*U*Sin(Age*53);
     end;
   end;
-  Scale:=Min(W/20.4,H/8.8)*Zoom;
+  Scale:=Min(W/20.4,H/8.8);
+  // ズーム前の右端を基準にし、振動や画面比が変わっても出現境界を画面外に置く。
+  EntryGap:=Max(SideFrontEntryGap,W/Scale*0.64+2);
+  EntryLead:=SideFrontEntryLead(EntryGap);
+  Scale:=Scale*Zoom;
+  J:=Plan.JumpAt(Time);
+  if (J>=0) and (Plan.Jumps[J].Roof>=0) then
+    CamY:=Min(CamY,Plan.BaseRoad(CamX)+H/Scale*0.31-0.45);
   Left:=CamX-W/Scale*0.36+Shake;
   Top:=CamY+H/Scale*0.69;
   Theme:=Plan.Stages[Stage].Theme;
@@ -586,22 +622,23 @@ begin
   if Frame.BackgroundOnly then Exit;
   Props;
   FinishGate;
-  for J:=0 to High(Plan.Bosses) do Truck(J);
+  for J:=0 to High(Plan.Bosses) do Truck(J,EntryGap);
   I:=Plan.CueFrom(Time-0.85);
-  Limit:=Plan.CueFrom(Time+1.36);
+  Limit:=Plan.CueFrom(Time+Max(1.36,EntryLead+0.25));
   while I<Limit do begin
     K:=Plan.Cues[I].Car;
     if (K>=0) and (Plan.CarCue(K,Time)=I) then begin
       F:=Plan.Cars[K];
-      Other:=Plan.CarPose(K,Time);
+      Other:=Plan.CarPose(K,Time,EntryGap);
       if (Other.Root.X>=Left-2.0) and (Other.Root.X<=Left+W/Scale+2.0) then
         Car(Other,Plan.CarHalf(K),F.Kind,False,Ord(Time>Plan.Cues[F.Last].Time));
       Chain:=Plan.ChainCue(K);
       if Chain>=0 then begin
         Age:=Time-Plan.Cues[Chain].Time;
-        if (Age>=-0.54) and (Age<0.46) then begin
-          Other:=Plan.ChainCar(K,Chain,Time);
-          Car(Other,0.92,(F.Kind+2) mod 6,False,Ord(Age>=0));
+        if (Age>=-EntryLead) and (Age<0.46) then begin
+          Other:=Plan.ChainCar(K,Chain,Time,EntryGap);
+          if (Other.Root.X>=Left-2.0) and (Other.Root.X<=Left+W/Scale+2.0) then
+            Car(Other,0.92,(F.Kind+2) mod 6,False,Ord(Age>=0));
           if Age>=0 then begin
             Before:=Plan.ChainCar(K,Chain,Plan.Cues[Chain].Time).Root;
             Sparks(PointF(Before.X-0.92,Before.Y+0.43),Age,0.8,Gold,8);
