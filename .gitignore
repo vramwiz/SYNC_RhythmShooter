@@ -17,3 +17,5 @@ __recovery/
 ThirdParty/FFmpeg/bin/
 Cache/
 /Verification/
+/Setup/SYNC_RhythmShooter.zip
+/Setup/.release-*.tmp
