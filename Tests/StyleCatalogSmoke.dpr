@@ -4,11 +4,11 @@
 uses System.SysUtils,System.Classes,System.Hash,System.IOUtils,System.JSON,
   RhythmStyles,RhythmStyleSelection,RhythmSettings,RhythmPlanRef,RhythmStyleOps,RhythmStyleRegistry,
   RhythmAudio,RhythmAnimation,RhythmImageBank;
-const Ids:array[TRhythmStyle] of string=('shooting','ball','jump-adventure','breakout','side-race','bomb-action','fighting-rush','mining','train','naval','rhythm-game','prism-step','mine-cart');
-  Versions:array[TRhythmStyle] of Integer=(1,6,3,10,1,2,1,1,1,1,4,3,3);
-  Groups:array[TRhythmStyle] of TRhythmStyleGroup=(sgShooting,sgBall,sgAction,sgBall,sgRace,sgAction,sgAction,sgAction,sgShooting,sgShooting,sgMusic,sgMusic,sgAction);
-  Scenes:array[TRhythmStyle] of string=('TShootingAnimation','TBallAnimation','TJumpAnimation','TBreakoutAnimation','TSideRaceAnimation','TBombActionAnimation','TRushAnimation','TMiningAnimation','TTrainAnimation','TNavalAnimation','TGameAnimation','TStepAnimation','TCartAnimation');
-  GroupCounts:array[TRhythmStyleGroup] of Integer=(3,2,5,1,2);
+const Ids:array[TRhythmStyle] of string=('shooting','ball','jump-adventure','breakout','side-race','bomb-action','fighting-rush','mining','train','rhythm-game','prism-step','mine-cart');
+  Versions:array[TRhythmStyle] of Integer=(1,6,3,10,1,2,1,1,1,4,3,4);
+  Groups:array[TRhythmStyle] of TRhythmStyleGroup=(sgShooting,sgBall,sgAction,sgBall,sgRace,sgAction,sgAction,sgAction,sgShooting,sgMusic,sgMusic,sgAction);
+  Scenes:array[TRhythmStyle] of string=('TShootingAnimation','TBallAnimation','TJumpAnimation','TBreakoutAnimation','TSideRaceAnimation','TBombActionAnimation','TRushAnimation','TMiningAnimation','TTrainAnimation','TGameAnimation','TStepAnimation','TCartAnimation');
+  GroupCounts:array[TRhythmStyleGroup] of Integer=(2,2,5,1,2);
   Levels:array[0..4] of Integer=(-100,-1,0,50,100);
 var S,Other,ParsedStyle:TRhythmStyle;G:TRhythmStyleGroup;D,I,J,K,V,Expected,Checks,Stage,Combinations:Integer;
   Sel,Restored:TStyleSelection;Saved,Loaded:TRhythmSettings;Ref:TRhythmPlanRef;Ops:TStyleOperations;
@@ -20,7 +20,7 @@ function WasCompatible(Style:TRhythmStyle;Version:Integer):Boolean;
 begin Result:=Version=Versions[Style];case Style of
   rsBall:Result:=Version in [4,5,6];
   rsBreakout:Result:=Version in [1,2,3,4,5,6,7,8,9,10];
-  rsBombAction:Result:=Version in [1,2];rsRhythmGame:Result:=Version in [1,2,3,4];rsStepGame,rsJumpAdventure,rsMineCart:Result:=Version in [1,2,3];
+  rsBombAction:Result:=Version in [1,2];rsRhythmGame,rsMineCart:Result:=Version in [1,2,3,4];rsStepGame,rsJumpAdventure:Result:=Version in [1,2,3];
 end;end;
 begin Scene:=nil;Images:=nil;Names:=nil;Checks:=0;Combinations:=0;
   try
@@ -58,6 +58,14 @@ begin Scene:=nil;Images:=nil;Names:=nil;Checks:=0;Combinations:=0;
     Need(TRhythmSettings.TryJSON('{"schema":1,"style":"rhythm-game","layers":'+
       '{"style":"runner","movie":true,"foreground":false,"plan":{"style":"runner"}}}',Loaded) and
       (Loaded.Style=rsJumpAdventure) and (Loaded.Plan.Key=''),'Retired runner layer migration');
+    Need(not TryStyle('naval',ParsedStyle),'Retired naval style is still selectable');
+    Need(TRhythmSettings.TryJSON('{"schema":1,"style":"naval","music":"old-naval.wav","musicSource":"host",'+
+      '"bossFrequency":62,"offsetSeconds":0.14,"audioDensity":-26,"plan":{"style":"naval","version":1,"key":"'+Key+'"}}',Loaded) and
+      (Loaded.Style=rsMineCart) and (Loaded.Plan.Key='') and (Loaded.Music='old-naval.wav') and Loaded.HostMusic and
+      (Loaded.BossFrequency=62) and (Loaded.GameThreshold=-26) and (Abs(Loaded.OffsetSeconds-0.14)<1E-9),'Retired naval settings migration');
+    Need(TRhythmSettings.TryJSON('{"schema":1,"style":"rhythm-game","layers":'+
+      '{"style":"naval","movie":true,"foreground":false,"plan":{"style":"naval"}}}',Loaded) and
+      (Loaded.Style=rsMineCart) and (Loaded.Plan.Key=''),'Retired naval layer migration');
     for G:=Low(TRhythmStyleGroup) to High(TRhythmStyleGroup) do begin
       Need(GroupStyleCount(G)=GroupCounts[G],'Group population');
       for I:=0 to GroupStyleCount(G)-1 do begin S:=GroupStyleAt(G,I);Need((StyleInfo(S).Group=G) and (GroupStyleIndex(S)=I),'Group order/index not bijective');end;
@@ -71,7 +79,7 @@ begin Scene:=nil;Images:=nil;Names:=nil;Checks:=0;Combinations:=0;
       for I:=0 to High(Levels) do for J:=0 to High(Levels) do for K:=0 to High(Levels) do begin
         Expected:=0;
         if S in [rsRhythmGame,rsStepGame] then Expected:=Levels[K]+101
-        else if (S in [rsShooting,rsBreakout,rsBombAction,rsMining,rsTrain,rsNaval,rsJumpAdventure,rsFightingRush,rsSideRace,rsMineCart]) and (Levels[J]>=0) then Expected:=Levels[J]+1;
+        else if (S in [rsShooting,rsBreakout,rsBombAction,rsMining,rsTrain,rsJumpAdventure,rsFightingRush,rsSideRace,rsMineCart]) and (Levels[J]>=0) then Expected:=Levels[J]+1;
         Need(StyleVariant(S,Levels[I],Levels[J],Levels[K])=Expected,'Variant recipe changed');
       end;
       Ops:=StyleOperations(S);Need(Names.IndexOf(Ops.UnitName)<0,'Two variants share an adapter unit');Names.Add(Ops.UnitName);
@@ -100,8 +108,8 @@ begin Scene:=nil;Images:=nil;Names:=nil;Checks:=0;Combinations:=0;
     Need(not TryStyle('unknown',ParsedStyle) and (ParsedStyle=rsShooting),'Unknown ID handling');
     Stage:=0;Context.Progress:=procedure(Value:Integer) begin Stage:=Value;end;Context.SetStage(4);Need(Stage=4,'Progress callback');
     Context.Cancel:=function:Boolean begin Result:=True;end;Failed:=False;try Context.CheckCancel;except on E:EAbort do Failed:=True;end;Need(Failed,'Cancellation callback');
-    TFile.WriteAllText(TPath.Combine(Folder,'result.json'),Format('{"checks":%d,"groups":5,"styles":13,"smallChoices":15,"selectionTransitions":%d,"adapters":13,"gui":false}',[Checks,Combinations]),TEncoding.UTF8);
-    WriteLn('Style catalog PASS checks=',Checks,' groups=5 styles=13 transitions=',Combinations,' no GUI');
+    TFile.WriteAllText(TPath.Combine(Folder,'result.json'),Format('{"checks":%d,"groups":5,"styles":12,"smallChoices":14,"selectionTransitions":%d,"adapters":12,"gui":false}',[Checks,Combinations]),TEncoding.UTF8);
+    WriteLn('Style catalog PASS checks=',Checks,' groups=5 styles=12 transitions=',Combinations,' no GUI');
   except on E:Exception do begin WriteLn(E.ClassName,': ',E.Message);ExitCode:=1;end;end;
   Scene.Free;Images.Free;Names.Free;
 end.

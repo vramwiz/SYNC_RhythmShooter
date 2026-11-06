@@ -1,6 +1,6 @@
 ﻿# AviUtl2 音楽入力（2026-11-02）
 
-この仕様が以前の「設定画面で音楽を選択する」記述に優先する。Shooting / Ball / Fireworks / Runner / Breakout / Race / BombAction / Fighting / Mining / Train / Naval の全11フィルタに共通。
+この仕様が以前の「設定画面で音楽を選択する」記述に優先する。現行の各製品で共通。
 
 ## 操作
 

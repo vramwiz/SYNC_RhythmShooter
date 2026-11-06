@@ -22,7 +22,7 @@ begin
   try
     ConfigureRhythmProduct('SYNC_RhythmMining','Mining verification',rsMining);
     Output:=TPath.Combine(ExtractFilePath(ParamStr(0)),'Evidence');ForceDirectories(Output);Cases:=TJSONArray.Create;Report.AddPair('cases',Cases);
-    Need((Ord(rsMining)=8) and (StyleId(rsMining)='mining') and (StylePlanVersion(rsMining)=1),'Mining style registration');
+    Need((StyleId(rsMining)='mining') and (StylePlanVersion(rsMining)=1),'Mining style registration');
     for C:=0 to 7 do begin
       case C of 0:begin D:=18;Gap:=0.18;Frequency:=0;end;1:begin D:=175;Gap:=0.26;Frequency:=50;end;2:begin D:=90;Gap:=0.008;Frequency:=100;end;3:begin D:=3000;Gap:=1.10;Frequency:=0;end;4:begin D:=0.12;Gap:=0.008;Frequency:=50;end;6:begin D:=240;Gap:=45;Frequency:=100;end;7:begin D:=30;Gap:=1;Frequency:=0;end;else begin D:=1;Gap:=1;Frequency:=50;end;end;
       Audio:=TRhythmAudio.Create;Audio.Duration:=D;Audio.Sensitivity:=50;Audio.Key:=THashSHA2.GetHashString('mining-smoke-'+IntToStr(C));

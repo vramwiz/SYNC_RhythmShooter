@@ -77,7 +77,7 @@ end;
 procedure Verify(Plan:TCartPlan;Audio:TRhythmAudio);
 var I,J,AirCoins,ClosePairs:Integer;
   P,Q:TCartPosition;
-  Wing,Rock:TPointF;
+  Wing,Bomb:TPointF;
   C:TCartCoin;
   M:TCartMove;
   T,Fastest,Slowest,BeforeX:Double;
@@ -133,16 +133,32 @@ begin
         Need(Abs(Q.Y-Plan.Rail(M.Hit,M.Hit).Y)<0.001,'Ram is off the shared rail');
       end;
       cmRival:begin
-        Rock:=Plan.ThrowRock(M,M.Hit-CartThrowLead);
+        Bomb:=Plan.ThrowBomb(M,M.Hit-CartThrowLead);
         P:=Plan.Cart(M.Hit-CartThrowLead);
-        Need(Rock.X<P.X-2,'Rock did not come from the left');
-        Rock:=Plan.ThrowRock(M,M.Hit);
+        Need(Bomb.X<P.X-2,'Bomb did not come from the left');
+        Bomb:=Plan.ThrowBomb(M,M.Hit);
         P:=Plan.Cart(M.Hit);
-        Need((Abs(Rock.X-P.X)<0.001) and (Rock.Y>P.Y+1.10),'Rock missed its timed overhead pass');
+        Need((Abs(Bomb.X-P.X)<0.001) and (Bomb.Y>P.Y+1.10),'Bomb missed its timed overhead pass');
+      end;
+      cmFireJet,cmBlocker,cmRockfall:begin
+        P:=Plan.Track(M.Hit);
+        Q:=Plan.Cart(M.Hit);
+        Need(Q.Y>P.Y+Plan.ObstacleHeight(M,M.Hit)+0.11,'Track obstacle overlaps cart');
+        if M.Kind=cmFireJet then begin
+          J:=Plan.CoinFrom(M.Start);
+          while (J<Length(Plan.Coins)) and (Plan.Coins[J].Time<=M.Finish) do begin
+            C:=Plan.Coins[J];
+            if Abs(C.X-P.X)<CartObstacleHalfWidth(M.Kind)+0.24 then
+              Need(C.Y>P.Y+CartFireHeight+0.32,'Flame overlaps coin');
+            Inc(J);
+          end;
+        end;
+        if M.Kind=cmRockfall then
+          Need(Plan.ObstacleHeight(M,M.Hit-0.90)>Plan.ObstacleHeight(M,M.Hit)+2.0,'Boulder never falls');
       end;
     end;
   end;
-  Need(Kinds=[Low(TCartMoveKind)..High(TCartMoveKind)]-[cmBoss],'Missing gimmick');
+  Need(Kinds=[Low(TCartMoveKind)..High(TCartMoveKind)]-[cmBoss,cmFlame],'Missing gimmick');
   Themes:=[];
   for I:=0 to High(Plan.Knots) do Include(Themes,Plan.Knots[I].Theme);
   Need(Themes=[0..4],'Missing backdrop');
@@ -198,6 +214,7 @@ begin
       for M in Plan.Moves do
         if not (M.Kind in Seen) then begin
           Snapshot('event-'+IntToStr(Ord(M.Kind)),M.Hit-0.10);
+          if M.Kind=cmRockfall then Snapshot('falling-rock',M.Hit-0.64);
           Include(Seen,M.Kind);
         end;
     end;
@@ -205,6 +222,7 @@ begin
     M:=Plan.Moves[B.FirstMove];
     Snapshot('convoy-entry',M.Start-0.24);
     Snapshot('boss-dodge',M.Start+0.42);
+    Snapshot('boss-bomb-blast',Plan.ChaseShot(High(Plan.Bosses),B.FirstMove,0).CrossTime+0.15);
     Snapshot('boss-first-ram',M.Hit+0.065);
     M:=Plan.Moves[B.LastMove];
     Snapshot('boss-final-dodge',M.Start+0.37);

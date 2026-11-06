@@ -3,7 +3,7 @@
     [Parameter(Mandatory = $true)][ValidateSet('Debug', 'Release')][string]$Config,
     [Parameter(Mandatory = $true)][string]$LibraryPath,
     [string]$DeployDirectory,
-    [ValidateSet('SYNC_RhythmShooter','SYNC_RhythmBall','SYNC_RhythmBreakout','SYNC_RhythmBombAction','SYNC_RhythmMining','SYNC_RhythmTrain','SYNC_RhythmNaval','SYNC_RhythmGame')][string]$ProjectName='SYNC_RhythmShooter'
+    [ValidateSet('SYNC_RhythmShooter','SYNC_RhythmBall','SYNC_RhythmBreakout','SYNC_RhythmBombAction','SYNC_RhythmMining','SYNC_RhythmTrain','SYNC_RhythmGame')][string]$ProjectName='SYNC_RhythmShooter'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -54,7 +54,7 @@ if ($deployRoot -ne (Join-Path 'C:\ProgramData\aviutl2\Plugin' $ProjectName)) {
     throw 'Unexpected plugin deployment directory.'
 }
 $deployment = @([pscustomobject]@{ Source = $pluginPath; RelativePath = ($ProjectName+'.auf2') }) + @($runtimeFiles)
-$previewName = switch($ProjectName){'SYNC_RhythmBall'{'RhythmBallPreview.exe'}'SYNC_RhythmBreakout'{'RhythmBreakoutPreview.exe'}'SYNC_RhythmBombAction'{'RhythmBombActionPreview.exe'}'SYNC_RhythmMining'{'RhythmMiningPreview.exe'}'SYNC_RhythmTrain'{'RhythmTrainPreview.exe'}'SYNC_RhythmNaval'{'RhythmNavalPreview.exe'}'SYNC_RhythmGame'{'RhythmGamePreview.exe'}default{'RhythmPreview.exe'}}
+$previewName = switch($ProjectName){'SYNC_RhythmBall'{'RhythmBallPreview.exe'}'SYNC_RhythmBreakout'{'RhythmBreakoutPreview.exe'}'SYNC_RhythmBombAction'{'RhythmBombActionPreview.exe'}'SYNC_RhythmMining'{'RhythmMiningPreview.exe'}'SYNC_RhythmTrain'{'RhythmTrainPreview.exe'}'SYNC_RhythmGame'{'RhythmGamePreview.exe'}default{'RhythmPreview.exe'}}
 $previewPath = Join-Path $outputDirectory $previewName
 if (Test-Path -LiteralPath $previewPath -PathType Leaf) {
     $deployment += [pscustomobject]@{ Source = $previewPath; RelativePath = $previewName }

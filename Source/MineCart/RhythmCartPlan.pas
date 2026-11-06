@@ -22,9 +22,15 @@ const
   CartFinishLanding=0.76;
   CartFinishDrop=1.36;
   CartFinishLedge=2.16;
+  CartFireHeight=1.46;
+  CartBlockHeight=0.90;
+  CartRockRadius=0.59;
+  CartRockLandLead=0.51;
+  CartRockFallTime=0.67;
 
 type
-  TCartMoveKind=(cmGap,cmStomp,cmFork,cmLift,cmCollapse,cmFlame,cmRival,cmBoss,cmRam,cmBossBump);
+  TCartMoveKind=(cmGap,cmStomp,cmFork,cmLift,cmCollapse,cmFlame,cmRival,cmBoss,cmRam,cmBossBump,
+    cmFireJet,cmBlocker,cmRockfall);
   TCartKnot=record
     Time,X,Y,Speed:Double;
     Theme:Integer;
@@ -71,10 +77,12 @@ type
     function RamPosition(const Move:TCartMove;Time:Double):TCartPosition;
     function CanClearRam(const Move:TCartMove):Boolean;
     function CanClearBoss(const Move:TCartMove;First:Boolean):Boolean;
-    function ThrowRock(const Move:TCartMove;Time:Double):TPointF;
+    function ThrowBomb(const Move:TCartMove;Time:Double):TPointF;
     function CanClearThrow(const Move:TCartMove):Boolean;
     function FlameTop(const Move:TCartMove):Double;
     function CanClearFlame(const Move:TCartMove):Boolean;
+    function ObstacleHeight(const Move:TCartMove;Time:Double):Double;
+    function CanClearObstacle(const Move:TCartMove):Boolean;
     function BossProgress(Index:Integer;Time:Double):Double;
     function ChaseCar(Index,Car:Integer;Time:Double):TCartPosition;
     function ChaseShotCount(Index,Car:Integer):Integer;
@@ -85,6 +93,7 @@ type
 function CartEase(U:Double):Double;
 function CartJump(const Move:TCartMove;Time:Double):Double;
 function CartRunDistance(const A,B:TCartKnot):Double;
+function CartObstacleHalfWidth(Kind:TCartMoveKind):Double;
 
 implementation
 uses System.SysUtils,System.Math;
@@ -328,7 +337,7 @@ begin
   Result:=True;
 end;
 
-function TCartPlan.ThrowRock(const Move:TCartMove;Time:Double):TPointF;
+function TCartPlan.ThrowBomb(const Move:TCartMove;Time:Double):TPointF;
 var Start,Hit:TCartPosition; U,Launch,Top:Double;
 begin
   Launch:=Move.Hit-CartThrowLead;
@@ -341,13 +350,13 @@ begin
 end;
 
 function TCartPlan.CanClearThrow(const Move:TCartMove):Boolean;
-var I:Integer; T:Double; Rock:TPointF; P:TCartPosition;
+var I:Integer; T:Double; Bomb:TPointF; P:TCartPosition;
 begin
   for I:=0 to 32 do begin
     T:=Move.Hit-0.19+I*0.012;
-    Rock:=ThrowRock(Move,T);
+    Bomb:=ThrowBomb(Move,T);
     P:=Track(T);
-    if (Abs(Rock.X-P.X)<CartHalfWidth+0.20) and (Rock.Y<P.Y+1.10) then Exit(False);
+    if (Abs(Bomb.X-P.X)<CartHalfWidth+0.20) and (Bomb.Y<P.Y+1.10) then Exit(False);
   end;
   Result:=True;
 end;
@@ -366,6 +375,48 @@ begin
     T:=Move.Start+(Move.Finish-Move.Start)*(I/32);
     P:=Track(T);
     if (Abs(P.X-X)<CartHalfWidth+0.32) and (P.Y+CartJump(Move,T)<=Y+0.10) then Exit(False);
+  end;
+  Result:=True;
+end;
+
+function CartObstacleHalfWidth(Kind:TCartMoveKind):Double;
+begin
+  case Kind of
+    cmFireJet:Result:=0.34;
+    cmBlocker:Result:=0.40;
+    cmRockfall:Result:=CartRockRadius;
+    else Result:=0;
+  end;
+end;
+
+function TCartPlan.ObstacleHeight(const Move:TCartMove;Time:Double):Double;
+var U:Double;
+begin
+  case Move.Kind of
+    cmFireJet:Result:=CartFireHeight*(1-CartEase(Abs(Time-Move.Hit)/0.46));
+    cmBlocker:Result:=CartBlockHeight;
+    cmRockfall:begin
+      U:=EnsureRange(1+(Time-Move.Hit+CartRockLandLead)/CartRockFallTime,0.0,1.0);
+      Result:=2*CartRockRadius+4.9*(1-Sqr(U));
+    end;
+    else Result:=0;
+  end;
+end;
+
+function TCartPlan.CanClearObstacle(const Move:TCartMove):Boolean;
+var I:Integer; T,Width,Top:Double; Base,P:TCartPosition;
+begin
+  Base:=Track(Move.Hit);
+  Width:=CartHalfWidth+CartObstacleHalfWidth(Move.Kind)+0.08;
+  for I:=0 to 64 do begin
+    T:=Move.Start+(Move.Finish-Move.Start)*(I/64);
+    P:=Track(T);
+    if Abs(P.X-Base.X)<Width then begin
+      Top:=ObstacleHeight(Move,T);
+      // 表示済みのコインも火柱の最大の高さを越える軌道に置く。
+      if Move.Kind=cmFireJet then Top:=CartFireHeight;
+      if P.Y+CartJump(Move,T)<Base.Y+Top+0.12 then Exit(False);
+    end;
   end;
   Result:=True;
 end;
@@ -468,8 +519,9 @@ begin
     Need(Abs(Cart(M.Finish).Y-Rail(M.Finish,M.Finish).Y)<1E-8,'着地');
     if M.Kind in [cmStomp,cmBoss] then Need(CanStomp(M),'敵の踏みつけ');
     if M.Kind=cmFlame then Need(CanClearFlame(M),'炎の回避');
+    if M.Kind in [cmFireJet,cmBlocker,cmRockfall] then Need(CanClearObstacle(M),'火柱・車止め・落石の回避');
     if M.Kind=cmRam then Need(CanClearRam(M),'対向トロッコの回避');
-    if CheckNewAttacks and (M.Kind=cmRival) then Need(CanClearThrow(M),'投石の回避');
+    if CheckNewAttacks and (M.Kind=cmRival) then Need(CanClearThrow(M),'爆弾の回避');
     if M.Kind=cmFork then begin
       T:=M.Start+(M.Finish-M.Start)*0.78;
       Need((Cart(T).Y>Track(T).Y+0.20) and (Abs(Cart(T).Y-Rail(T,T).Y)<1E-8),'上段の分岐に乗る');
@@ -501,12 +553,12 @@ begin
         Need(Abs(P.X-Cart(M.Hit).X-CartChaseContact)<1E-6,'体当たりの接触');
         for K:=0 to ChaseShotCount(I,J)-1 do begin
           Shot:=ChaseShot(I,J,K);
-          Need(Shot.Origin.X>Shot.Target.X,'ボスの投石方向');
+          Need(Shot.Origin.X>Shot.Target.X,'ボスの爆弾を投げる方向');
           for Sample:=0 to 24 do begin
             T:=Shot.ReleaseTime+(Shot.CrossTime+0.16-Shot.ReleaseTime)*(Sample/24);
             P:=Cart(T);
             Q:=Shot.Position(T);
-            if Abs(P.X-Q.X)<CartHalfWidth+0.24 then Need(P.Y>Q.Y+0.20,'ボスの投石回避');
+            if Abs(P.X-Q.X)<CartHalfWidth+0.24 then Need(P.Y>Q.Y+0.20,'ボスの爆弾回避');
           end;
         end;
       end else begin

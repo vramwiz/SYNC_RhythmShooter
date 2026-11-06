@@ -42,7 +42,7 @@
         <GenDll>true</GenDll>
         <DCC_DcuOutput>.\$(Platform)\RhythmBreakout\$(Config)\DCU</DCC_DcuOutput>
         <DCC_ExeOutput>.\$(Platform)\RhythmBreakout\$(Config)</DCC_ExeOutput>
-        <DCC_UnitSearchPath>Source\MineCart;Source\SideRace;Source\FightingRush;Source\JumpAdventure;Source\RhythmGame;Source\Mining;Source\Train;Source\Naval;Source\BombAction;Source\Breakout;Source\Shared\Audio;Source\Shared\Render;Source\Shared\Settings;Source\Shared\Common;Source\Shared\Assets;Source\Shared\UI;Source\Shared\Host;Source\Shared\Integrations;Source\Composition;Source\Shooting;Source\Ball;Source\Fireworks;Source\Lib;Source\Lib\Process;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
+        <DCC_UnitSearchPath>Source\MineCart;Source\SideRace;Source\FightingRush;Source\JumpAdventure;Source\RhythmGame;Source\Mining;Source\Train;Source\BombAction;Source\Breakout;Source\Shared\Audio;Source\Shared\Render;Source\Shared\Settings;Source\Shared\Common;Source\Shared\Assets;Source\Shared\UI;Source\Shared\Host;Source\Shared\Integrations;Source\Composition;Source\Shooting;Source\Ball;Source\Fireworks;Source\Lib;Source\Lib\Process;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
         <DCC_Namespace>System;Xml;Data;Datasnap;Web;Soap;Winapi;Vcl;$(DCC_Namespace)</DCC_Namespace>
         <SanitizedProjectName>SYNC_RhythmBreakout</SanitizedProjectName>
     </PropertyGroup>
@@ -136,8 +136,6 @@
         <DCCReference Include="Source\Mining\RhythmMiningScene.pas"/>
         <DCCReference Include="Source\Train\RhythmTrainPlan.pas"/>
         <DCCReference Include="Source\Train\RhythmTrainScene.pas"/>
-        <DCCReference Include="Source\Naval\RhythmNavalPlan.pas"/>
-        <DCCReference Include="Source\Naval\RhythmNavalScene.pas"/>
         <DelphiCompile Include="$(MainSource)">
             <MainSource>MainSource</MainSource>
         </DelphiCompile>

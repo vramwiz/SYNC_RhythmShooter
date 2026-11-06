@@ -40,9 +40,14 @@ type
       Crouch:Double=0;Boss:Boolean=False;Rider:Boolean=True);
     procedure WingEnemy(X,TopY,Age:Double);
     procedure Sparks(X,Y,Age,Size:Double;Color:TColor);
+    procedure Bomb(const P:TPointF;Age:Double);
+    procedure Blast(const P:TPointF;Age:Double);
     procedure Background(const Hero:TCartPosition;Theme:Integer);
+    procedure SpeedLines(const Hero:TCartPosition);
     procedure Rails;
     procedure Moves;
+    procedure FallingRocks;
+    procedure Hazard(const Move:TCartMove;const Base:TCartPosition);
     procedure Rival(const Move:TCartMove);
     procedure Convoy(Index:Integer);
     procedure LegacyConvoy(Index:Integer);
@@ -217,8 +222,39 @@ begin
   end;
 end;
 
+procedure TCartPainter.Bomb(const P:TPointF;Age:Double);
+var Glow:Double;
+begin
+  Glow:=0.5+0.5*Sin(43*Age);
+  Dot(P.X,P.Y,0.175,Ink);
+  Dot(P.X,P.Y,0.142,$005A3B54);
+  Line(P.X-0.092,P.Y-0.038,P.X+0.083,P.Y-0.038,0.055,$00545DEA);
+  Line(P.X+0.05,P.Y+0.10,P.X+0.12,P.Y+0.19,0.045,Copper);
+  Dot(P.X+0.13,P.Y+0.19,0.033+0.017*Glow,$00496DFA);
+end;
+
+procedure TCartPainter.Blast(const P:TPointF;Age:Double);
+var I:Integer; U,A,R,X,Y:Double; C:TPointF;
+begin
+  if (Age<0) or (Age>=0.36) then Exit;
+  U:=Age/0.36;
+  if U<0.54 then begin
+    C:=Screen(P.X,P.Y);
+    Surface.Circle(C.X,C.Y,Scale*(0.16+0.72*U),$00516BFF,False,Max(1.0,Scale*0.061*(1-U)),1-U);
+    Dot(P.X,P.Y,0.25*(1-U/0.54),Gold);
+  end;
+  for I:=0 to 4 do begin
+    A:=I*2.399;
+    R:=0.10+0.49*U;
+    X:=P.X+R*Cos(A);
+    Y:=P.Y+R*Sin(A)+U*0.22;
+    Dot(X,Y,0.18*(1-U),Tint($00576EED,Palette.Near,U));
+  end;
+end;
+
 procedure TCartPainter.Background(const Hero:TCartPosition;Theme:Integer);
-var I,Layer,Tile:Integer; U,Cell,Shift,X,Y,R,Horizon,CX,CY:Double; Color:TColor;
+var I,Layer,Tile:Integer; U,Cell,Shift,X,Y,R,Horizon,CX,CY,Span:Double; Color:TColor;
+  Rail:TCartPosition;
 begin
   for I:=0 to 15 do
     Surface.FillRect(0,H*I/16,W,H*(I+1)/16+1,Tint(Palette.Sky,Palette.Horizon,I/15));
@@ -238,9 +274,6 @@ begin
         U:=H*(0.045+0.06*Abs(Sin((Tile+I)*2.45)));
         Surface.FillQuad(PointF(X-Cell*0.35,0),PointF(X+Cell*0.95,0),
           PointF(X+Cell*0.65,U),PointF(X+Cell*0.19,U*1.53),Color);
-        if Layer=1 then
-          Surface.Line(X+Cell*0.47,Y+R*0.35,X+Cell*0.55,Y+R*0.12,
-            Tint(Color,Palette.Accent,0.65),Max(1.0,Scale*0.043));
         if (Layer=2) and ((I+Tile) mod 2=0) then begin
           CX:=X+Cell*0.54;
           CY:=U+Scale*(0.72+0.17*Sin((I+Tile)*1.75));
@@ -256,9 +289,26 @@ begin
     for I:=0 to 13 do begin
       U:=Frac(I*0.618+0.70)-Frac(Hero.X*0.014);
       X:=W*(U-Floor(U));
-      Surface.Line(X,H*(0.86+0.011*(I mod 7)),X+Scale*(0.5+0.15*(I mod 4)),
-        H*(0.86+0.011*(I mod 7)),Tint(Palette.Accent,Palette.Horizon,0.30),Scale*0.035);
+      Span:=Scale*(0.5+0.15*(I mod 4));
+      Rail:=Plan.RailAtX(Left+(X+Span*0.5)/Scale,Time);
+      Y:=Max(H*(0.90+0.011*(I mod 7)),Screen(Rail.X,Rail.Y).Y+Scale*0.80);
+      if Y<H then Surface.Line(X,Y,X+Span,Y,Tint(Palette.Accent,Palette.Horizon,0.60),Scale*0.027);
     end;
+end;
+
+procedure TCartPainter.SpeedLines(const Hero:TCartPosition);
+var I:Integer; U,Shift,X,Y,Span:Double; Rail:TCartPosition;
+begin
+  U:=EnsureRange((Hero.Speed-7.3)/6.0,0.0,1.0)*(1-CartEase((Time-Plan.Goal)/0.35));
+  if U<=0.12 then Exit;
+  Span:=Scale*(0.15+0.41*U);
+  for I:=0 to 8 do begin
+    Shift:=I*0.27-Hero.X*0.22;
+    X:=W*(Shift-Floor(Shift));
+    Rail:=Plan.RailAtX(Left+(X+Span*0.5)/Scale,Time);
+    Y:=Max(H*(0.83+0.044*(I mod 3)),Screen(Rail.X,Rail.Y).Y+Scale*0.62);
+    if Y<H then Surface.Line(X,Y,X+Span,Y,Palette.Metal,Max(1.0,Scale*0.023),U*0.31);
+  end;
 end;
 
 procedure TCartPainter.Rails;
@@ -315,6 +365,54 @@ begin
   end;
 end;
 
+procedure TCartPainter.Hazard(const Move:TCartMove;const Base:TCartPosition);
+var X,Y,HazardHeight,Width,Age,Bend:Double;
+begin
+  X:=Base.X;
+  Y:=Base.Y;
+  Age:=Time-Move.Hit;
+  HazardHeight:=Plan.ObstacleHeight(Move,Time);
+  Width:=CartObstacleHalfWidth(Move.Kind);
+  case Move.Kind of
+    cmFlame,cmFireJet:begin
+      if Move.Kind=cmFlame then begin
+        HazardHeight:=0.46*(1-CartEase(Abs(Age)/0.34));
+        Width:=0.21;
+      end;
+      Line(X-Width,Y-0.10,X+Width,Y-0.10,0.18,Ink);
+      Line(X-Width,Y-0.04,X+Width,Y-0.04,0.055,Palette.Metal);
+      if HazardHeight<0.07 then Exit;
+      Bend:=Width*0.32*Sin(19*Age);
+      Quad(PointF(X-Width,Y),PointF(X-Width*0.47,Y+HazardHeight*0.65),
+        PointF(X+Bend,Y+HazardHeight),PointF(X+Width*0.34,Y+HazardHeight*0.43),$00415EEF);
+      Quad(PointF(X-Width*0.42,Y),PointF(X+Bend,Y+HazardHeight*0.84),
+        PointF(X+Width*0.72,Y+HazardHeight*0.54),PointF(X+Width,Y),$00487DFF);
+      Quad(PointF(X-Width*0.36,Y),PointF(X+Bend*0.75,Y+HazardHeight*0.57),
+        PointF(X+Width*0.34,Y+HazardHeight*0.26),PointF(X+Width*0.46,Y),Gold);
+    end;
+    cmBlocker:begin
+      Quad(PointF(X-Width,Y),PointF(X-Width*0.48,Y+CartBlockHeight),
+        PointF(X+Width*0.48,Y+CartBlockHeight),PointF(X+Width,Y),Ink);
+      Quad(PointF(X-Width+0.06,Y+0.06),PointF(X-Width*0.40,Y+CartBlockHeight-0.05),
+        PointF(X+Width*0.40,Y+CartBlockHeight-0.05),PointF(X+Width-0.06,Y+0.06),$004650AC);
+      Line(X-0.27,Y+0.30,X+0.21,Y+0.43,0.12,White);
+      Line(X-0.21,Y+0.59,X+0.18,Y+0.70,0.12,White);
+      Line(X-Width,Y-0.075,X+Width,Y-0.075,0.12,Ink);
+    end;
+    cmRockfall:begin
+      if Age< -CartRockLandLead-CartRockFallTime then Exit;
+      Y:=Y+HazardHeight-CartRockRadius;
+      Quad(PointF(X-0.59,Y+0.02),PointF(X-0.27,Y+0.49),PointF(X+0.31,Y+0.59),PointF(X+0.59,Y+0.04),Ink);
+      Quad(PointF(X-0.59,Y+0.02),PointF(X+0.59,Y+0.04),PointF(X+0.37,Y-0.47),PointF(X-0.36,Y-0.59),Ink);
+      Quad(PointF(X-0.52,Y+0.02),PointF(X-0.23,Y+0.43),PointF(X+0.27,Y+0.51),PointF(X+0.52,Y+0.04),$008A8590);
+      Quad(PointF(X-0.52,Y+0.02),PointF(X+0.52,Y+0.04),PointF(X+0.32,Y-0.40),PointF(X-0.31,Y-0.52),$00564D5A);
+      Line(X+0.26,Y+0.44,X-0.14,Y+0.23,0.06,$00AAA2A9);
+      Line(X-0.14,Y+0.23,X-0.01,Y+0.02,0.06,$00AAA2A9);
+      Sparks(X,Base.Y-0.09,Age+CartRockLandLead,1.12,Palette.Beam);
+    end;
+  end;
+end;
+
 procedure TCartPainter.Moves;
 var I,J:Integer; M:TCartMove; P,A,B:TCartPosition; Foe:TPointF; X,Y,Age,U,D:Double;
 begin
@@ -329,13 +427,8 @@ begin
       cmGap,cmLift:begin
         A:=Plan.Rail(M.Start+0.11,Time);
         B:=Plan.Rail(M.Finish-0.11,Time);
-        Dot(A.X,A.Y-0.13,0.070,Gold);
-        Dot(B.X,B.Y-0.13,0.070,Gold);
-        if Age<0.55 then
-          for J:=0 to 3 do begin
-            D:=J*0.17;
-            Dot(X-0.20+D,Y-1.26+0.13*Sin(Time*7+J),0.066,Tint(Palette.Accent,Gold,0.45));
-          end;
+        Line(A.X-0.13,A.Y-0.10,A.X+0.10,A.Y-0.10,0.075,Palette.Metal);
+        Line(B.X-0.10,B.Y-0.10,B.X+0.13,B.Y-0.10,0.075,Palette.Metal);
       end;
       cmStomp:begin
         Foe:=Plan.WingTop(M,Time);
@@ -357,22 +450,28 @@ begin
         end;
         Sparks(X-0.45,Y-0.14,Age-0.29,0.85,Copper);
       end;
-      cmFlame:begin
-        Dot(X,Y-0.19,0.22,Ink);
-        U:=1-CartEase(Abs(Age)/0.34);
-        for J:=-2 to 2 do
-          Line(X+J*0.091,Y-0.04,X+J*0.050,Y+U*(0.48-0.065*Abs(J)),0.077,
-            Tint($00406CF5,Gold,(2-Abs(J))/2));
-        Sparks(X,Y+0.27,Age,0.65,Gold);
-      end;
+      cmFlame,cmFireJet,cmBlocker:Hazard(M,P);
+      cmRockfall:if Age>=-CartRockLandLead then Hazard(M,P);
       cmRival,cmRam:Rival(M);
     end;
     Inc(I);
   end;
 end;
 
+procedure TCartPainter.FallingRocks;
+var I:Integer; M:TCartMove;
+begin
+  I:=Plan.MoveFrom(Time+CartRockLandLead);
+  while (I<Length(Plan.Moves)) and (Plan.Moves[I].Hit<=Time+CartRockLandLead+CartRockFallTime) do begin
+    M:=Plan.Moves[I];
+    // 落下中は手前を横切り、奥のコインを自然に隠す。
+    if (M.Kind=cmRockfall) and (Time-M.Hit< -CartRockLandLead) then Hazard(M,Plan.Track(M.Hit));
+    Inc(I);
+  end;
+end;
+
 procedure TCartPainter.Rival(const Move:TCartMove);
-var P:TCartPosition; Rock:TPointF; Age,X,Lead:Double;
+var P:TCartPosition; Age,X,Lead:Double;
 begin
   Age:=Time-Move.Hit;
   if Move.Kind=cmRam then begin
@@ -389,14 +488,10 @@ begin
   CartBody(P.X,P.Y,EnsureRange(ArcTan(P.Slope),-0.26,0.26),1.18,$006EA88E,False);
   if Age< -CartThrowLead then begin
     Line(P.X+0.05,P.Y+0.71,P.X,P.Y+0.83,0.065,Gold);
-    Dot(P.X,P.Y+0.83,0.143,Copper);
+    Bomb(PointF(P.X,P.Y+0.83),Age);
   end
-  else if Age<=0.30 then begin
-    Rock:=Plan.ThrowRock(Move,Time);
-    Dot(Rock.X,Rock.Y,0.175,Ink);
-    Dot(Rock.X,Rock.Y,0.142,Copper);
-    Dot(Rock.X+0.065*Cos(Age*22),Rock.Y+0.065*Sin(Age*22),0.052,Gold);
-  end;
+  else if Age<0.36 then Bomb(Plan.ThrowBomb(Move,Time),Age)
+  else if Age<0.72 then Blast(Plan.ThrowBomb(Move,Move.Hit+0.36),Age-0.36);
 end;
 
 procedure TCartPainter.LegacyConvoy(Index:Integer);
@@ -437,13 +532,8 @@ begin
 end;
 
 procedure TCartPainter.BossVolley(Index,Car:Integer;const P:TCartPosition);
-var Shot:TCartBossShot; Rock:TPointF; J:Integer; D,Arm,R,S,C:Double;
-
-  function Facet(X,Y:Double):TPointF;
-  begin
-    Result:=PointF(Rock.X+R*(X*C-Y*S),Rock.Y+R*(X*S+Y*C));
-  end;
-
+const BurstDelay=0.10;
+var Shot:TCartBossShot; Puck:TPointF; Ground:TCartPosition; J:Integer; D,Arm,Burst:Double;
 begin
   for J:=0 to Plan.ChaseShotCount(Index,Car)-1 do begin
     Shot:=Plan.ChaseShot(Index,Car,J);
@@ -451,15 +541,15 @@ begin
     if (D>=-0.17) and (D<=0.13) then begin
       Arm:=1-CartEase(Abs(D)/0.17);
       Line(P.X+0.03,P.Y+1.01,P.X-0.17-0.27*Arm,P.Y+0.98+0.14*Arm,0.11,Gold);
-      if D<0 then Dot(P.X-0.17-0.27*Arm,P.Y+1.07+0.14*Arm,0.145,Copper);
+      if D<0 then Bomb(PointF(P.X-0.17-0.27*Arm,P.Y+1.07+0.14*Arm),D);
     end;
-    if (D<0) or (Time>Shot.CrossTime+0.16) then Continue;
-    Rock:=Shot.Position(Time);
-    R:=0.176*(1-CartEase((Time-Shot.CrossTime-0.08)/0.08));
-    SinCos(D*19+J,S,C);
-    Quad(Facet(-0.95,0.12),Facet(-0.16,0.92),Facet(0.96,0.30),Facet(0.25,-0.91),Ink);
-    Quad(Facet(-0.71,0.10),Facet(-0.14,0.71),Facet(0.71,0.22),Facet(0.17,-0.66),Copper);
-    Quad(Facet(-0.52,0.09),Facet(-0.12,0.66),Facet(0.54,0.23),Facet(-0.17,-0.05),Tint(Copper,White,0.30));
+    Burst:=Shot.CrossTime+BurstDelay;
+    if (D<0) or (Time>=Burst+0.36) then Continue;
+    Puck:=Shot.Position(Min(Time,Burst));
+    Ground:=Plan.RailAtX(Puck.X,Min(Time,Burst));
+    Puck.Y:=Max(Puck.Y,Ground.Y+0.10);
+    if Time<Burst then Bomb(Puck,D)
+    else Blast(Puck,Time-Burst);
   end;
 end;
 
@@ -513,7 +603,7 @@ begin
       end;
       Angle:=EnsureRange(ArcTan(P.Slope),-0.26,0.26);
       CartBody(P.X,P.Y,Angle,Size,Color,True,1,0.03,True);
-      if (Time>=M.Start-0.27) and (Time<=M.Start+0.75) then
+      if (Time>=M.Start-0.27) and (Time<=M.Start+1.09) then
         BossVolley(Index,I,P);
     end else if Age<0.99 then begin
       P:=Plan.ChaseCar(Index,I,M.Hit);
@@ -630,7 +720,7 @@ begin
 end;
 
 procedure TCartPainter.Draw(const Frame:TAnimationFrame);
-var Hero,A,B:TCartPosition; I,Theme,Tile,Knot,NextTheme,Action:Integer; U,Angle,Shift,Y,RouteTime,Crouch:Double;
+var Hero,A,B:TCartPosition; I,Theme,Knot,NextTheme,Action:Integer; U,Angle,RouteTime,Crouch:Double;
 begin
   W:=Frame.Width;
   H:=Frame.Height;
@@ -657,6 +747,7 @@ begin
   end;
   Background(Hero,Theme);
   if Frame.BackgroundOnly then Exit;
+  SpeedLines(Hero);
   Rails;
   Moves;
   for I:=0 to High(Plan.Bosses) do Convoy(I);
@@ -674,16 +765,7 @@ begin
     CartBody(Hero.X,Hero.Y,EnsureRange(Angle,-0.56,0.56),1.08,HeroBlue,False,1,Crouch);
   end else Finish;
   Coins;
-  // レール外の短い残像で下り坂の加速を見せる。
-  U:=EnsureRange((Hero.Speed-7.3)/6.0,0.0,1.0)*(1-CartEase((Time-Plan.Goal)/0.35));
-  if U>0.12 then
-    for I:=0 to 8 do begin
-      Shift:=I*0.27-Hero.X*0.22;
-      Shift:=Shift-Floor(Shift);
-      Tile:=I mod 3;
-      Y:=H*(0.72+0.067*Tile);
-      Surface.Line(W*Shift,Y,W*Shift+Scale*(0.15+0.41*U),Y,Palette.Accent,Max(1.0,Scale*0.023),U*0.44);
-    end;
+  FallingRocks;
   Surface.FillRect(W*0.04,H*0.066,W*0.28,H*0.078,Ink);
   Surface.FillRect(W*0.04,H*0.068,W*(0.04+0.24*Min(1.0,Time/Plan.Goal)),H*0.076,Gold);
 end;

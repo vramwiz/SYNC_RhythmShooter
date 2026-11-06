@@ -105,7 +105,7 @@ begin
     if TComboBox(Form.FindComponent('ScrollDirection')).Items.Count<>StyleSmallCount(Style) then raise Exception.Create('Small category restore');
     if Form.FindComponent('MovieLayerStyle')<>nil then raise Exception.Create('Duplicate middle selection');
     if (Form.FindComponent('RhythmLayerVisible')<>nil) or (Form.FindComponent('MovieLayerVisible')<>nil) then raise Exception.Create('Obsolete layer controls');
-    if TTrackBar(Form.FindComponent('BossFrequency')).Parent.Visible<>(Style in [rsShooting,rsBreakout,rsBombAction,rsMining,rsTrain,rsNaval,rsJumpAdventure,rsFightingRush,rsSideRace,rsMineCart]) then raise Exception.Create('Boss frequency visibility');
+    if TTrackBar(Form.FindComponent('BossFrequency')).Parent.Visible<>(Style in [rsShooting,rsBreakout,rsBombAction,rsMining,rsTrain,rsJumpAdventure,rsFightingRush,rsSideRace,rsMineCart]) then raise Exception.Create('Boss frequency visibility');
     if not TTrackBar(Form.FindComponent('GameThreshold')).Parent.Visible then raise Exception.Create('Audio density visibility');
     CheckOptionCaption(Form,'GameThresholdCaption','GameThreshold');
     if (Form.FindComponent('EqualizerVisible')=nil) or not TCheckBox(Form.FindComponent('EqualizerVisible')).Visible then raise Exception.Create('Equalizer option missing');

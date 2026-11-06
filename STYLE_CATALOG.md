@@ -1,6 +1,6 @@
 # バリエーション分類と共通ディスパッチ
 
-2026-11-05 / 選択できるバリエーションは13種類。トロッコアクションは列車と別に選べる。花火は共通のゴール演出。後半の検証記録は当時の構成。
+2026-11-06 / 選択できるバリエーションは12種類。トロッコアクションは列車と別に選べる。旧海戦の設定はトロッコアクションへ引き継ぎ、譜面は再準備する。花火は共通のゴール演出。後半の検証記録は当時の構成。
 
 設定画面の種類選択を大・中・小の3段に整理。ピンボールとブロック崩しをボールアクションへまとめ、宇宙シューティングの縦／横を小分類へ配置した。各種類の生成・準備・保存後読戻し・PCMなし復元・描画接続を専用アダプターへ移し、RhythmStyleRegistryの登録表から一括で分岐する。
 
@@ -10,7 +10,6 @@
 |---|---|---|
 | シューティング | 宇宙シューティング | 縦スクロール／横スクロール |
 | シューティング | 装甲列車 | 横からの視点（固定） |
-| シューティング | 海戦 | 見下ろし（固定） |
 | ボールアクション | ピンボール | 縦スクロール／横スクロール |
 | ボールアクション | ブロック崩し | 固定盤面 |
 | アクション | ジャンプアドベンチャー | 横・縦の自動切替 |
@@ -29,7 +28,7 @@
 分類はこのアプリの実際の遊戯表現に合わせた設定上の整理で、業界共通の唯一の分類を主張するものではない。
 
 - ボール反射を主体とするピンボール／ブロック崩しを同じ大分類へ。[任天堂ストアのジービー](https://store-jp.nintendo.com/list/software/D70010000104509.html)は両要素を持つ公式の実例。
-- シューティングの縦／横はゲームジャンルの別列挙にせず視点の小分類へ。[任天堂の沙羅曼蛇紹介](https://www.nintendo.com/jp/topics/article/890c8deb-ebd8-405b-b14f-08ce42a90730)に両スクロールの公式説明がある。列車と海戦は当リポジトリの砲撃・迎撃中心の内容を基準に同じ大分類へ置く。
+- シューティングの縦／横は視点の小分類へ。装甲列車は砲撃・迎撃を中心とするためシューティングに含める。[任天堂の沙羅曼蛇紹介](https://www.nintendo.com/jp/topics/article/890c8deb-ebd8-405b-b14f-08ce42a90730)
 - 爆弾・格闘・掘削・足場ジャンプをアクションへ。[コナミのボンバーマン公式](https://www.konami.com/games/bomberman/collection/jp/ja/)も爆弾アクションの参考とした。
 - レースは車両走行、音楽・演出はリズムゲーム。[バンダイナムコの公式ジャンル一覧](https://www.bandainamcoent.co.jp/license/detail3/)のリズムゲームという種類を参照。
 
@@ -53,7 +52,7 @@
 | `SYNC_RhythmShooter_SettingsForm` | 1225 | `Source/Shared/Host/SYNC_RhythmShooter_SettingsForm.pas` |
 | `SYNC_RhythmShooter_FilterPlugin` | 456 | `Source/Shared/Host/SYNC_RhythmShooter_FilterPlugin.pas` |
 
-| 保存enum | 専用接続ユニット | 行数 |
+| スタイル型 | 専用接続ユニット | 行数 |
 |---|---|---:|
 | `rsShooting` | `Source/Shooting/RhythmShootingStyle.pas` | 29 |
 | `rsBall` | `Source/Ball/RhythmBallStyle.pas` | 43 |
@@ -64,7 +63,6 @@
 | `rsFightingRush` | `Source/FightingRush/RhythmRushStyle.pas` | 70 |
 | `rsMining` | `Source/Mining/RhythmMiningStyle.pas` | 45 |
 | `rsTrain` | `Source/Train/RhythmTrainStyle.pas` | 45 |
-| `rsNaval` | `Source/Naval/RhythmNavalStyle.pas` | 45 |
 | `rsRhythmGame` | `Source/RhythmGame/RhythmGameStyle.pas` | 46 |
 | `rsStepGame` | `Source/RhythmGame/RhythmStepStyle.pas` | 80 |
 | `rsMineCart` | `Source/MineCart/RhythmCartStyle.pas` | 68 |

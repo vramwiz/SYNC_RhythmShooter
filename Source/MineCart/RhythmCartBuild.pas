@@ -125,7 +125,15 @@ begin
       Result.Height:=0.50;
     end;
     cmLift:Result.Height:=1.40;
-    cmFlame:Result.Height:=1.54;
+    cmFireJet,cmBlocker,cmRockfall:begin
+      Result.Start:=Time-0.57;
+      Result.Finish:=Time+0.54;
+      case Kind of
+        cmFireJet:Result.Height:=2.17;
+        cmBlocker:Result.Height:=1.66;
+        cmRockfall:Result.Height:=2.05;
+      end;
+    end;
     cmRam:Result.Height:=1.88;
     cmBossBump:begin
       Result.Start:=Time-CartChaseLead;
@@ -137,8 +145,8 @@ begin
 end;
 
 procedure TCartBuilder.RegularUntil(Limit:Double);
-const Sequence:array[0..13] of TCartMoveKind=(cmGap,cmFork,cmStomp,cmRam,cmFlame,cmLift,cmCollapse,
-  cmRival,cmRam,cmStomp,cmFork,cmRival,cmCollapse,cmRam);
+const Sequence:array[0..14] of TCartMoveKind=(cmGap,cmFork,cmStomp,cmRam,cmFireJet,cmBlocker,cmRockfall,
+  cmRival,cmRam,cmStomp,cmLift,cmFork,cmCollapse,cmRival,cmRam);
 var Time:Double; M:TCartMove; Kind:TCartMoveKind;
 begin
   while NextAction+0.64<Limit do begin
@@ -147,7 +155,8 @@ begin
     Kind:=Sequence[ActionNumber mod Length(Sequence)];
     if (Time<6.0) and (Kind=cmRival) then Kind:=cmCollapse;
     M:=MakeMove(Kind,Time);
-    if ((Kind=cmStomp) and not Plan.CanStomp(M)) or ((Kind=cmFlame) and not Plan.CanClearFlame(M)) or
+    if ((Kind=cmStomp) and not Plan.CanStomp(M)) or
+      ((Kind in [cmFireJet,cmBlocker,cmRockfall]) and not Plan.CanClearObstacle(M)) or
       ((Kind=cmRam) and not Plan.CanClearRam(M)) or ((Kind=cmRival) and not Plan.CanClearThrow(M)) then
       M:=MakeMove(cmGap,Time);
     Moves.Add(M);

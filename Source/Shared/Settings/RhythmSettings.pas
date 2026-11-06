@@ -125,6 +125,7 @@ var
     if Id='fighting' then begin Style:=rsFightingRush;Exit(True);end;
     if Id='fireworks' then begin Style:=rsShooting;Exit(True);end;
     if Id='runner' then begin Style:=rsJumpAdventure;Exit(True);end;
+    if Id='naval' then begin Style:=rsMineCart;Exit(True);end;
     Result:=TryStyle(Id,Style);
   end;
 

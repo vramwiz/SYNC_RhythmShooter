@@ -7,7 +7,7 @@ function LoadLayerAudio(const Ref:TRhythmPlanRef;const Source:string;Direction:I
 implementation
 uses System.SysUtils,System.IOUtils,System.Hash,RhythmPaths,RhythmStyles,RhythmAudioCache,
   RhythmBallPlan,RhythmBreakoutPlan,RhythmBombPlan,
-  RhythmMiningPlan,RhythmTrainPlan,RhythmNavalPlan;
+  RhythmMiningPlan,RhythmTrainPlan;
 function ShootingEvents(const Ref:TRhythmPlanRef):string;
 begin Result:=TPath.Combine(CacheFolder,Ref.SourceKey+'-s'+IntToStr(Ref.Sensitivity)+'-events-v1.json');end;
 function SaveLayerShootingAudio(Audio:TRhythmAudio):string;
@@ -30,7 +30,6 @@ begin
     rsBombAction:Result:=TBombActionPlan.LoadAudioMetadata(Ref,Source,Direction);
     rsMining:Result:=TMiningPlan.LoadAudioMetadata(Ref,Source,Direction);
     rsTrain:Result:=TTrainPlan.LoadAudioMetadata(Ref,Source,Direction);
-    rsNaval:Result:=TNavalPlan.LoadAudioMetadata(Ref,Source,Direction);
     else raise Exception.Create('Recursive rhythm movie is forbidden');
   end;
   try

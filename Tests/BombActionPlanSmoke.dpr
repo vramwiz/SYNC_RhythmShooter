@@ -18,7 +18,7 @@ procedure Need(Value:Boolean;const Why:string);begin if not Value then raise Exc
 begin
   Audio:=nil;A:=nil;B:=nil;
   try
-    Need((Ord(rsBombAction)=6) and (Ord(rsSideRace)=5) and (StylePlanVersion(rsBombAction)=2),'Style identity');
+    Need((StyleId(rsBombAction)='bomb-action') and (StyleId(rsSideRace)='side-race') and (StylePlanVersion(rsBombAction)=2),'Style identity');
     Need((StyleVariant(rsBombAction,50,0)=1) and (StyleVariant(rsBombAction,50,50)=51),'Frequency identity');
     for K:=0 to 7 do begin
       D:=90;Gap:=0.25;case K of 1:begin D:=1800;Gap:=0.43;end;2:begin D:=120;Gap:=0.005;end;3:begin D:=0.10;Gap:=0.01;end;4:D:=2;5:D:=100;end;

@@ -165,13 +165,15 @@ begin
   SetLength(Plan.Moves,Count('moves',0,4000));
   MaxMoveKind:=Ord(cmBoss);
   if Version=2 then MaxMoveKind:=Ord(cmRam);
-  if Version>=3 then MaxMoveKind:=Ord(cmBossBump);
+  if Version=3 then MaxMoveKind:=Ord(cmBossBump);
+  if Version>=4 then MaxMoveKind:=Ord(High(TCartMoveKind));
   for I:=0 to High(Plan.Moves) do begin
     SelectRow(I,5);
     Move.Start:=Exact(0,0,Plan.Goal);
     Move.Hit:=Exact(1,0,Plan.Goal);
     Move.Finish:=Exact(2,0,Plan.Goal);
-    Move.Height:=Exact(3,0,2);
+    if Version>=4 then Move.Height:=Exact(3,0,2.60)
+    else Move.Height:=Exact(3,0,2);
     Move.Kind:=TCartMoveKind(IntAt(4,0,MaxMoveKind));
     Plan.Moves[I]:=Move;
   end;
