@@ -42,7 +42,7 @@
         <GenDll>true</GenDll>
         <DCC_DcuOutput>.\$(Platform)\RhythmGame\$(Config)\DCU</DCC_DcuOutput>
         <DCC_ExeOutput>.\$(Platform)\RhythmGame\$(Config)</DCC_ExeOutput>
-        <DCC_UnitSearchPath>Source\MineCart;Source\SideRace;Source\FightingRush;Source\JumpAdventure;Source\RhythmGame;Source\Mining;Source\Train;Source\BombAction;Source\Breakout;Source\Shared\Audio;Source\Shared\Render;Source\Shared\Settings;Source\Shared\Common;Source\Shared\Assets;Source\Shared\UI;Source\Shared\Host;Source\Shared\Integrations;Source\Composition;Source\Shooting;Source\Ball;Source\Fireworks;Source\Lib;Source\Lib\Process;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
+        <DCC_UnitSearchPath>Source\MineCart;Source\CrashCannon;Source\SideRace;Source\FightingRush;Source\JumpAdventure;Source\RhythmGame;Source\Mining;Source\Train;Source\BombAction;Source\Breakout;Source\Shared\Audio;Source\Shared\Render;Source\Shared\Settings;Source\Shared\Common;Source\Shared\Assets;Source\Shared\UI;Source\Shared\Host;Source\Shared\Integrations;Source\Composition;Source\Shooting;Source\Ball;Source\Fireworks;Source\Lib;Source\Lib\Process;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
         <DCC_Namespace>System;Xml;Data;Datasnap;Web;Soap;Winapi;Vcl;$(DCC_Namespace)</DCC_Namespace>
         <SanitizedProjectName>SYNC_RhythmGame</SanitizedProjectName>
     </PropertyGroup>
@@ -115,6 +115,13 @@
         <DCCReference Include="Source\MineCart\RhythmCartCodec.pas"/>
         <DCCReference Include="Source\MineCart\RhythmCartScene.pas"/>
         <DCCReference Include="Source\MineCart\RhythmCartStyle.pas"/>
+        <DCCReference Include="Source\CrashCannon\RhythmCannonTargets.pas"/>
+        <DCCReference Include="Source\CrashCannon\RhythmCannonPlan.pas"/>
+        <DCCReference Include="Source\CrashCannon\RhythmCannonBuild.pas"/>
+        <DCCReference Include="Source\CrashCannon\RhythmCannonCodec.pas"/>
+        <DCCReference Include="Source\CrashCannon\RhythmCannonArt.pas"/>
+        <DCCReference Include="Source\CrashCannon\RhythmCannonScene.pas"/>
+        <DCCReference Include="Source\CrashCannon\RhythmCannonStyle.pas"/>
         <DCCReference Include="Source\RhythmGame\RhythmOrbitGuide.pas"/>
         <DCCReference Include="Source\RhythmGame\RhythmOrbitMarks.pas"/>
         <DCCReference Include="Source\RhythmGame\RhythmOrbitAudio.pas"/>

@@ -1,12 +1,12 @@
 ﻿unit RhythmStyles;
 // 保存ID/計画版の契約と、設定画面だけの分類・機能カタログ。分類値はJSONやホストへ保存しない。
 interface
-type TRhythmStyle=(rsShooting,rsBall,rsJumpAdventure,rsBreakout,rsSideRace,rsBombAction,rsFightingRush,rsMining,rsTrain,rsRhythmGame,rsStepGame,rsMineCart);
+type TRhythmStyle=(rsShooting,rsBall,rsJumpAdventure,rsBreakout,rsSideRace,rsBombAction,rsFightingRush,rsMining,rsTrain,rsRhythmGame,rsStepGame,rsMineCart,rsCrashCannon);
 type
   TRhythmStyleGroup=(sgShooting,sgBall,sgAction,sgRace,sgMusic);
   TStyleSmallKind=(skFixed,skScroll);
   TStyleVariantKind=(svNone,svBoss,svRhythm);
-  TStyleFeature=(sfBoss,sfPrepared,sfAssets,sfDesigns,sfThreshold,sfTransparent,sfDefaultBoss50);
+  TStyleFeature=(sfBoss,sfPrepared,sfAssets,sfDesigns,sfThreshold,sfTransparent,sfDefaultBoss50,sfOwnFinale);
   TStyleFeatures=set of TStyleFeature;
   TStyleInfo=record
     Id,Title,MiddleTitle,FixedSmall,ProgressText:string;
@@ -55,7 +55,8 @@ const
     (Id:'train';Title:'列車';MiddleTitle:'装甲列車';FixedSmall:'横からの視点';ProgressText:'列車・砲撃・ボスを逆算/保存検証中';Group:sgShooting;Order:1;SmallKind:skFixed;Version:1;Versions:[1];Features:[sfPrepared,sfBoss,sfDefaultBoss50];VariantKind:svBoss),
     (Id:'rhythm-game';Title:TYPE_V_TITLE;MiddleTitle:TYPE_V_TITLE;FixedSmall:'MV重ね（透過）';ProgressText:'音時刻からマーク・カーソル軌道・連打を逆算/保存検証中';Group:sgMusic;Order:0;SmallKind:skFixed;Version:4;Versions:[1,2,3,4];Features:[sfPrepared,sfThreshold,sfTransparent];VariantKind:svRhythm),
     (Id:'prism-step';Title:TYPE_D_TITLE;MiddleTitle:TYPE_D_TITLE;FixedSmall:'縦';ProgressText:'音時刻から4レーン譜面を準備中';Group:sgMusic;Order:1;SmallKind:skFixed;Version:3;Versions:[1,2,3];Features:[sfPrepared,sfThreshold];VariantKind:svRhythm),
-    (Id:'mine-cart';Title:'トロッコアクション';MiddleTitle:'トロッコアクション';FixedSmall:'鉱山の横スクロール';ProgressText:'コインの接触・線路・回避を逆算中';Group:sgAction;Order:4;SmallKind:skFixed;Version:4;Versions:[1,2,3,4];Features:[sfPrepared,sfBoss,sfDefaultBoss50];VariantKind:svBoss)
+    (Id:'mine-cart';Title:'トロッコアクション';MiddleTitle:'トロッコアクション';FixedSmall:'鉱山の横スクロール';ProgressText:'コインの接触・線路・回避を逆算中';Group:sgAction;Order:4;SmallKind:skFixed;Version:4;Versions:[1,2,3,4];Features:[sfPrepared,sfBoss,sfDefaultBoss50];VariantKind:svBoss),
+    (Id:'crash-cannon';Title:'クラッシュキャノン';MiddleTitle:'クラッシュキャノン';FixedSmall:'横からの視点';ProgressText:'音時刻から着弾・反撃・連鎖崩壊を逆算中';Group:sgAction;Order:5;SmallKind:skFixed;Version:1;Versions:[1];Features:[sfPrepared,sfOwnFinale];VariantKind:svNone)
   );
   GroupTitles:array[TRhythmStyleGroup] of string=('シューティング','ボールアクション','アクション','レース','音楽・演出');
 function StyleInfo(Style:TRhythmStyle):TStyleInfo;

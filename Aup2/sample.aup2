@@ -43,7 +43,7 @@ Y=0
 音楽ファイル=C:\Users\vramw\Music\magnific_aQo5nq8fSh.mp3
 設定=
 オフセット=0.00
-設定JSON={"schema":1,"presentationVersion":3,"music":"C:\\Users\\vramw\\Music\\magnific_aQo5nq8fSh.mp3","direction":0,"sensitivity":100,"zoom":100.0,"offsetSeconds":0.0,"x":0.0,"y":0.0,"musicSource":"host","bossFrequency":100,"style":"mine-cart","audioDensity":-100,"gameThreshold":-100,"equalizer":true,"fireworksRichness":50,"plan":{"key":"a56919c8f23bde01ad12c262058c9a405dd144233cc65c9c2b41751c3fba5f82","source":"2e722315dc71767cc2cfa7ff5f32ea25f8a1036787476cf221d0a6cf58551fe3","digest":"77df4169dff74fbe647dec3e8f8df906357f991c091283bd4161c4c3aa68ce27","sourceStamp":"000000000012D8E3-01DD0F42DA2E56DD","style":"mine-cart","version":3,"sensitivity":100,"direction":0,"variant":101,"density":1},"designs":[]}
+設定JSON={"schema":1,"presentationVersion":3,"music":"C:\\Users\\vramw\\Music\\magnific_aQo5nq8fSh.mp3","direction":0,"sensitivity":100,"zoom":100.0,"offsetSeconds":0.0,"x":0.0,"y":0.0,"musicSource":"host","bossFrequency":100,"style":"crash-cannon","audioDensity":-100,"gameThreshold":-100,"equalizer":true,"fireworksRichness":50,"plan":{"key":"d82c7970dcf4e535ca2b415ed2e7f2616f510613c4a42cc6ddfb88ab4021d957","source":"2e722315dc71767cc2cfa7ff5f32ea25f8a1036787476cf221d0a6cf58551fe3","digest":"605656afa0128184c7f62473c9f0a6e2ca5c81d6ebe2c59499f37969592c5a75","sourceStamp":"000000000012D8E3-01DD0F42DA2E56DD","style":"crash-cannon","version":1,"sensitivity":100,"direction":0,"variant":0,"density":1},"designs":[]}
 [plugin.0]
 plugin.name=Syncroh2_Extension2
 SpeechSynthesisProjectID={3E81007F-19B9-4FA9-8E28-2F05F9E41910}
