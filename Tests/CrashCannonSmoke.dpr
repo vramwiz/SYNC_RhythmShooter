@@ -229,7 +229,7 @@ end;
 
 procedure Frames(Plan:TCannonPlan;Audio,Cold:TRhythmAudio;const Ref:TRhythmPlanRef;const Folder:string);
 var Live,Restored:TRhythmRenderer; Image:TBitmap; PNG:TPngImage; Stage:TCannonStage; Cue:TCannonCue;
-  Seen:set of TCannonTarget; I,J:Integer; HasDodge,HasLoss:Boolean;
+  Seen:set of TCannonTarget; I,J,AfterBoss:Integer; HasDodge,HasLoss:Boolean;
 
   procedure Capture(const Name:string;Time:Double;Save:Boolean);
   var Expected:string;
@@ -245,6 +245,49 @@ var Live,Restored:TRhythmRenderer; Image:TBitmap; PNG:TPngImage; Stage:TCannonSt
     Need(Expected=BitmapHash(Image),'Cold seek or offset changed frame '+Name);
   end;
 
+  procedure VerifySeams;
+  var Prior:TBitmap; S,X,Y,Delta,Jumps,Worst:Integer; BeforeRow,AfterRow:PByte;
+    Boundary:Double;
+  begin
+    if Length(Plan.Stages)<2 then Exit;
+    Prior:=TBitmap.Create;
+    try
+      Prior.PixelFormat:=pf32bit;
+      Prior.SetSize(Image.Width,Image.Height);
+      Worst:=0;
+      for S:=1 to High(Plan.Stages) do begin
+        Boundary:=Plan.Stages[S].Start;
+        Need(Abs(Plan.Stages[S-1].HeroX(Boundary)-Plan.Stages[S].HeroX(Boundary))<1E-9,
+          'Main gun jumped at the boundary');
+        Live.Render(Prior,Audio,Boundary-0.0005,0);
+        Live.Render(Image,Audio,Boundary+0.0005,0);
+        Jumps:=0;
+        for Y:=0 to Image.Height-1 do begin
+          BeforeRow:=Prior.ScanLine[Y];
+          AfterRow:=Image.ScanLine[Y];
+          for X:=0 to Image.Width-1 do begin
+            Delta:=Abs(Integer(BeforeRow^)-Integer(AfterRow^));
+            Inc(BeforeRow);
+            Inc(AfterRow);
+            Inc(Delta,Abs(Integer(BeforeRow^)-Integer(AfterRow^)));
+            Inc(BeforeRow);
+            Inc(AfterRow);
+            Inc(Delta,Abs(Integer(BeforeRow^)-Integer(AfterRow^)));
+            Inc(BeforeRow,2);
+            Inc(AfterRow,2);
+            if Delta>34 then Inc(Jumps);
+          end;
+        end;
+        Worst:=Max(Worst,Jumps);
+        Need(Jumps<Image.Width*Image.Height div 35,
+          Format('Hard cut at stage %d (%d pixels)',[S,Jumps]));
+      end;
+      WriteLn('Stage seams=',High(Plan.Stages),' D2D=',Live.UseD2D,' worst changed pixels=',Worst);
+    finally
+      Prior.Free;
+    end;
+  end;
+
 begin
   Live:=TRhythmRenderer.Create;
   Restored:=TRhythmRenderer.Create;
@@ -254,7 +297,29 @@ begin
     Live.ConfigureStyle(rsCrashCannon,Ref,0,0);
     Restored.ConfigureStyle(rsCrashCannon,Ref,0,0);
     Image.PixelFormat:=pf32bit;
+    Image.SetSize(576,324);
+    Live.UseD2D:=False;
+    VerifySeams;
+    Live.UseD2D:=True;
+    VerifySeams;
     Image.SetSize(960,540);
+    if Length(Plan.Stages)>1 then begin
+      Stage:=Plan.Stages[1];
+      Capture('seam-before',Stage.Start-0.60,True);
+      Capture('seam-boundary',Stage.Start,True);
+      Capture('seam-assembly',Stage.Start+0.32,True);
+      Capture('seam-after',Stage.Start+0.88,True);
+      AfterBoss:=0;
+      for I:=1 to High(Plan.Stages) do
+        if CannonBoss(Plan.Stages[I-1].Kind) then begin
+          AfterBoss:=I;
+          Break;
+        end;
+      if AfterBoss>0 then begin
+        Capture('boss-seam-before',Plan.Stages[AfterBoss].Start-0.17,True);
+        Capture('boss-seam-after',Plan.Stages[AfterBoss].Start+0.30,True);
+      end;
+    end;
     Stage:=Plan.Stages[0];
     Capture('assembly-start',Stage.Start,True);
     Capture('assembly-fall',Stage.Start+0.80*(Stage.AssemblyTime(0)-Stage.Start),True);

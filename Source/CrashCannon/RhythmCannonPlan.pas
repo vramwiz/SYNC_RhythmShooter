@@ -190,16 +190,27 @@ begin
 end;
 
 function TCannonStage.HeroX(Time:Double):Double;
-var Count:Integer; A,B,U:Double;
+var Count:Integer; A,B,U,Warning,ReturnStart,ReturnSpan:Double;
 begin
   Count:=DodgeCount(Time+0.82);
-  if Count=0 then Exit(CannonLeftLane+0.58*CannonEase((Time-Start)*1.5));
-  A:=CannonLeftLane;
-  B:=CannonRightLane;
-  if not Odd(Count) then begin A:=CannonRightLane; B:=CannonLeftLane; end;
-  if Count=1 then A:=A+0.58;
-  U:=CannonEase((Time-Cues[FDodges[Count-1]].Time+0.82)/0.60);
-  Result:=CannonMix(A,B,U);
+  if Count=0 then
+    Result:=CannonLeftLane+0.58*CannonEase((Time-Start)*1.5)
+  else begin
+    Warning:=Cues[FDodges[Count-1]].Time-0.82;
+    A:=CannonLeftLane;
+    B:=CannonRightLane;
+    if not Odd(Count) then begin A:=CannonRightLane; B:=CannonLeftLane; end;
+    if Count=1 then A:=A+0.58*CannonEase((Warning-Start)*1.5);
+    Result:=CannonMix(A,B,CannonEase((Time-Warning)/0.60));
+  end;
+  // 決着後に次の射撃位置へ戻る。ステージ先頭と末尾で主砲の座標を共有する。
+  ReturnStart:=Finish;
+  if Length(Cues)=0 then ReturnStart:=Stop-Min(0.72,(Stop-Start)*0.4);
+  if Time>ReturnStart then begin
+    ReturnSpan:=Min(0.87,Stop-ReturnStart);
+    U:=CannonEase((Time-ReturnStart)/Max(0.000001,ReturnSpan));
+    Result:=CannonMix(Result,CannonLeftLane,U);
+  end;
 end;
 
 function TCannonStage.Threat(Time:Double):Double;

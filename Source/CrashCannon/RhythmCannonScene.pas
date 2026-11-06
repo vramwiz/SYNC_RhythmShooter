@@ -28,6 +28,9 @@ uses System.Types,System.Math,System.SysUtils,Vcl.Graphics,RhythmCannonTargets,
   RhythmCannonCodec,RhythmCannonArt;
 
 type
+  TCannonCameraMotion=record
+    Kick,Zoom,Focus:Double;
+  end;
   TCannonPainter=record
     Art:TCannonArt;
     Plan:TCannonPlan;
@@ -35,7 +38,10 @@ type
     Time:Double;
     StageIndex:Integer;
     FinalStage:Boolean;
+    function CameraMotion(From:TCannonStage):TCannonCameraMotion;
     procedure Camera(const Frame:TAnimationFrame);
+    procedure Background;
+    procedure OutgoingField(AfterGuns:Boolean);
     procedure Connections;
     procedure Targets(Broken:Boolean);
     procedure FallingOnCargo;
@@ -48,13 +54,13 @@ type
     procedure Draw(const Frame:TAnimationFrame);
   end;
 
-procedure TCannonPainter.Camera(const Frame:TAnimationFrame);
+function TCannonPainter.CameraMotion(From:TCannonStage):TCannonCameraMotion;
 var Cue:TCannonCue; Part:TCannonPart; I:Integer; Age,Kick,Zoom,Focus,Impact,Finish:Double;
 begin
   Kick:=0;
   Focus:=0;
-  Finish:=Stage.Finish;
-  for Cue in Stage.Cues do begin
+  Finish:=From.Finish;
+  for Cue in From.Cues do begin
     Age:=Time-Cue.Time;
     if (Age>=0) and (Age<0.31) then begin
       Impact:=Max(0.0,(Cue.Power-0.47)*2);
@@ -62,24 +68,93 @@ begin
       if Cue.Enemy=ceNone then Focus:=Max(Focus,Impact*Sin(Pi*Age/0.31)*0.038);
     end;
   end;
-  for Part in Stage.Parts do
+  for Part in From.Parts do
     if (Part.Attack>=0) and (Time>=Part.LandAt) and (Time<Part.LandAt+0.28) then
       Kick:=Max(Kick,Min(1.0,Part.W*Part.H*0.10)*(1-(Time-Part.LandAt)/0.28));
-  for I:=0 to High(Stage.Parts) do begin
-    Age:=Time-Stage.AssemblyTime(I);
+  for I:=0 to High(From.Parts) do begin
+    Age:=Time-From.AssemblyTime(I);
     if (Age>=0) and (Age<0.13) then Kick:=Max(Kick,0.16*(1-Age/0.13));
   end;
   Zoom:=1+Focus;
-  if CannonBoss(Stage.Kind) and (Length(Stage.Cues)>0) then begin
+  if CannonBoss(From.Kind) and (Length(From.Cues)>0) then begin
     Zoom:=Zoom+0.052*CannonEase((Time-Finish+1.7)/1.15)*(1-CannonEase((Time-Finish+0.18)/0.26));
     Zoom:=Zoom-0.115*CannonEase((Time-Finish)/0.35);
   end;
+  Result.Kick:=Kick;
+  Result.Zoom:=Zoom;
+  Result.Focus:=Focus;
+end;
+
+procedure TCannonPainter.Camera(const Frame:TAnimationFrame);
+var NowMotion,PreviousMotion:TCannonCameraMotion; U,Span:Double;
+begin
+  NowMotion:=CameraMotion(Stage);
+  if StageIndex>0 then begin
+    Span:=Min(0.79,(Stage.Stop-Stage.Start)*0.44);
+    U:=CannonEase((Time-Stage.Start)/Span);
+    if U<1 then begin
+      PreviousMotion:=CameraMotion(Plan.Stages[StageIndex-1]);
+      NowMotion.Kick:=CannonMix(PreviousMotion.Kick,NowMotion.Kick,U);
+      NowMotion.Zoom:=CannonMix(PreviousMotion.Zoom,NowMotion.Zoom,U);
+      NowMotion.Focus:=CannonMix(PreviousMotion.Focus,NowMotion.Focus,U);
+    end;
+  end;
   Art.W:=Frame.Width;
   Art.H:=Frame.Height;
-  Art.Scale:=Min(Art.W/CannonWidth,Art.H/CannonHeight)*Zoom;
-  Art.Left:=(Art.W-CannonWidth*Art.Scale)*0.5-Focus*Art.Scale*3.1+
-    Sin(Time*94)*Art.Scale*Kick*0.16;
-  Art.Top:=(Art.H+CannonHeight*Art.Scale)*0.5+Cos(Time*78)*Art.Scale*Kick*0.12;
+  Art.Scale:=Min(Art.W/CannonWidth,Art.H/CannonHeight)*NowMotion.Zoom;
+  Art.Left:=(Art.W-CannonWidth*Art.Scale)*0.5-NowMotion.Focus*Art.Scale*3.1+
+    Sin(Time*94)*Art.Scale*NowMotion.Kick*0.16;
+  Art.Top:=(Art.H+CannonHeight*Art.Scale)*0.5+Cos(Time*78)*Art.Scale*NowMotion.Kick*0.12;
+end;
+
+procedure TCannonPainter.Background;
+var FromIndex,ToIndex:Integer; Span,U:Double; Neighbor:TCannonStage;
+begin
+  FromIndex:=StageIndex;
+  ToIndex:=StageIndex;
+  U:=0;
+  // 隣り合う区間の長さに合わせ、境界の前後で同じ色の曲線を評価する。
+  if StageIndex>0 then begin
+    Neighbor:=Plan.Stages[StageIndex-1];
+    Span:=Min(0.87,Min(Stage.Stop-Stage.Start,Neighbor.Stop-Neighbor.Start)*0.44);
+    if Time<Stage.Start+Span then begin
+      FromIndex:=StageIndex-1;
+      U:=CannonEase((Time-Stage.Start+Span)/(2*Span));
+    end;
+  end;
+  if (FromIndex=StageIndex) and not FinalStage then begin
+    Neighbor:=Plan.Stages[StageIndex+1];
+    Span:=Min(0.87,Min(Stage.Stop-Stage.Start,Neighbor.Stop-Neighbor.Start)*0.44);
+    if Time>=Neighbor.Start-Span then begin
+      ToIndex:=StageIndex+1;
+      U:=CannonEase((Time-Neighbor.Start+Span)/(2*Span));
+    end;
+  end;
+  Art.Background(Plan.Stages[FromIndex].Kind,Plan.Stages[ToIndex].Kind,FromIndex,ToIndex,Time,U);
+end;
+
+procedure TCannonPainter.OutgoingField(AfterGuns:Boolean);
+var Previous:TCannonPainter; U:Double; I:Integer;
+begin
+  if StageIndex=0 then Exit;
+  U:=(Time-Stage.Start)/Min(0.96,(Stage.Stop-Stage.Start)*0.48);
+  if U>=1 then Exit;
+  Previous:=Self;
+  Dec(Previous.StageIndex);
+  Previous.Stage:=Plan.Stages[Previous.StageIndex];
+  Previous.FinalStage:=False;
+  Previous.Art.Alpha:=1-CannonEase((U-0.08)/0.92);
+  if AfterGuns then begin
+    Previous.Targets(True);
+    for I:=0 to High(Previous.Stage.Cues) do
+      if Previous.Stage.Cues[I].Enemy<>ceNone then Previous.Enemy(I);
+    Previous.Destruction;
+  end else begin
+    Previous.SmokeEffects;
+    Previous.FallingOnCargo;
+    Previous.Connections;
+    Previous.Targets(False);
+  end;
 end;
 
 procedure TCannonPainter.Connections;
@@ -168,7 +243,7 @@ begin
 end;
 
 procedure TCannonPainter.FallingOnCargo;
-var I,Index:Integer; Part:TCannonPart; Pose,Debris:TCannonPose; Size,Age,X:Double;
+var I,Index:Integer; Part:TCannonPart; Pose,Debris:TCannonPose; Size,Age,X,Opacity:Double;
 begin
   if Length(Stage.Cues)=0 then Exit;
   Index:=-1;
@@ -185,6 +260,7 @@ begin
   X:=Pose.X+0.68;
   if X>23 then X:=Pose.X-0.68;
   Age:=Time-Part.LandAt;
+  Opacity:=CannonEase((Time-Stage.Start)/0.27);
   Debris:=Default(TCannonPose);
   Debris.X:=X;
   Debris.Y:=0.36;
@@ -196,13 +272,36 @@ begin
   if CannonBoss(Stage.Kind) and (Age>=0.08) then
     Art.Wreckage(X,0.30,Age-0.08,0.72,197+StageIndex)
   else
-    Art.Part(Stage.Kind,cpCrate,Debris,0.72,0.72,Time,0.95*Ord(Age>=0),1);
+    Art.Part(Stage.Kind,cpCrate,Debris,0.72,0.72,Time,0.95*Ord(Age>=0),Opacity);
   Art.Blast(X,0.15,Age-0.04,0.65,871+StageIndex,CannonGold,True);
 end;
 
 procedure TCannonPainter.Gun(Barrel:Integer);
-var I,Selected,Latest:Integer; T,Distance,Closest,Recoil,Angle,Age,Enter:Double;
+var Selected,Latest:Integer; Closest,Recoil,Angle,Age,Enter:Double;
   Base,Origin,Aim:TPointF; Life:TCannonSupportLife; Wreck:TCannonPose;
+  AimStage,LastStage:TCannonStage;
+
+  procedure Scan(From:TCannonStage);
+  var I:Integer; T,Distance:Double;
+  begin
+    for I:=0 to High(From.Cues) do begin
+      if not Plan.Fires(From,I,Barrel) then Continue;
+      T:=From.Launch(I,Barrel);
+      if (Barrel>0) and ((T<Life.Ready) or (T>=Life.Lost)) then Continue;
+      Distance:=Abs(T-Time);
+      if Distance<Closest then begin
+        Selected:=I;
+        AimStage:=From;
+        Closest:=Distance;
+      end;
+      if (T<=Time) and (Time-T<Age) then begin
+        Latest:=I;
+        LastStage:=From;
+        Age:=Time-T;
+      end;
+    end;
+  end;
+
 begin
   Base:=Stage.Pivot(Barrel,Time);
   if Barrel>0 then begin
@@ -225,24 +324,16 @@ begin
   Selected:=-1;
   Latest:=-1;
   Age:=10;
-  for I:=0 to High(Stage.Cues) do begin
-    if not Plan.Fires(Stage,I,Barrel) then Continue;
-    T:=Stage.Launch(I,Barrel);
-    if (Barrel>0) and ((T<Life.Ready) or (T>=Life.Lost)) then Continue;
-    Distance:=Abs(T-Time);
-    if Distance<Closest then begin
-      Selected:=I;
-      Closest:=Distance;
-    end;
-    if (T<=Time) and (Time-T<Age) then begin
-      Latest:=I;
-      Age:=Time-T;
-    end;
-  end;
+  AimStage:=Stage;
+  LastStage:=Stage;
+  if (StageIndex>0) and (Time-Stage.Start<1) then Scan(Plan.Stages[StageIndex-1]);
+  Scan(Stage);
+  if not FinalStage and (Plan.Stages[StageIndex+1].Start-Time<1) then
+    Scan(Plan.Stages[StageIndex+1]);
   Angle:=0.20+0.07*Sin(Time*1.9);
   if Selected>=0 then begin
-    Origin:=Stage.Muzzle(Selected,Barrel);
-    Aim:=Stage.Pivot(Barrel,Stage.Launch(Selected,Barrel));
+    Origin:=AimStage.Muzzle(Selected,Barrel);
+    Aim:=AimStage.Pivot(Barrel,AimStage.Launch(Selected,Barrel));
     Enter:=1-CannonEase((Closest-0.17)/0.55);
     Angle:=CannonMix(Angle,ArcTan2(Origin.Y-Aim.Y,Origin.X-Aim.X),Enter);
   end;
@@ -259,7 +350,7 @@ begin
   end;
   Art.Cannon(Base,Angle,Recoil,Base.X*2.8,Barrel>0);
   if (Latest>=0) and (Age<0.68) then begin
-    Origin:=Stage.Muzzle(Latest,Barrel);
+    Origin:=LastStage.Muzzle(Latest,Barrel);
     Art.Smoke(Origin.X,Origin.Y,Age,0.48,41+Latest*7+Barrel);
     if Age<0.12 then begin
       Enter:=1-Age/0.12;
@@ -476,32 +567,27 @@ begin
       Art.Blast(P.X+1.29,0.15,Age-0.15,Size*0.60,Seed+22,CannonGold,True);
     end;
   end;
-  if Flash>0 then Art.Surface.FillRect(0,0,Art.W,Art.H,CannonIvory,Flash);
+  if Flash>0 then Art.Surface.FillRect(0,0,Art.W,Art.H,CannonIvory,Flash*Art.Alpha);
 end;
 
 procedure TCannonPainter.Draw(const Frame:TAnimationFrame);
-var I:Integer; U:Double;
+var I:Integer;
 begin
   Camera(Frame);
-  Art.Background(Stage.Kind,StageIndex,Time-Stage.Start);
+  Background;
   if Frame.BackgroundOnly then Exit;
+  OutgoingField(False);
   SmokeEffects;
   FallingOnCargo;
   Connections;
   Targets(False);
   for I:=3 downto 0 do Gun(I);
   Shells;
+  OutgoingField(True);
   Targets(True);
   for I:=0 to High(Stage.Cues) do
     if Stage.Cues[I].Enemy<>ceNone then Enemy(I);
   Destruction;
-  if StageIndex>0 then begin
-    U:=CannonEase((Time-Stage.Start)/0.21);
-    if U<1 then begin
-      Art.Surface.FillRect(Art.W*U,0,Art.W,Art.H,$00B8D9E7,(1-U)*0.44);
-      Art.Surface.Line(Art.W*U,0,Art.W*U,Art.H,CannonIvory,3,(1-U)*0.68);
-    end;
-  end;
 end;
 
 destructor TCannonAnimation.Destroy;
@@ -535,6 +621,7 @@ var Painter:TCannonPainter;
 begin
   if FPlan=nil then Exit;
   Painter.Art.Surface:=Surface;
+  Painter.Art.Alpha:=1;
   Painter.Plan:=FPlan;
   Painter.Time:=EnsureRange(Frame.Time,0.0,FPlan.Duration);
   Painter.StageIndex:=FPlan.StageAt(Painter.Time);
@@ -555,20 +642,23 @@ begin
 end;
 
 function TCannonAnimation.Activity(Time:Double;out Value:TEqualizerActivity):Boolean;
-var Stage:TCannonStage; I:Integer; Age:Double; Cue:TCannonCue;
+var Stage:TCannonStage; Current,S,I:Integer; Age:Double; Cue:TCannonCue;
 begin
   Value:=Default(TEqualizerActivity);
   Result:=True;
   if FPlan=nil then Exit;
-  Stage:=FPlan.Stages[FPlan.StageAt(Time)];
-  for I:=0 to High(Stage.Cues) do begin
-    Cue:=Stage.Cues[I];
-    Age:=Time-Cue.Time;
-    if (Age<0) or (Age>0.8) then Continue;
-    Value.Valid:=True;
-    Value.Hit:=I;
-    Value.Pulse:=Min(1.4,Value.Pulse+Exp(-Age*8)*(0.25+0.75*Cue.Power));
-    Value.Energy:=Max(Value.Energy,Cue.Power*Exp(-Age*3));
+  Current:=FPlan.StageAt(Time);
+  for S:=Max(0,Current-1) to Current do begin
+    Stage:=FPlan.Stages[S];
+    for I:=0 to High(Stage.Cues) do begin
+      Cue:=Stage.Cues[I];
+      Age:=Time-Cue.Time;
+      if (Age<0) or (Age>0.8) then Continue;
+      Value.Valid:=True;
+      Value.Hit:=I;
+      Value.Pulse:=Min(1.4,Value.Pulse+Exp(-Age*8)*(0.25+0.75*Cue.Power));
+      Value.Energy:=Max(Value.Energy,Cue.Power*Exp(-Age*3));
+    end;
   end;
 end;
 end.

@@ -15,14 +15,14 @@ const
 type
   TCannonArt=record
     Surface:TAnimationRenderSurface; // 借用
-    W,H,Scale,Left,Top:Double;
+    W,H,Scale,Left,Top,Alpha:Double;
     function Screen(X,Y:Double):TPointF;
     procedure Disk(X,Y,R:Double;Color:TColor;Opacity:Double=1);
     procedure Ring(X,Y,R,Stroke:Double;Color:TColor;Opacity:Double=1);
     procedure Line(X,Y,X2,Y2,Stroke:Double;Color:TColor;Opacity:Double=1);
     procedure Box(X,Y,W,H:Double;Color:TColor;Opacity:Double=1);
     procedure Quad(const A,B,C,D:TPointF;Color:TColor;Opacity:Double=1);
-    procedure Background(Kind:TCannonTarget;StageIndex:Integer;Time:Double);
+    procedure Background(FromKind,ToKind:TCannonTarget;FromStage,ToStage:Integer;Time,Blend:Double);
     procedure Part(Kind:TCannonTarget;Shape:TCannonShape;const Pose:TCannonPose;
       Width,Height,Time,Wear,Alpha:Double);
     procedure Cannon(const Base:TPointF;Angle,Recoil,Travel:Double;Support:Boolean);
@@ -52,6 +52,7 @@ end;
 procedure TCannonArt.Disk(X,Y,R:Double;Color:TColor;Opacity:Double);
 var P:TPointF;
 begin
+  Opacity:=Opacity*Alpha;
   if (R<=0) or (Opacity<=0.01) then Exit;
   P:=Screen(X,Y);
   R:=R*Scale;
@@ -62,6 +63,7 @@ end;
 procedure TCannonArt.Ring(X,Y,R,Stroke:Double;Color:TColor;Opacity:Double);
 var P:TPointF;
 begin
+  Opacity:=Opacity*Alpha;
   if (R<=0) or (Opacity<=0.01) then Exit;
   P:=Screen(X,Y);
   Surface.Circle(P.X,P.Y,R*Scale,Color,False,Max(1.0,Stroke*Scale),Min(1.0,Opacity));
@@ -70,6 +72,7 @@ end;
 procedure TCannonArt.Line(X,Y,X2,Y2,Stroke:Double;Color:TColor;Opacity:Double);
 var A,B:TPointF;
 begin
+  Opacity:=Opacity*Alpha;
   if Opacity<=0.01 then Exit;
   A:=Screen(X,Y);
   B:=Screen(X2,Y2);
@@ -81,34 +84,38 @@ var A,B:TPointF;
 begin
   A:=Screen(X,Y+H);
   B:=Screen(X+W,Y);
-  Surface.FillRect(A.X,A.Y,B.X,B.Y,Color,Opacity);
+  Surface.FillRect(A.X,A.Y,B.X,B.Y,Color,Opacity*Alpha);
 end;
 
 procedure TCannonArt.Quad(const A,B,C,D:TPointF;Color:TColor;Opacity:Double);
 begin
-  Surface.FillQuad(Screen(A.X,A.Y),Screen(B.X,B.Y),Screen(C.X,C.Y),Screen(D.X,D.Y),Color,Opacity);
+  Surface.FillQuad(Screen(A.X,A.Y),Screen(B.X,B.Y),Screen(C.X,C.Y),Screen(D.X,D.Y),Color,Opacity*Alpha);
 end;
 
-procedure TCannonArt.Background(Kind:TCannonTarget;StageIndex:Integer;Time:Double);
+procedure TCannonArt.Background(FromKind,ToKind:TCannonTarget;FromStage,ToStage:Integer;Time,Blend:Double);
 const Sky:array[0..4] of TColor=($00D0B873,$00D9B77E,$00D3A488,$00C2A7AB,$00D1C690);
   Haze:array[0..4] of TColor=($00CFEDFF,$00BFEAFF,$00CFE3FF,$00C1D7FF,$00D6F6EE);
   Ground:array[0..4] of TColor=($00689CB2,$007CA58D,$007689AA,$008181AA,$007F9C99);
-var I,J,Palette:Integer; X,Y,U,Rise,GroundY,SunX,Shift,Cloud:Double; A,B:TColor; P:TPointF;
+var I,J,FromPalette,ToPalette:Integer;
+  X,Y,U,Rise,GroundY,SunX,Shift,Cloud,Parapets,Rails:Double;
+  A,SkyColor,HazeColor,GroundColor:TColor;
 begin
-  Palette:=(StageIndex+Ord(Kind)) mod 5;
-  A:=Sky[Palette];
-  B:=Haze[Palette];
+  FromPalette:=(FromStage+Ord(FromKind)) mod 5;
+  ToPalette:=(ToStage+Ord(ToKind)) mod 5;
+  SkyColor:=CannonTint(Sky[FromPalette],Sky[ToPalette],Blend);
+  HazeColor:=CannonTint(Haze[FromPalette],Haze[ToPalette],Blend);
+  GroundColor:=CannonTint(Ground[FromPalette],Ground[ToPalette],Blend);
   for I:=0 to 63 do
-    Surface.FillRect(0,I*H/64,W,(I+1)*H/64+1,CannonTint(A,B,I/63));
-  SunX:=9.6+Palette*1.64;
+    Surface.FillRect(0,I*H/64,W,(I+1)*H/64+1,CannonTint(SkyColor,HazeColor,I/63));
+  SunX:=9.6+CannonMix(FromPalette,ToPalette,Blend)*1.64;
   Disk(SunX,7.85,1.77,CannonIvory,0.18);
   Disk(SunX,7.85,1.37,CannonIvory,0.35);
   Disk(SunX,7.85,1.07,$00D5F5FF);
   for I:=-2 to 7 do begin
-    X:=I*6.4+1.04*Sin(I*7.7)+Time*0.025;
+    X:=I*6.4+1.04*Sin(I*7.7+Time*0.025)+0.32*Sin(Time*0.18+I*1.6);
     Y:=6.1+CannonNoise(I+81)*4.7;
     Cloud:=0.60+0.85*CannonNoise(I*3+52);
-    A:=CannonTint(Sky[Palette],CannonIvory,0.34);
+    A:=CannonTint(SkyColor,CannonIvory,0.34);
     Line(X-0.81*Cloud,Y-0.12*Cloud,X+1.40*Cloud,Y-0.10*Cloud,0.20*Cloud,A);
     Disk(X-0.42*Cloud,Y-0.04*Cloud,0.27*Cloud,A);
     Disk(X+0.03*Cloud,Y+0.11*Cloud,0.39*Cloud,A);
@@ -121,38 +128,39 @@ begin
     X:=I*3.1;
     Rise:=1.12+CannonNoise(I+54)*2.3;
     Quad(PointF(X-3,0.30),PointF(X,Rise),PointF(X+1.48,Rise*0.88),
-      PointF(X+4.10,0.30),CannonTint(Sky[Palette],B,0.43));
+      PointF(X+4.10,0.30),CannonTint(SkyColor,HazeColor,0.43));
   end;
-  Shift:=0.50*(1-CannonEase(Time*2.0));
+  Shift:=0.16*Sin(Time*0.19);
+  Parapets:=CannonMix(Ord(FromKind in [ctFort,ctBridge]),Ord(ToKind in [ctFort,ctBridge]),Blend);
   for I:=-6 to 22 do begin
     X:=I*1.92+Shift;
-    U:=CannonNoise(I+120+StageIndex mod 16);
+    U:=CannonMix(CannonNoise(I+120+FromStage mod 16),CannonNoise(I+120+ToStage mod 16),Blend);
     Y:=0.87+U*1.12;
-    A:=CannonTint(Ground[Palette],B,0.35+U*0.10);
+    A:=CannonTint(GroundColor,HazeColor,0.35+U*0.10);
     Box(X-0.18,0,1.32,Y,A);
-    Box(X-0.23,Y-0.06,1.44,0.12,CannonTint(A,B,0.43));
-    if (Kind=ctFort) or (Kind=ctBridge) then begin
-      for J:=0 to 2 do Box(X+0.08+J*0.37,Y,0.18,0.22,A);
-    end else begin
-      Box(X+0.75,Y,0.20,0.28+U*0.56,A);
-      Line(X+0.85,Y+0.28,X+0.85,Y+0.73+U*0.56,0.045,A);
+    Box(X-0.23,Y-0.06,1.44,0.12,CannonTint(A,HazeColor,0.43));
+    if Parapets>0 then
+      for J:=0 to 2 do Box(X+0.08+J*0.37,Y,0.18,0.22,A,Parapets);
+    if Parapets<1 then begin
+      Box(X+0.75,Y,0.20,0.28+U*0.56,A,1-Parapets);
+      Line(X+0.85,Y+0.28,X+0.85,Y+0.73+U*0.56,0.045,A,1-Parapets);
     end;
-    for J:=0 to 2 do Box(X+J*0.36,Y*0.65,0.16,0.11,CannonTint(A,B,0.56));
+    for J:=0 to 2 do Box(X+J*0.36,Y*0.65,0.16,0.11,CannonTint(A,HazeColor,0.56));
   end;
-  P:=Screen(0,0);
-  GroundY:=P.Y;
-  Surface.FillRect(0,GroundY,W,H,Ground[Palette]);
-  Surface.FillRect(0,GroundY-3,W,GroundY+3,CannonTint(Ground[Palette],CannonIvory,0.56));
-  Surface.FillRect(0,GroundY+5,W,GroundY+9,CannonTint(Ground[Palette],CannonInk,0.30));
+  GroundY:=Screen(0,0).Y;
+  Surface.FillRect(0,GroundY,W,H,GroundColor);
+  Surface.FillRect(0,GroundY-3,W,GroundY+3,CannonTint(GroundColor,CannonIvory,0.56));
+  Surface.FillRect(0,GroundY+5,W,GroundY+9,CannonTint(GroundColor,CannonInk,0.30));
   for I:=-16 to 33 do begin
     X:=I*1.18;
-    Line(X,-0.32,X-0.85,-3.2,0.034,CannonTint(Ground[Palette],CannonInk,0.20));
-    if Odd(I) then Box(X,-0.49,0.62,0.11,CannonTint(Ground[Palette],CannonIvory,0.35));
+    Line(X,-0.32,X-0.85,-3.2,0.034,CannonTint(GroundColor,CannonInk,0.20));
+    if Odd(I) then Box(X,-0.49,0.62,0.11,CannonTint(GroundColor,CannonIvory,0.35));
   end;
-  if Kind=ctTrain then begin
-    Line(11,0.09,26,0.09,0.13,CannonInk);
-    Line(11,0.03,26,0.03,0.045,CannonIvory);
-    for I:=0 to 16 do Box(11+I*0.82,-0.14,0.27,0.12,CannonInk);
+  Rails:=CannonMix(Ord(FromKind=ctTrain),Ord(ToKind=ctTrain),Blend);
+  if Rails>0 then begin
+    Line(11,0.09,26,0.09,0.13,CannonInk,Rails);
+    Line(11,0.03,26,0.03,0.045,CannonIvory,Rails);
+    for I:=0 to 16 do Box(11+I*0.82,-0.14,0.27,0.12,CannonInk,Rails);
   end;
 end;
 
