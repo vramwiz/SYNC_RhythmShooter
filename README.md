@@ -45,4 +45,6 @@ Windows x64版のAviUtl2で使用できます。
 
 ## 作者・同梱物
 
-作者は **VRAMの魔術師** です。音楽のデコードには同梱のFFmpegを使用します。出典とライセンスは [第三者同梱物の記録](THIRD_PARTY_NOTICES.md) と [FFmpegのライセンス](ThirdParty/FFmpeg/LICENSE) を参照してください。
+作者は **VRAMの魔術師** です。本プラグインは [MITライセンス](LICENSE) で公開しています。
+
+音楽のデコードには同梱のFFmpegを使用します。同梱物の出典と各ライセンスは [第三者同梱物の記録](THIRD_PARTY_NOTICES.md) と [FFmpegのライセンス](ThirdParty/FFmpeg/LICENSE) を参照してください。

@@ -4,15 +4,15 @@
     "name": "リズムシューティング",
     "type": "フィルタプラグイン",
     "summary": "曲に合わせてシューティングやアクション映像を自動生成",
-    "description": "https://raw.githubusercontent.com/vramwiz/SYNC_RhythmShooter/main/Setup/README.md",
+    "description": "https://raw.githubusercontent.com/vramwiz/SYNC_RhythmShooter/main/README.md",
     "author": "VRAMの魔術師",
     "repoURL": "https://github.com/vramwiz/SYNC_RhythmShooter/",
     "licenses": [
       {
-        "type": "不明",
-        "isCustom": true,
-        "copyrights": [],
-        "licenseBody": "同梱のFFmpegはGPL v3です。配布ZIP内のTHIRD_PARTY_NOTICES.mdとThirdParty/FFmpeg/LICENSEを参照してください。"
+        "type": "MIT",
+        "isCustom": false,
+        "copyrights": [{ "years": "2026", "holder": "VRAMの魔術師" }],
+        "licenseBody": null
       }
     ],
     "tags": ["音楽", "音ハメ", "シューティング", "アクション"],
@@ -40,6 +40,7 @@
         { "action": "delete", "path": "{pluginsDir}/SYNC_RhythmShooter/Assets" },
         { "action": "delete", "path": "{pluginsDir}/SYNC_RhythmShooter/ThirdParty/FFmpeg" },
         { "action": "delete", "path": "{pluginsDir}/SYNC_RhythmShooter/README.md" },
+        { "action": "delete", "path": "{pluginsDir}/SYNC_RhythmShooter/LICENSE" },
         { "action": "delete", "path": "{pluginsDir}/SYNC_RhythmShooter/THIRD_PARTY_NOTICES.md" }
       ]
     },

@@ -47,6 +47,7 @@ $assets = @(Get-ChildItem -LiteralPath (Join-Path $projectDir 'Assets') -Filter 
 if (-not $assets) { throw 'No standard BMP assets found.' }
 $packageFiles = [ordered]@{
     'README.md' = Join-Path $PSScriptRoot 'README.md'
+    'LICENSE' = Join-Path $projectDir 'LICENSE'
     'THIRD_PARTY_NOTICES.md' = Join-Path $projectDir 'THIRD_PARTY_NOTICES.md'
     $provenancePath = Join-Path $projectDir $provenancePath
 }

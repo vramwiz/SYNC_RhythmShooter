@@ -3,10 +3,10 @@
 音楽を解析し、曲に合わせた映像を自動生成するAviUtl2用フィルタプラグインです。設定画面から宇宙シューティング、ピンボール、トロッコアクション、クラッシュキャノン、MV向けの演出などを選べます。
 
 1. AviUtl2で「SYNC」の「リズムシューティング」フィルタを追加します。
-2. フィルタの設定画面で音楽とバリエーションを選び、準備が終わったらプレビューで確認して適用します。
-3. 音声付きで出力する場合は、同じ音楽をAviUtl2のタイムラインにも配置します。
+2. AviUtl2のフィルタ項目「音楽ファイル」でWAVまたはMP3を指定し、「設定」を開きます。バリエーションを選んで解析・準備し、プレビューで確認して「適用して閉じる」を押します。
+3. 音声付きで出力する場合は、同じ音楽をAviUtl2のタイムラインにも配置し、フィルタを適用したオブジェクトと開始位置をそろえます。
 
-手動インストールの場合は、ZIP内の `SYNC_RhythmShooter` フォルダを AviUtl2 の `Plugin` フォルダ（通常は `C:\ProgramData\aviutl2\Plugin`）に配置します。同梱のFFmpegについては `THIRD_PARTY_NOTICES.md` と `ThirdParty/FFmpeg/LICENSE` を参照してください。
+手動インストールの場合は、ZIP内の `SYNC_RhythmShooter` フォルダを AviUtl2 の `Plugin` フォルダ（通常は `C:\ProgramData\aviutl2\Plugin`）に配置します。本プラグインのMITライセンス本文は `LICENSE` に収録しています。同梱のFFmpegについては `THIRD_PARTY_NOTICES.md` と `ThirdParty/FFmpeg/LICENSE` を参照してください。
 
 ## 配布ZIPを作る
 
