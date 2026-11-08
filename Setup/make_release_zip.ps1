@@ -53,6 +53,14 @@ $packageFiles = [ordered]@{
 }
 foreach ($asset in $assets) { $packageFiles["Assets\$($asset.Name)"] = $asset.FullName }
 foreach ($file in $runtimeFiles) { $packageFiles[$file.path] = Join-Path $projectDir $file.path }
+foreach ($notice in @('LICENSE.md','provenance.json','CORE_CHANGES.md','integration.json')) {
+    $relativePath = 'ThirdParty\MP3Decoder\' + $notice
+    $sourcePath = Join-Path $projectDir $relativePath
+    if (-not (Test-Path -LiteralPath $sourcePath -PathType Leaf)) {
+        throw "MP3 decoder notice not found: $sourcePath"
+    }
+    $packageFiles[$relativePath] = $sourcePath
+}
 
 Add-Type -AssemblyName System.IO.Compression, System.IO.Compression.FileSystem
 $zipPath = Join-Path $PSScriptRoot "$packageName.zip"

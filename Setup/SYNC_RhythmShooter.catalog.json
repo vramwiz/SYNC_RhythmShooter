@@ -39,6 +39,7 @@
         { "action": "delete", "path": "{pluginsDir}/SYNC_RhythmShooter/SYNC_RhythmShooter.auf2" },
         { "action": "delete", "path": "{pluginsDir}/SYNC_RhythmShooter/Assets" },
         { "action": "delete", "path": "{pluginsDir}/SYNC_RhythmShooter/ThirdParty/FFmpeg" },
+        { "action": "delete", "path": "{pluginsDir}/SYNC_RhythmShooter/ThirdParty/MP3Decoder" },
         { "action": "delete", "path": "{pluginsDir}/SYNC_RhythmShooter/README.md" },
         { "action": "delete", "path": "{pluginsDir}/SYNC_RhythmShooter/LICENSE" },
         { "action": "delete", "path": "{pluginsDir}/SYNC_RhythmShooter/THIRD_PARTY_NOTICES.md" }

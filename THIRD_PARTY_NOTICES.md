@@ -1,8 +1,14 @@
 # 参照・同梱物
 
-## FFmpeg
+## 純Delphi MP3デコーダー
 
-MimiCopyStudioの既存`ThirdParty\FFmpeg`から、FFmpeg 8.1.1-full_build-www.gyan.devのCLIと依存DLLをローカルコピーした。元フォルダは変更していない。CLIは別プロセスとしてWAV／MP3をPCM16ステレオ44100Hzへ変換する。通信プロトコルはfile/pipeに限定する。ネットワーク接続、音楽の外部送信、追加ダウンロードは行わない。
+`V:\DelphiProg\MP3_Decoder` の `pascal-minimp3-2` を `Source/Lib/MP3Decoder` へコピーした。MP3のデコードと44.1kHz・16bit・ステレオへの変換をプロセス内で行い、FFmpegやMedia Foundationは呼び出さない。再生は既存のWindows waveOutを使用する。参照元プロジェクトは変更していない。
+
+Layer IIIの演算部分は [minimp3](https://github.com/lieff/minimp3) の [Delphi移植](https://github.com/gustavoeenriquez/delphi-libraries)（固定commit `849dbaf1892486a6dc5f1ebb555c949a6c4dd4d9`、CC0-1.0）に修正を加えたもの。ライセンス、元ソースとハッシュ、修正内容、今回取り込んだ7ユニットのSHA-256は `ThirdParty/MP3Decoder` に保持する。配布ZIPには `LICENSE.md`、`provenance.json`、`CORE_CHANGES.md`、`integration.json` を含める。
+
+## FFmpeg（WAV変換）
+
+MimiCopyStudioの既存`ThirdParty\FFmpeg`から、FFmpeg 8.1.1-full_build-www.gyan.devのCLIと依存DLLをローカルコピーした。元フォルダは変更していない。CLIは別プロセスとしてWAVをPCM16ステレオ44100Hzへ変換する。通信プロトコルはfile/pipeに限定する。ネットワーク接続、音楽の外部送信、追加ダウンロードは行わない。
 
 同梱ビルドはGPL v3。ライセンス全文・ビルド構成・元由来情報は`ThirdParty/FFmpeg/LICENSE`、`README.txt`、`provenance.json`に保存した。配布時はこれらの文書を含むフォルダ一式を保持する。
 

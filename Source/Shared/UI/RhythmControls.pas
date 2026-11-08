@@ -58,6 +58,7 @@ type
   TRhythmTrackBar = class(TTrackBar)
   private
     procedure CNNotify(var Message: TWMNotify); message CN_NOTIFY;
+    procedure WMPaint(var Message: TWMPaint); message WM_PAINT;
   end;
 
   TRhythmPreviewSurface = class(TCustomControl)
@@ -224,6 +225,13 @@ begin
   Inc(Rect.Left,MulDiv(8,CurrentPPI,96));
   if (Index>=0) and (Index<Items.Count) then
     DrawText(Canvas.Handle,PChar(Items[Index]),Length(Items[Index]),Rect,DT_LEFT or DT_VCENTER or DT_SINGLELINE);
+end;
+
+procedure TRhythmTrackBar.WMPaint(var Message: TWMPaint);
+begin
+  // ネイティブのつまみ周辺だけの更新では、独自の青いバーと太いつまみが残る。
+  if Message.DC = 0 then InvalidateRect(Handle, nil, False);
+  inherited;
 end;
 
 procedure TRhythmTrackBar.CNNotify(var Message: TWMNotify);

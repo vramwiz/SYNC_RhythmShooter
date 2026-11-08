@@ -19,7 +19,7 @@ if ($Stage -eq 'Prepare') {
     exit 0
 }
 
-# A successful build must include the decoder, not only FFmpeg's license files.
+# WAV conversion still needs FFmpeg. The MP3 decoder is linked into the DLL.
 $provenance = Get-Content -LiteralPath (Join-Path $projectRoot 'ThirdParty\FFmpeg\provenance.json') -Raw | ConvertFrom-Json
 foreach ($runtime in $provenance.files | Where-Object { $_.path -like 'ThirdParty\FFmpeg\bin\*' }) {
     if (-not (Test-Path -LiteralPath (Join-Path $projectRoot $runtime.path) -PathType Leaf)) {

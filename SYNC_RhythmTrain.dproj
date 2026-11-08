@@ -42,7 +42,7 @@
         <GenDll>true</GenDll>
         <DCC_DcuOutput>.\$(Platform)\RhythmTrain\$(Config)\DCU</DCC_DcuOutput>
         <DCC_ExeOutput>.\$(Platform)\RhythmTrain\$(Config)</DCC_ExeOutput>
-        <DCC_UnitSearchPath>Source\MineCart;Source\CrashCannon;Source\SideRace;Source\FightingRush;Source\JumpAdventure;Source\RhythmGame;Source\Mining;Source\Train;Source\BombAction;Source\Breakout;Source\Shared\Audio;Source\Shared\Render;Source\Shared\Settings;Source\Shared\Common;Source\Shared\Assets;Source\Shared\UI;Source\Shared\Host;Source\Shared\Integrations;Source\Composition;Source\Shooting;Source\Ball;Source\Fireworks;Source\Lib;Source\Lib\Process;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
+        <DCC_UnitSearchPath>Source\MineCart;Source\CrashCannon;Source\SideRace;Source\FightingRush;Source\JumpAdventure;Source\RhythmGame;Source\Mining;Source\Train;Source\BombAction;Source\Breakout;Source\Shared\Audio;Source\Shared\Render;Source\Shared\Settings;Source\Shared\Common;Source\Shared\Assets;Source\Shared\UI;Source\Shared\Host;Source\Shared\Integrations;Source\Composition;Source\Shooting;Source\Ball;Source\Fireworks;Source\Lib;Source\Lib\MP3Decoder;Source\Lib\MP3Decoder\Core;Source\Lib\Process;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
         <DCC_Namespace>System;Xml;Data;Datasnap;Web;Soap;Winapi;Vcl;$(DCC_Namespace)</DCC_Namespace>
         <SanitizedProjectName>SYNC_RhythmTrain</SanitizedProjectName>
     </PropertyGroup>

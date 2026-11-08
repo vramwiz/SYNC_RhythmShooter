@@ -47,4 +47,6 @@ Windows x64版のAviUtl2で使用できます。
 
 作者は **VRAMの魔術師** です。本プラグインは [MITライセンス](LICENSE) で公開しています。
 
-音楽のデコードには同梱のFFmpegを使用します。同梱物の出典と各ライセンスは [第三者同梱物の記録](THIRD_PARTY_NOTICES.md) と [FFmpegのライセンス](ThirdParty/FFmpeg/LICENSE) を参照してください。
+MP3は同梱の純Delphiデコーダー（minimp3由来、CC0）でデコードし、WindowsのwaveOutでプレビュー再生します。MP3のデコード・再生にFFmpegは使用しません。WAVの変換には引き続き同梱のFFmpegを使用します。同梱物の出典とライセンスは [第三者同梱物の記録](THIRD_PARTY_NOTICES.md) を参照してください。
+
+旧版のMP3キャッシュは残して、新しいデコーダー用のPCM・解析キャッシュを別名で保存します。更新後にプレビューの準備を求められた場合は、設定画面で再準備してください。

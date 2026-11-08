@@ -4,11 +4,27 @@ interface
 uses System.SysUtils,RhythmAudioData;
 function AudioSourceStamp(const Source:string):string;
 function AudioSourceUnchanged(Audio:TRhythmAudio):Boolean;
+function AudioPCMCachePath(const Source,Key:string):string;
 procedure SaveRhythmAudioCache(Audio:TRhythmAudio);
 function ReadRhythmAudioCache(const Source:string;Sensitivity:Integer;NeedPCM:Boolean=True):TRhythmAudio; overload;
 function ReadRhythmAudioCache(const Source:string;Sensitivity:Integer;NeedPCM:Boolean;out Failure:string):TRhythmAudio; overload;
 implementation
-uses Winapi.Windows,System.IOUtils,System.Hash,System.Math,System.Generics.Collections,System.JSON,RhythmPaths,RhythmMotion;
+uses Winapi.Windows,System.IOUtils,System.Hash,System.Math,System.Generics.Collections,System.JSON,RhythmPaths,RhythmMotion,MP3Decoder;
+
+// MP3のPCM・解析索引をデコーダー別に分離し、旧FFmpegキャッシュを保持する。
+function DecoderSuffix(const Source:string):string;
+begin
+  Result:='';
+  if SameText(ExtractFileExt(Source),'.mp3') then Result:='-'+MP3_DECODER_VERSION;
+end;
+
+function AudioPCMCachePath(const Source,Key:string):string;
+var Suffix:string;
+begin
+  Suffix:=DecoderSuffix(Source);
+  if Suffix='' then Suffix:='-v1';
+  Result:=TPath.Combine(CacheFolder,Key+'-44100-stereo'+Suffix+'.pcm');
+end;
 
 function AudioSourceStamp(const Source:string):string;
 var
@@ -28,11 +44,11 @@ begin Result:=False;
 end;
 
 function IndexPath(const Source:string;Sensitivity:Integer):string;
-begin Result:=TPath.Combine(CacheFolder,THashSHA2.GetHashString(LowerCase(ExpandFileName(Source)))+'-s'+IntToStr(Sensitivity)+'-index.json');
+begin Result:=TPath.Combine(CacheFolder,THashSHA2.GetHashString(LowerCase(ExpandFileName(Source)))+'-s'+IntToStr(Sensitivity)+DecoderSuffix(Source)+'-index.json');
 end;
 
-function EventsPath(const Key:string;Sensitivity:Integer):string;
-begin Result:=TPath.Combine(CacheFolder,Key+'-s'+IntToStr(Sensitivity)+'-events-v1.json');
+function EventsPath(const Source,Key:string;Sensitivity:Integer):string;
+begin Result:=TPath.Combine(CacheFolder,Key+'-s'+IntToStr(Sensitivity)+DecoderSuffix(Source)+'-events-v1.json');
 end;
 
 procedure SaveRhythmAudioCache(Audio: TRhythmAudio);
@@ -63,7 +79,7 @@ begin
       Item.AddPair('flight', TJSONNumber.Create(H.Flight));
       Events.AddElement(Item);
     end;
-    TFile.WriteAllText(EventsPath(Audio.Key,Audio.Sensitivity),Root.ToJSON,TEncoding.UTF8);
+    TFile.WriteAllText(EventsPath(Audio.Source,Audio.Key,Audio.Sensitivity),Root.ToJSON,TEncoding.UTF8);
     Index:=TJSONObject.Create;
     try
       Index.AddPair('sourceSHA256',Audio.Key);
@@ -105,7 +121,7 @@ begin
       Key:=Index.GetValue<string>('sourceSHA256','');
       if Length(Key)<>64 then raise Exception.Create('音声キャッシュ索引のキーが不正です。');
       for I:=1 to Length(Key) do if not CharInSet(Key[I],['0'..'9','a'..'f','A'..'F']) then raise Exception.Create('音声キャッシュ索引のキー文字が不正です。');
-      J:=TJSONObject.ParseJSONValue(TFile.ReadAllText(EventsPath(Key,Sensitivity),TEncoding.UTF8));
+      J:=TJSONObject.ParseJSONValue(TFile.ReadAllText(EventsPath(Source,Key,Sensitivity),TEncoding.UTF8));
       if not (J is TJSONObject) then begin J.Free;
         raise Exception.Create('音声イベントJSONが不正です。');
       end;
@@ -128,7 +144,7 @@ begin
       Result.CacheReused:=True;
       Result.Duration:=SavedDuration;
       if NeedPCM then begin
-        Path:=TPath.Combine(CacheFolder,Key+'-44100-stereo-v1.pcm');
+        Path:=AudioPCMCachePath(Source,Key);
         if (TFile.GetSize(Path)<4) or (TFile.GetSize(Path) mod 4<>0) or (TFile.GetSize(Path)>512*Int64(1024)*1024) then raise Exception.Create('PCM cache invalid');
         Result.PcmPath:=Path;
         Result.PCM:=TFile.ReadAllBytes(Path);
