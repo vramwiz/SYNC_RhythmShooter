@@ -8,8 +8,7 @@ uses
   RhythmAudio in '..\Source\Composition\RhythmAudio.pas',
   RhythmPlayback in '..\Source\Shared\Audio\RhythmPlayback.pas',
   RhythmScene in '..\Source\Composition\RhythmScene.pas',
-  RhythmPaths in '..\Source\Shared\Common\RhythmPaths.pas',
-  MimiChildProcess in '..\Source\Lib\Process\MimiChildProcess.pas';
+  RhythmPaths in '..\Source\Shared\Common\RhythmPaths.pas';
 var A,B:TRhythmAudio;Renderer:TRhythmRenderer;Bitmap:Vcl.Graphics.TBitmap;
   Root,Item:TJSONObject;Events:TJSONArray;Watch:TStopwatch;Player:TRhythmPlayback;
   I,Direction,BossIndex,HitIndex:Integer;P,Q:TRhythmPoint;MaxError,MaxSpeedError,Speed,T1,T2,T3,T4,T5,T6,BossTarget:Double;

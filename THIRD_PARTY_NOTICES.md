@@ -6,17 +6,13 @@
 
 Layer IIIの演算部分は [minimp3](https://github.com/lieff/minimp3) の [Delphi移植](https://github.com/gustavoeenriquez/delphi-libraries)（固定commit `849dbaf1892486a6dc5f1ebb555c949a6c4dd4d9`、CC0-1.0）に修正を加えたもの。ライセンス、元ソースとハッシュ、修正内容、今回取り込んだ7ユニットのSHA-256は `ThirdParty/MP3Decoder` に保持する。配布ZIPには `LICENSE.md`、`provenance.json`、`CORE_CHANGES.md`、`integration.json` を含める。
 
-## FFmpeg（WAV変換）
+## Windows標準のWAV読み込み
 
-MimiCopyStudioの既存`ThirdParty\FFmpeg`から、FFmpeg 8.1.1-full_build-www.gyan.devのCLIと依存DLLをローカルコピーした。元フォルダは変更していない。CLIは別プロセスとしてWAVをPCM16ステレオ44100Hzへ変換する。通信プロトコルはfile/pipeに限定する。ネットワーク接続、音楽の外部送信、追加ダウンロードは行わない。
-
-同梱ビルドはGPL v3。ライセンス全文・ビルド構成・元由来情報は`ThirdParty/FFmpeg/LICENSE`、`README.txt`、`provenance.json`に保存した。配布時はこれらの文書を含むフォルダ一式を保持する。
-
-元配布物に記載された参照先：FFmpeg https://ffmpeg.org/ 、Windows build https://www.gyan.dev/ffmpeg/builds/ 、対応ソース https://github.com/FFmpeg/FFmpeg/commit/239f2c733d 。
+WAVの復号と多チャンネルからのステレオ変換にはWindows標準のMedia Foundationを使用する。44.1kHzへの変換はMP3と共通のリサンプラーで行う。WindowsのシステムDLLは配布物に含めず、デコード時に遅延読み込みする。参照したAPI宣言はWindows SDK 10.0.19041の `mfobjects.h`、`mfreadwrite.h`、`mfapi.h`。FFmpegとその関連DLLは同梱・呼び出ししない。
 
 ## MimiCopyStudioの参考コード
 
-音楽全体のデコード・キャッシュ、音声デバイス時計による同期、停止時の資源管理を参考にした。`Source/Lib/Process/MimiChildProcess.pas`は元の`Source/Core/MimiChildProcess.pas`を変更せずコピーし、引用符処理、ローカル子プロセス管理、取消・タイムアウト処理を再利用した。他のMimiCopyStudioソースや設定、既存バイナリは変更していない。
+音楽全体のデコード・キャッシュ、音声デバイス時計による同期、停止時の資源管理を参考にした。外部デコーダー用の子プロセス実装は削除済み。他のMimiCopyStudioソースや設定、既存バイナリは変更していない。
 
 ## プラグイン雛形と標準素材
 

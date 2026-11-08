@@ -9,13 +9,14 @@ procedure SaveRhythmAudioCache(Audio:TRhythmAudio);
 function ReadRhythmAudioCache(const Source:string;Sensitivity:Integer;NeedPCM:Boolean=True):TRhythmAudio; overload;
 function ReadRhythmAudioCache(const Source:string;Sensitivity:Integer;NeedPCM:Boolean;out Failure:string):TRhythmAudio; overload;
 implementation
-uses Winapi.Windows,System.IOUtils,System.Hash,System.Math,System.Generics.Collections,System.JSON,RhythmPaths,RhythmMotion,MP3Decoder;
+uses Winapi.Windows,System.IOUtils,System.Hash,System.Math,System.Generics.Collections,System.JSON,RhythmPaths,RhythmMotion,MP3Decoder,RhythmWaveDecode;
 
-// MP3のPCM・解析索引をデコーダー別に分離し、旧FFmpegキャッシュを保持する。
+// PCM・解析索引をデコーダー別に分離し、旧キャッシュを保持する。
 function DecoderSuffix(const Source:string):string;
 begin
   Result:='';
   if SameText(ExtractFileExt(Source),'.mp3') then Result:='-'+MP3_DECODER_VERSION;
+  if SameText(ExtractFileExt(Source),'.wav') then Result:='-'+WAVE_DECODER_VERSION;
 end;
 
 function AudioPCMCachePath(const Source,Key:string):string;

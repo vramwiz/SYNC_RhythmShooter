@@ -86,8 +86,7 @@ RhythmTrainScene in '..\Source\Train\RhythmTrainScene.pas',
   RhythmPresentation in '..\Source\Composition\RhythmPresentation.pas',
   RhythmLayerBlend in '..\Source\Composition\RhythmLayerBlend.pas',
   RhythmOverlay in '..\Source\Composition\RhythmOverlay.pas',
-  RhythmPaths in '..\Source\Shared\Common\RhythmPaths.pas',
-  MimiChildProcess in '..\Source\Lib\Process\MimiChildProcess.pas';
+  RhythmPaths in '..\Source\Shared\Common\RhythmPaths.pas';
 var Preview:TFormRhythmShooterSettings;
 begin
   ConfigureRhythmProduct('SYNC_RhythmTrain','リズム列車',rsTrain);

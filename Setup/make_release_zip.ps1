@@ -25,34 +25,14 @@ $version = $catalog[0].version[-1]
 $pluginEntry = $version.file | Where-Object path -eq "{pluginsDir}/$packageName/$pluginName"
 if (-not $pluginEntry) { throw 'The last catalog version must list the installed AUF2.' }
 
-$provenancePath = 'ThirdParty\FFmpeg\provenance.json'
-$provenance = Get-Content -LiteralPath (Join-Path $projectDir $provenancePath) -Raw | ConvertFrom-Json
-$runtimeFiles = @($provenance.files | Where-Object { $_.path -like 'ThirdParty\FFmpeg\*' })
-$sha256 = [Security.Cryptography.SHA256]::Create()
-try {
-    foreach ($file in $runtimeFiles) {
-        $source = Join-Path $projectDir $file.path
-        if (-not (Test-Path -LiteralPath $source -PathType Leaf)) {
-            throw "FFmpeg file not found: $source. Run Scripts\PrepareFFmpeg.ps1 to restore the runtime."
-        }
-        $stream = [IO.File]::OpenRead($source)
-        try { $hash = [BitConverter]::ToString($sha256.ComputeHash($stream)).Replace('-', '') }
-        finally { $stream.Dispose() }
-        if ($hash -ne $file.sourceSha256) { throw "FFmpeg file does not match provenance.json: $source" }
-    }
-}
-finally { $sha256.Dispose() }
-
 $assets = @(Get-ChildItem -LiteralPath (Join-Path $projectDir 'Assets') -Filter '*.bmp' -File)
 if (-not $assets) { throw 'No standard BMP assets found.' }
 $packageFiles = [ordered]@{
     'README.md' = Join-Path $PSScriptRoot 'README.md'
     'LICENSE' = Join-Path $projectDir 'LICENSE'
     'THIRD_PARTY_NOTICES.md' = Join-Path $projectDir 'THIRD_PARTY_NOTICES.md'
-    $provenancePath = Join-Path $projectDir $provenancePath
 }
 foreach ($asset in $assets) { $packageFiles["Assets\$($asset.Name)"] = $asset.FullName }
-foreach ($file in $runtimeFiles) { $packageFiles[$file.path] = Join-Path $projectDir $file.path }
 foreach ($notice in @('LICENSE.md','provenance.json','CORE_CHANGES.md','integration.json')) {
     $relativePath = 'ThirdParty\MP3Decoder\' + $notice
     $sourcePath = Join-Path $projectDir $relativePath

@@ -1,4 +1,14 @@
-﻿## 2026-11-08 MP3を純Delphiデコーダーへ切り替え
+﻿## 2026-11-08 FFmpeg本体・依存コード・配布設定を削除
+
+本人のMP3デコード正常確認後、FFmpeg本体・DLL・取得スクリプトと子プロセス起動ユニットを削除し、全製品・プレビュー・試験の参照を整理した。WAVはWindows標準のMedia Foundationと共通リサンプラーへ変更。64bit floatのmono/stereoもDelphiで補完し、WAVキャッシュは `windows-wave-1` として旧版を残す。
+
+WAVはDebug/Releaseとも23条件・793,991照合、MP3は両構成で28入力・410照合と実曲再生を通過。全7製品のDebug/Release DLLとReleaseプレビュー、ShooterのDebugプレビュー、既存WAV回帰、Shooter DLLホスト統合を確認した。SetupのZIPは約99MBから約2.5MBに縮小。カタログJSONへv1.0.1（2026-11-08）と新AUF2のXXH3-128 `edd5362c171c02f3838c83fecded423a` を追加し、旧同梱物の入れ替えとユーザーデータの保持を隔離環境で確認した。
+
+FFmpeg削除前の429ファイルと削除物・既存バイナリ・ZIPは `Win64/Backups/RemoveFFmpeg-20261108-133207` に退避。同フォルダーの `Restore.ps1` で戻せる。詳細は [NATIVE_MP3.md](NATIVE_MP3.md)、証跡は `Win64/NoFFmpegVerification`。通常Debug/Release出力も更新済み。実配備・公開・本人AUP2の変更・commit/pushは未実施。
+
+---
+
+## 2026-11-08 MP3を純Delphiデコーダーへ切り替え
 
 `V:\DelphiProg\MP3_Decoder` の `pascal-minimp3-2` を7製品の共有音声処理へ取り込んだ。MP3の準備時デコードはプロセス内で行い、再生は従来のwaveOutを使う。WAVは既存のFFmpeg変換を保持。MP3のPCM・解析・索引はデコーダー別の名前にし、旧キャッシュを残す。更新後のプレビューで必要なら設定画面から再準備する。
 

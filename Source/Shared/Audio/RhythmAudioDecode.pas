@@ -1,10 +1,10 @@
 ﻿unit RhythmAudioDecode;
-// 設定画面の準備用デコード。MP3は純Delphi、WAVは既存のFFmpegでPCM化する。
+// 設定画面の準備用デコード。MP3は純Delphi、WAVはWindows標準機能でPCM化する。
 interface
 uses System.SysUtils,RhythmAudioData;
 function DecodeRhythmAudio(const Source:string;Sensitivity:Integer;const Cancel:TFunc<Boolean> = nil):TRhythmAudio;
 implementation
-uses Winapi.Windows,System.Classes,System.IOUtils,System.Hash,System.Math,RhythmPaths,MimiChildProcess,RhythmAudioCache,MP3Decoder;
+uses Winapi.Windows,System.Classes,System.IOUtils,System.Hash,System.Math,RhythmPaths,RhythmAudioCache,MP3Decoder,RhythmWaveDecode;
 
 function Cancelled(const Cancel:TFunc<Boolean>):Boolean;
 begin Result:=Assigned(Cancel) and Cancel();
@@ -17,11 +17,11 @@ var
   Buffer: TBytes;
   Hash: THashSHA2;
   N: Integer;
-  Ext, Temp, Log, OutLog, Exe, FinalPath: string;
+  Ext, Temp, FinalPath: string;
   Id: TGUID;
   Audio:TDecodedAudio;
 begin
-  Result:=nil;Temp:='';Log:='';OutLog:='';
+  Result:=nil;Temp:='';
   Ext := LowerCase(ExtractFileExt(Source));
   if (Ext <> '.wav') and (Ext <> '.mp3') then raise Exception.Create('WAV / MP3 を指定してください。');
   Input := TFileStream.Create(Source, fmOpenRead or fmShareDenyWrite);
@@ -51,20 +51,11 @@ begin
           Audio:=DecodeMP3(Result.Source,Cancel);
           Buffer:=ToStereo44100(Audio,Cancel);
           Audio.PCM:=nil;
-          if Cancelled(Cancel) then Abort;
-          TFile.WriteAllBytes(Temp,Buffer);
-          Buffer:=nil;
         end
-        else
-        begin
-          Log := ChangeFileExt(Temp, '.log');
-          OutLog := ChangeFileExt(Temp, '.stdout');
-          Exe := TPath.Combine(ModuleFolder, 'ThirdParty\FFmpeg\bin\ffmpeg.exe');
-          RunAudioTool(Exe, ['-hide_banner','-loglevel','error','-nostdin','-n',
-            '-protocol_whitelist','file,pipe','-f','wav','-i',Result.Source,
-            '-map','0:a:0','-vn','-ac','2','-ar','44100','-f','s16le',Temp],
-            OutLog, Log, function: Boolean begin Result := Cancelled(Cancel); end, 180000);
-        end;
+        else Buffer:=DecodeWavePCM44100(Result.Source,Cancel);
+        if Cancelled(Cancel) then Abort;
+        TFile.WriteAllBytes(Temp,Buffer);
+        Buffer:=nil;
         if Cancelled(Cancel) then Abort;
         if not TFile.Exists(Temp) or (TFile.GetSize(Temp) = 0) then
           raise Exception.Create('音声サンプルを取得できませんでした。');
@@ -91,8 +82,6 @@ begin
   finally
     Input.Free;
     if (Temp<>'') and TFile.Exists(Temp) then TFile.Delete(Temp);
-    if (Log<>'') and TFile.Exists(Log) then TFile.Delete(Log);
-    if (OutLog<>'') and TFile.Exists(OutLog) then TFile.Delete(OutLog);
   end;
 end;
 

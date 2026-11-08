@@ -6,7 +6,9 @@
 2. AviUtl2のフィルタ項目「音楽ファイル」でWAVまたはMP3を指定し、「設定」を開きます。バリエーションを選んで解析・準備し、プレビューで確認して「適用して閉じる」を押します。
 3. 音声付きで出力する場合は、同じ音楽をAviUtl2のタイムラインにも配置し、フィルタを適用したオブジェクトと開始位置をそろえます。
 
-手動インストールの場合は、ZIP内の `SYNC_RhythmShooter` フォルダを AviUtl2 の `Plugin` フォルダ（通常は `C:\ProgramData\aviutl2\Plugin`）に配置します。本プラグインのMITライセンス本文は `LICENSE` に収録しています。MP3は純Delphiデコーダー、WAVはFFmpegで変換します。第三者同梱物については `THIRD_PARTY_NOTICES.md`、`ThirdParty/MP3Decoder/LICENSE.md`、`ThirdParty/FFmpeg/LICENSE` を参照してください。
+手動インストールの場合は、ZIP内の `SYNC_RhythmShooter` フォルダを AviUtl2 の `Plugin` フォルダ（通常は `C:\ProgramData\aviutl2\Plugin`）に配置します。本プラグインのMITライセンス本文は `LICENSE` に収録しています。MP3は純Delphiデコーダー、WAVはWindows標準のMedia Foundationで読み込みます。第三者同梱物については `THIRD_PARTY_NOTICES.md` と `ThirdParty/MP3Decoder/LICENSE.md` を参照してください。
+
+旧版から手動更新する場合は、プラグイン専用フォルダ内の古い `ThirdParty` を削除してから新しい内容をコピーしてください。カタログ経由のインストール・更新では、この同梱物フォルダを入れ替えます。`DesignAssets`、設定、音楽、作品は削除対象に含めません。
 
 ## 配布ZIPを作る
 
@@ -17,6 +19,6 @@
 .\Setup\make_release_zip.bat -ReleaseDirectory .\Win64\Local\SYNC_RhythmShooter\Release
 ```
 
-FFmpegの実行ファイルとDLLは `Scripts/PrepareFFmpeg.ps1` で復元できます。カタログ用のハッシュ計算には [xxHashのWindows版](https://github.com/Cyan4973/xxHash/releases/tag/v0.8.4) の `xxhsum.exe` を使います。`Win64/Dependencies/xxHash-0.8.4` に置くか、PATHに追加してください。
+追加デコーダーのダウンロードは不要です。カタログ用のハッシュ計算には [xxHashのWindows版](https://github.com/Cyan4973/xxHash/releases/tag/v0.8.4) の `xxhsum.exe` を使います。`Win64/Dependencies/xxHash-0.8.4` に置くか、PATHに追加してください。
 
 公開するタグと公開日を `SYNC_RhythmShooter.catalog.json` の `version` に設定します。次の版は配列の末尾に追加してください。バッチは末尾のエントリに、ZIPへ入れたAUF2の `XXH3_128` を記録します。GitHub Releasesに `SYNC_RhythmShooter.zip` を添付し、AviUtl2 カタログのパッケージ登録でJSONを入力します。

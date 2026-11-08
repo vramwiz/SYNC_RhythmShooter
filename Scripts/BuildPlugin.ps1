@@ -19,11 +19,10 @@ if ($Stage -eq 'Prepare') {
     exit 0
 }
 
-# WAV conversion still needs FFmpeg. The MP3 decoder is linked into the DLL.
-$provenance = Get-Content -LiteralPath (Join-Path $projectRoot 'ThirdParty\FFmpeg\provenance.json') -Raw | ConvertFrom-Json
-foreach ($runtime in $provenance.files | Where-Object { $_.path -like 'ThirdParty\FFmpeg\bin\*' }) {
-    if (-not (Test-Path -LiteralPath (Join-Path $projectRoot $runtime.path) -PathType Leaf)) {
-        throw 'FFmpeg runtime is missing. Run Scripts\PrepareFFmpeg.ps1 before building.'
+# MP3 is linked into the DLL; WAV uses Windows. Only the decoder notices are bundled.
+foreach ($notice in @('LICENSE.md','provenance.json','CORE_CHANGES.md','integration.json')) {
+    if (-not (Test-Path -LiteralPath (Join-Path $projectRoot ('ThirdParty\MP3Decoder\'+$notice)) -PathType Leaf)) {
+        throw "MP3 decoder notice is missing: $notice"
     }
 }
 $pluginPath = Join-Path $outputDirectory ($ProjectName+'.auf2')

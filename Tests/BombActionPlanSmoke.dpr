@@ -11,8 +11,7 @@ uses
   RhythmPreparedData in '..\Source\Shared\Settings\RhythmPreparedData.pas',
   RhythmPaths in '..\Source\Shared\Common\RhythmPaths.pas',
   RhythmProduct in '..\Source\Shared\Settings\RhythmProduct.pas',
-  RhythmAudioAnalysis in '..\Source\Shared\Audio\RhythmAudioAnalysis.pas',
-  MimiChildProcess in '..\Source\Lib\Process\MimiChildProcess.pas';
+  RhythmAudioAnalysis in '..\Source\Shared\Audio\RhythmAudioAnalysis.pas';
 var Audio:TRhythmAudio;A,B:TBombActionPlan;I,J,K:Integer;D,Gap,T:Double;Bomb:TBABomb;Point:TBAPoint;Charge:TBACharge;Foe:TBACrowdEnemy;Raid:TBAEnemyShot;
 procedure Need(Value:Boolean;const Why:string);begin if not Value then raise Exception.Create(Why);end;
 begin

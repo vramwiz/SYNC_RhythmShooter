@@ -11,19 +11,25 @@
       {
         "type": "MIT",
         "isCustom": false,
-        "copyrights": [{ "years": "2026", "holder": "VRAMの魔術師" }],
+        "copyrights": [
+          {
+            "years": "2026",
+            "holder": "VRAMの魔術師"
+          }
+        ],
         "licenseBody": null
       }
     ],
-    "tags": ["音楽", "音ハメ", "シューティング", "アクション"],
+    "tags": [
+      "音楽",
+      "音ハメ",
+      "シューティング",
+      "アクション"
+    ],
     "dependencies": [],
     "images": [],
     "installer": {
       "source": {
-        "type": "githubRelease",
-        "owner": "vramwiz",
-        "repo": "SYNC_RhythmShooter",
-        "pattern": "^SYNC_RhythmShooter\\.zip$",
         "github": {
           "owner": "vramwiz",
           "repo": "SYNC_RhythmShooter",
@@ -31,18 +37,47 @@
         }
       },
       "install": [
-        { "action": "download" },
-        { "action": "extract" },
-        { "action": "copy", "from": "{tmp}/SYNC_RhythmShooter", "to": "{pluginsDir}/SYNC_RhythmShooter" }
+        {
+          "action": "download"
+        },
+        {
+          "action": "extract"
+        },
+        {
+          "action": "delete",
+          "path": "{pluginsDir}/SYNC_RhythmShooter/ThirdParty"
+        },
+        {
+          "action": "copy",
+          "from": "{tmp}/SYNC_RhythmShooter",
+          "to": "{pluginsDir}/SYNC_RhythmShooter"
+        }
       ],
       "uninstall": [
-        { "action": "delete", "path": "{pluginsDir}/SYNC_RhythmShooter/SYNC_RhythmShooter.auf2" },
-        { "action": "delete", "path": "{pluginsDir}/SYNC_RhythmShooter/Assets" },
-        { "action": "delete", "path": "{pluginsDir}/SYNC_RhythmShooter/ThirdParty/FFmpeg" },
-        { "action": "delete", "path": "{pluginsDir}/SYNC_RhythmShooter/ThirdParty/MP3Decoder" },
-        { "action": "delete", "path": "{pluginsDir}/SYNC_RhythmShooter/README.md" },
-        { "action": "delete", "path": "{pluginsDir}/SYNC_RhythmShooter/LICENSE" },
-        { "action": "delete", "path": "{pluginsDir}/SYNC_RhythmShooter/THIRD_PARTY_NOTICES.md" }
+        {
+          "action": "delete",
+          "path": "{pluginsDir}/SYNC_RhythmShooter/SYNC_RhythmShooter.auf2"
+        },
+        {
+          "action": "delete",
+          "path": "{pluginsDir}/SYNC_RhythmShooter/Assets"
+        },
+        {
+          "action": "delete",
+          "path": "{pluginsDir}/SYNC_RhythmShooter/ThirdParty"
+        },
+        {
+          "action": "delete",
+          "path": "{pluginsDir}/SYNC_RhythmShooter/README.md"
+        },
+        {
+          "action": "delete",
+          "path": "{pluginsDir}/SYNC_RhythmShooter/LICENSE"
+        },
+        {
+          "action": "delete",
+          "path": "{pluginsDir}/SYNC_RhythmShooter/THIRD_PARTY_NOTICES.md"
+        }
       ]
     },
     "version": [
@@ -50,7 +85,20 @@
         "version": "v1.0.0",
         "release_date": "2026-11-06",
         "file": [
-          { "path": "{pluginsDir}/SYNC_RhythmShooter/SYNC_RhythmShooter.auf2", "XXH3_128": "aab71544f80531761748a4d3a4d72bc3" }
+          {
+            "path": "{pluginsDir}/SYNC_RhythmShooter/SYNC_RhythmShooter.auf2",
+            "XXH3_128": "aab71544f80531761748a4d3a4d72bc3"
+          }
+        ]
+      },
+      {
+        "version": "v1.0.1",
+        "release_date": "2026-11-08",
+        "file": [
+          {
+            "path": "{pluginsDir}/SYNC_RhythmShooter/SYNC_RhythmShooter.auf2",
+            "XXH3_128": "edd5362c171c02f3838c83fecded423a"
+          }
         ]
       }
     ]

@@ -14,7 +14,6 @@ __recovery/
 *.stat
 *.~*
 *.exe
-ThirdParty/FFmpeg/bin/
 Cache/
 /Verification/
 /Setup/SYNC_RhythmShooter.zip

@@ -37,7 +37,6 @@ Windows x64版のAviUtl2で使用できます。
 ビルド環境はDelphi 37.0／Win64です。リポジトリのルートで以下を実行すると、AviUtl2への配備を行わずに `Win64/Local/SYNC_RhythmShooter/Release` にビルドできます。
 
 ```powershell
-.\Scripts\PrepareFFmpeg.ps1
 .\Scripts\Build.ps1 -Config Release -NoDeploy
 ```
 
@@ -47,6 +46,6 @@ Windows x64版のAviUtl2で使用できます。
 
 作者は **VRAMの魔術師** です。本プラグインは [MITライセンス](LICENSE) で公開しています。
 
-MP3は同梱の純Delphiデコーダー（minimp3由来、CC0）でデコードし、WindowsのwaveOutでプレビュー再生します。MP3のデコード・再生にFFmpegは使用しません。WAVの変換には引き続き同梱のFFmpegを使用します。同梱物の出典とライセンスは [第三者同梱物の記録](THIRD_PARTY_NOTICES.md) を参照してください。
+MP3は同梱の純Delphiデコーダー（minimp3由来、CC0）、WAVはWindows標準のMedia Foundationで読み込みます。プレビュー再生はWindowsのwaveOutを使用し、FFmpegや追加のデコーダーEXE・DLLの同梱は不要です。同梱物の出典とライセンスは [第三者同梱物の記録](THIRD_PARTY_NOTICES.md) を参照してください。
 
-旧版のMP3キャッシュは残して、新しいデコーダー用のPCM・解析キャッシュを別名で保存します。更新後にプレビューの準備を求められた場合は、設定画面で再準備してください。
+旧版の音声キャッシュは残して、新しいデコーダー用のPCM・解析キャッシュを別名で保存します。更新後にプレビューの準備を求められた場合は、設定画面で再準備してください。WAVの対応形式はWindowsに搭載されたコーデックに従います。
