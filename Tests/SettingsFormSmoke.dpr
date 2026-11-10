@@ -44,6 +44,7 @@ var
   CloseTimer: TTimer;
   Table: PFILTER_PLUGIN_TABLE;
   SettingsButton: PFILTER_ITEM_BUTTON;
+  Item: PPointer;
   Phase: string;
   Iteration, I: Integer;
 begin
@@ -118,8 +119,10 @@ begin
         raise Exception.Create('Plugin initialization failed');
       try
         Table := GetRhythmShooterFilterTable;
-        SettingsButton := PFILTER_ITEM_BUTTON(PPointer(NativeUInt(Table.Items) + 3 * SizeOf(Pointer))^);
-        if string(SettingsButton.ItemType) <> 'button' then
+        Item := PPointer(Table.Items);
+        while (Item^ <> nil) and (string(PWideChar(PPointer(Item^)^)) <> 'button') do Inc(Item);
+        SettingsButton := PFILTER_ITEM_BUTTON(Item^);
+        if (SettingsButton = nil) or not Assigned(SettingsButton.Callback) then
           raise Exception.Create('Settings button is missing');
         CloseTimer := TTimer.Create(nil);
         try

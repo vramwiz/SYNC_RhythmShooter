@@ -10,6 +10,9 @@ type
     FEqualizer:TCheckBox;FEqualizerRow:TPanel;
     FDirection,FStyle,FCategory:TComboBox;
     FCategoryPanel:TPanel;FCategoryLabel:TLabel;
+    FMarbleBall,FMarbleStage:TComboBox;
+    FMarbleBallPanel,FMarbleStagePanel:TPanel;
+    FMarbleBallLabel,FMarbleStageLabel:TLabel;
     FSelection:TStyleSelection;FPreparing:Boolean;
     FSensitivity,FSeek,FBossFrequency,FGameThreshold:TTrackBar;
     FOptionsHeader,FOptionsBar,FStylePanel,FDirectionPanel,FSensitivityPanel,FBossRow,FGameRow:TPanel;
@@ -298,6 +301,36 @@ begin
   FEqualizer:=TRhythmCheckBox.Create(Self);FEqualizer.Parent:=FEqualizerRow;FEqualizer.Name:='EqualizerVisible';
   FEqualizer.Caption:='イコライザーを表示';FEqualizer.ShowHint:=True;
   FEqualizer.Hint:='音に反応するバーを表示します。全スタイル対応。再準備は不要です。';FEqualizer.OnClick:=SettingChange;
+  FMarbleBallPanel:=Panel(FOptionsBar,alNone,44);
+  FMarbleBallPanel.Name:='MarbleBallOptions';
+  FMarbleBallPanel.Visible:=False;
+  FMarbleBallLabel:=LabelAt(FMarbleBallPanel,'主球の材質',alNone,68);
+  FMarbleBallLabel.Name:='MarbleBallCaption';
+  FMarbleBall:=TRhythmComboBox.Create(Self);
+  FMarbleBall.Parent:=FMarbleBallPanel;
+  FMarbleBall.Name:='MarbleBall';
+  for PanelIndex:=Ord(Low(TMarbleBallStyle)) to Ord(High(TMarbleBallStyle)) do
+    FMarbleBall.Items.Add(MarbleBallTitles[TMarbleBallStyle(PanelIndex)]);
+  FMarbleBall.ItemIndex:=0;
+  FMarbleBall.ShowHint:=True;
+  FMarbleBall.Hint:='主球の見た目を変更します。速度や音のタイミングは同じです。';
+  FMarbleBall.OnChange:=SettingChange;
+  FMarbleBallLabel.FocusControl:=FMarbleBall;
+  FMarbleStagePanel:=Panel(FOptionsBar,alNone,44);
+  FMarbleStagePanel.Name:='MarbleStageOptions';
+  FMarbleStagePanel.Visible:=False;
+  FMarbleStageLabel:=LabelAt(FMarbleStagePanel,'ステージ',alNone,56);
+  FMarbleStageLabel.Name:='MarbleStageCaption';
+  FMarbleStage:=TRhythmComboBox.Create(Self);
+  FMarbleStage.Parent:=FMarbleStagePanel;
+  FMarbleStage.Name:='MarbleStage';
+  for PanelIndex:=Ord(Low(TMarbleStageStyle)) to Ord(High(TMarbleStageStyle)) do
+    FMarbleStage.Items.Add(MarbleStageTitles[TMarbleStageStyle(PanelIndex)]);
+  FMarbleStage.ItemIndex:=0;
+  FMarbleStage.ShowHint:=True;
+  FMarbleStage.Hint:='背景、レール、仕掛けの外観を変更します。再準備は不要です。';
+  FMarbleStage.OnChange:=SettingChange;
+  FMarbleStageLabel.FocusControl:=FMarbleStage;
   FOptionsBar.OnResize:=LayoutOptions;
   Bottom:=Panel(Self,alBottom,52);
   FBottom:=Bottom;
@@ -409,8 +442,8 @@ end;
 
 procedure TFormRhythmShooterSettings.LayoutOptions(Sender:TObject);
 var
-  Groups:array[0..6] of TPanel;
-  Widths,CaptionWidths:array[0..6] of Integer;
+  Groups:array[0..8] of TPanel;
+  Widths,CaptionWidths:array[0..8] of Integer;
   I,Pass,W,H,X,Y,Gap,Total,Extra,Numbers,BarHeight,TextHeight,ButtonHeight,ButtonTop,SavedScrollY:Integer;
   MusicCaptionWidth,BrowseWidth,AnalyzeWidth,MusicActionsWidth,FileHeight,EqualizerHeight:Integer;
   PlayWidth,StopWidth,ClockWidth,ValueWidth,BossValueWidth,CategoryWidth,RowWidth:Integer;
@@ -501,12 +534,15 @@ begin
     BossValueWidth:=Max(S(144),TextWidth('100 / 約135秒',FBossValue.Font)+S(4));
     Groups[0]:=FCategoryPanel;Groups[1]:=FStylePanel;Groups[2]:=FDirectionPanel;
     Groups[3]:=FSensitivityPanel;Groups[4]:=FGameRow;Groups[5]:=FEqualizerRow;Groups[6]:=FBossRow;
+    Groups[7]:=FMarbleBallPanel;Groups[8]:=FMarbleStagePanel;
     CaptionWidths[0]:=LabelWidth(FCategoryLabel,44);
     CaptionWidths[1]:=LabelWidth(FStyleLabel,44);
     CaptionWidths[2]:=LabelWidth(FDirectionLabel,40);
     CaptionWidths[3]:=LabelWidth(FSensitivityLabel,56);
     CaptionWidths[4]:=LabelWidth(FGameLabel,82);
     CaptionWidths[6]:=LabelWidth(FBossLabel,86);
+    CaptionWidths[7]:=LabelWidth(FMarbleBallLabel,68);
+    CaptionWidths[8]:=LabelWidth(FMarbleStageLabel,56);
     // Re-evaluate from full width so a previous wrap cannot retain a needless
     // scrollbar. Restore the user's scroll position once the final range exists.
     FAnimationBody.Height:=FAnimationScroll.ClientHeight;
@@ -534,11 +570,13 @@ begin
       Widths[4]:=Max(S(170),CaptionWidths[4]+ValueWidth+S(80));
       Widths[5]:=TextWidth(FEqualizer.Caption,FEqualizer.Font)+S(32);
       Widths[6]:=CaptionWidths[6]+BossValueWidth+S(88);
+      Widths[7]:=CaptionWidths[7]+S(6)+ComboWidth(FMarbleBall,108);
+      Widths[8]:=CaptionWidths[8]+S(6)+ComboWidth(FMarbleStage,122);
       W:=Max(1,FOptionsBar.ClientWidth);
       Total:=0;
       Numbers:=2;
       if FBossRow.Visible then Inc(Numbers);
-      for I:=0 to 6 do if Groups[I].Visible then begin if Total>0 then Inc(Total,Gap);
+      for I:=0 to High(Groups) do if Groups[I].Visible then begin if Total>0 then Inc(Total,Gap);
         Inc(Total,Widths[I]);
       end;
       // 分類が一行に収まる場合、折り返しは音の設定から始める。
@@ -553,8 +591,9 @@ begin
       end;
       X:=0;
       Y:=0;
-      for I:=0 to 6 do if Groups[I].Visible then begin
-        if (X>0) and ((X+Widths[I]>W) or ((I=3) and SeparateAudio)) then begin X:=0;
+      for I:=0 to High(Groups) do if Groups[I].Visible then begin
+        if (X>0) and ((X+Widths[I]>W) or ((I=3) and SeparateAudio) or
+          ((I=7) and (X+Widths[7]+Gap+Widths[8]>W))) then begin X:=0;
           Inc(Y,H);
         end;
         Groups[I].SetBounds(X,Y,Min(W,Widths[I]),H);
@@ -567,6 +606,8 @@ begin
       Combo(FCategoryLabel,FCategory,CaptionWidths[0]);
       Combo(FStyleLabel,FStyle,CaptionWidths[1]);
       Combo(FDirectionLabel,FDirection,CaptionWidths[2]);
+      Combo(FMarbleBallLabel,FMarbleBall,CaptionWidths[7]);
+      Combo(FMarbleStageLabel,FMarbleStage,CaptionWidths[8]);
       Slider(FSensitivityLabel,FLevel,FSensitivity,CaptionWidths[3],ValueWidth);
       Slider(FGameLabel,FGameValue,FGameThreshold,CaptionWidths[4],ValueWidth);
       Slider(FBossLabel,FBossValue,FBossFrequency,CaptionWidths[6],BossValueWidth);
@@ -789,8 +830,13 @@ begin
   RefreshSelection;
   FState.Style:=SelectedStyle;FState.Sensitivity:=DetectionSensitivity;FState.Direction:=ScrollDirection;
   WasUpdating:=FUpdating;FUpdating:=True;
-  try FEqualizer.Checked:=EqualizerEnabled(FState.EqualizerMode,SelectedStyle,FState.Plan.Version);
+  try
+    FEqualizer.Checked:=EqualizerEnabled(FState.EqualizerMode,SelectedStyle,FState.Plan.Version);
+    FMarbleBall.ItemIndex:=Ord(FState.MarbleBall);
+    FMarbleStage.ItemIndex:=Ord(FState.MarbleStage);
   finally FUpdating:=WasUpdating;end;
+  FMarbleBallPanel.Visible:=SelectedStyle=rsMarbleRelay;
+  FMarbleStagePanel.Visible:=SelectedStyle=rsMarbleRelay;
   FState.GameThreshold:=FGameThreshold.Position;
   FState.BossFrequency:=FBossFrequency.Position;
   FBossRow.Visible:=StyleHas(SelectedStyle,sfBoss);
@@ -1056,6 +1102,16 @@ begin
   // 表示だけの変更なので解析・再準備・停止・保存計画の無効化を起こさない。
   if Sender=FEqualizer then begin if FUpdating then Exit;FState.EqualizerMode:=Ord(FEqualizer.Checked);FPreview.Invalidate;Exit;end;
   if FUpdating then Exit;
+  if Sender=FMarbleBall then begin
+    if FMarbleBall.ItemIndex>=0 then FState.MarbleBall:=TMarbleBallStyle(FMarbleBall.ItemIndex);
+    FPreview.Invalidate;
+    Exit;
+  end;
+  if Sender=FMarbleStage then begin
+    if FMarbleStage.ItemIndex>=0 then FState.MarbleStage:=TMarbleStageStyle(FMarbleStage.ItemIndex);
+    FPreview.Invalidate;
+    Exit;
+  end;
   if Sender=FCategory then begin FSelection.ChooseGroup(TRhythmStyleGroup(FCategory.ItemIndex));RefreshSelection;end
   else if Sender=FStyle then begin FSelection.ChooseMiddle(FStyle.ItemIndex);RefreshSelection;end
   else if Sender=FDirection then FSelection.ChooseSmall(FDirection.ItemIndex);
@@ -1166,7 +1222,7 @@ var
   HintText:string;
 begin
   FFrame.SetSize(FViewWidth,FViewHeight);
-  FRenderer.ConfigureStyle(SelectedStyle,FState.Plan,FBossFrequency.Position,FState.EqualizerMode);
+  FRenderer.ConfigureStyle(SelectedStyle,FState.Plan,FBossFrequency.Position,FState.EqualizerMode,FState.MarbleBall,FState.MarbleStage);
   FRenderer.ApplyDesigns(FDesignEditor.Designs);
   if Ready then begin
     FRenderer.Render(FFrame,FAudio,FTime,ScrollDirection,'WAV / MP3 を選択してプレビュー',FState.Zoom/100,FState.X,FState.Y,FState.OffsetSeconds);

@@ -4,11 +4,11 @@
 uses System.SysUtils,System.Classes,System.Hash,System.IOUtils,System.JSON,
   RhythmStyles,RhythmStyleSelection,RhythmSettings,RhythmPlanRef,RhythmStyleOps,RhythmStyleRegistry,
   RhythmAudio,RhythmAnimation,RhythmImageBank;
-const Ids:array[TRhythmStyle] of string=('shooting','ball','jump-adventure','breakout','side-race','bomb-action','fighting-rush','mining','train','rhythm-game','prism-step','mine-cart','crash-cannon');
-  Versions:array[TRhythmStyle] of Integer=(1,6,3,10,1,2,1,1,1,4,3,4,1);
-  Groups:array[TRhythmStyle] of TRhythmStyleGroup=(sgShooting,sgBall,sgAction,sgBall,sgRace,sgAction,sgAction,sgAction,sgShooting,sgMusic,sgMusic,sgAction,sgAction);
-  Scenes:array[TRhythmStyle] of string=('TShootingAnimation','TBallAnimation','TJumpAnimation','TBreakoutAnimation','TSideRaceAnimation','TBombActionAnimation','TRushAnimation','TMiningAnimation','TTrainAnimation','TGameAnimation','TStepAnimation','TCartAnimation','TCannonAnimation');
-  GroupCounts:array[TRhythmStyleGroup] of Integer=(2,2,6,1,2);
+const Ids:array[TRhythmStyle] of string=('shooting','ball','jump-adventure','breakout','side-race','bomb-action','fighting-rush','mining','train','rhythm-game','prism-step','mine-cart','crash-cannon','parkour','marble-relay');
+  Versions:array[TRhythmStyle] of Integer=(1,6,3,10,1,2,1,1,1,4,3,4,1,2,16);
+  Groups:array[TRhythmStyle] of TRhythmStyleGroup=(sgShooting,sgBall,sgAction,sgBall,sgRace,sgAction,sgAction,sgAction,sgShooting,sgMusic,sgMusic,sgAction,sgAction,sgAction,sgBall);
+  Scenes:array[TRhythmStyle] of string=('TShootingAnimation','TBallAnimation','TJumpAnimation','TBreakoutAnimation','TSideRaceAnimation','TBombActionAnimation','TRushAnimation','TMiningAnimation','TTrainAnimation','TGameAnimation','TStepAnimation','TCartAnimation','TCannonAnimation','TParkourAnimation','TMarbleAnimation');
+  GroupCounts:array[TRhythmStyleGroup] of Integer=(2,3,7,1,2);
   Levels:array[0..4] of Integer=(-100,-1,0,50,100);
 var S,Other,ParsedStyle:TRhythmStyle;G:TRhythmStyleGroup;D,I,J,K,V,Expected,Checks,Stage,Combinations:Integer;
   Sel,Restored:TStyleSelection;Saved,Loaded:TRhythmSettings;Ref:TRhythmPlanRef;Ops:TStyleOperations;
@@ -20,7 +20,7 @@ function WasCompatible(Style:TRhythmStyle;Version:Integer):Boolean;
 begin Result:=Version=Versions[Style];case Style of
   rsBall:Result:=Version in [4,5,6];
   rsBreakout:Result:=Version in [1,2,3,4,5,6,7,8,9,10];
-  rsBombAction:Result:=Version in [1,2];rsRhythmGame,rsMineCart:Result:=Version in [1,2,3,4];rsStepGame,rsJumpAdventure:Result:=Version in [1,2,3];
+  rsBombAction,rsParkour:Result:=Version in [1,2];rsMarbleRelay:Result:=Version in [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16];rsRhythmGame,rsMineCart:Result:=Version in [1,2,3,4];rsStepGame,rsJumpAdventure:Result:=Version in [1,2,3];
 end;end;
 begin Scene:=nil;Images:=nil;Names:=nil;Checks:=0;Combinations:=0;
   try
@@ -42,7 +42,7 @@ begin Scene:=nil;Images:=nil;Names:=nil;Checks:=0;Combinations:=0;
     Need(TRhythmSettings.TryJSON('{"schema":1,"style":"rhythm-game","layers":'+
       '{"style":"fighting","movie":true,"foreground":false,"plan":{"style":"fighting"}}}',Loaded) and
       (Loaded.Style=rsFightingRush) and (Loaded.Plan.Key=''),'Retired fighting layer migration');
-    Need(GroupStyleCount(sgBall)=2,'Ball family count');Need(StyleInfo(rsBall).Group=StyleInfo(rsBreakout).Group,'Pinball and breakout separated');
+    Need(GroupStyleCount(sgBall)=3,'Ball family count');Need(StyleInfo(rsBall).Group=StyleInfo(rsBreakout).Group,'Pinball and breakout separated');
     Need((StyleInfo(rsRhythmGame).MiddleTitle='Type.V') and (StyleTitle(rsRhythmGame)='Type.V'),'Type.V label');
     Need((StyleInfo(rsStepGame).MiddleTitle='Type.D') and (StyleTitle(rsStepGame)='Type.D') and
       (StyleSmallTitle(rsStepGame,0)='縦'),'Type.D label');
@@ -108,8 +108,8 @@ begin Scene:=nil;Images:=nil;Names:=nil;Checks:=0;Combinations:=0;
     Need(not TryStyle('unknown',ParsedStyle) and (ParsedStyle=rsShooting),'Unknown ID handling');
     Stage:=0;Context.Progress:=procedure(Value:Integer) begin Stage:=Value;end;Context.SetStage(4);Need(Stage=4,'Progress callback');
     Context.Cancel:=function:Boolean begin Result:=True;end;Failed:=False;try Context.CheckCancel;except on E:EAbort do Failed:=True;end;Need(Failed,'Cancellation callback');
-    TFile.WriteAllText(TPath.Combine(Folder,'result.json'),Format('{"checks":%d,"groups":5,"styles":13,"smallChoices":15,"selectionTransitions":%d,"adapters":13,"gui":false}',[Checks,Combinations]),TEncoding.UTF8);
-    WriteLn('Style catalog PASS checks=',Checks,' groups=5 styles=13 transitions=',Combinations,' no GUI');
+    TFile.WriteAllText(TPath.Combine(Folder,'result.json'),Format('{"checks":%d,"groups":5,"styles":15,"smallChoices":17,"selectionTransitions":%d,"adapters":15,"gui":false}',[Checks,Combinations]),TEncoding.UTF8);
+    WriteLn('Style catalog PASS checks=',Checks,' groups=5 styles=15 transitions=',Combinations,' no GUI');
   except on E:Exception do begin WriteLn(E.ClassName,': ',E.Message);ExitCode:=1;end;end;
   Scene.Free;Images.Free;Names.Free;
 end.

@@ -27,7 +27,8 @@ type
   public
     constructor Create;
     destructor Destroy;override;
-    procedure ConfigureStyle(Style:TRhythmStyle;const Plan:TRhythmPlanRef;BossFrequency:Integer=-1;EqualizerMode:Integer=-1);
+    procedure ConfigureStyle(Style:TRhythmStyle;const Plan:TRhythmPlanRef;BossFrequency:Integer=-1;EqualizerMode:Integer=-1;
+      MarbleBall:TMarbleBallStyle=mbSteel;MarbleStage:TMarbleStageStyle=msWoodWorkshop);
     procedure ApplyDesigns(const Designs:TRhythmDesigns;Force:Boolean=False);
     procedure StandardBackgroundPreview(Target:TBitmap;Direction,Layer:Integer);
     procedure Render(Target:TBitmap;Audio:TRhythmAudio;Time:Double;Direction:Integer;
@@ -57,8 +58,17 @@ begin
   FRenderer.Free;FRenderer:=NewRenderer;FChild:=Child;FOps:=Ops;
   FPresentation:=TRhythmPresentationScene(Presented);FStyle:=Style;
 end;
-procedure TRhythmRenderer.ConfigureStyle(Style:TRhythmStyle;const Plan:TRhythmPlanRef;BossFrequency,EqualizerMode:Integer);
-begin FBossFrequency:=BossFrequency;if FBossFrequency<0 then FBossFrequency:=BossFrequencyFromVariant(Plan.Variant);if Style<>FStyle then CreateStyle(Style);FPrimaryRef:=Plan;FEqualizerMode:=EqualizerMode;FOps.SetReference(FChild,Plan);end;
+procedure TRhythmRenderer.ConfigureStyle(Style:TRhythmStyle;const Plan:TRhythmPlanRef;BossFrequency,EqualizerMode:Integer;
+  MarbleBall:TMarbleBallStyle;MarbleStage:TMarbleStageStyle);
+begin
+  FBossFrequency:=BossFrequency;
+  if FBossFrequency<0 then FBossFrequency:=BossFrequencyFromVariant(Plan.Variant);
+  if Style<>FStyle then CreateStyle(Style);
+  FPrimaryRef:=Plan;
+  FEqualizerMode:=EqualizerMode;
+  FOps.SetReference(FChild,Plan);
+  if Assigned(FOps.MarbleAppearance) then FOps.MarbleAppearance(FChild,MarbleBall,MarbleStage);
+end;
 destructor TRhythmRenderer.Destroy;
 begin FOverlay.Free;FLayers.Free;FRenderer.Free;inherited;end;
 function TRhythmRenderer.GetAssetCount:Integer;

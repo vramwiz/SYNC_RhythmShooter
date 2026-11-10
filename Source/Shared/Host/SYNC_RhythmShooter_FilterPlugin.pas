@@ -81,7 +81,7 @@ begin
   if GDesignRenderers.TryGetValue(Key,Result) then Exit;
   Created:=TRhythmRenderer.Create;
   try
-    Created.ConfigureStyle(Settings.Style,Settings.Plan,Settings.BossFrequency,Settings.EqualizerMode);
+    Created.ConfigureStyle(Settings.Style,Settings.Plan,Settings.BossFrequency,Settings.EqualizerMode,Settings.MarbleBall,Settings.MarbleStage);
     Created.ApplyDesigns(Settings.Designs);
     if GDesignRenderers.Count>=4 then GDesignRenderers.Clear;
     GDesignRenderers.Add(Key,Created);
@@ -235,7 +235,7 @@ begin
       if GError<>'' then MessageText:=GError else MessageText:='設定から WAV / MP3 を選択';
       if (GBitmap.Width<>W) or (GBitmap.Height<>H) then GBitmap.SetSize(W,H);
       Renderer:=RendererFor(Settings);
-      Renderer.ConfigureStyle(Settings.Style,Settings.Plan,Settings.BossFrequency,Settings.EqualizerMode);
+      Renderer.ConfigureStyle(Settings.Style,Settings.Plan,Settings.BossFrequency,Settings.EqualizerMode,Settings.MarbleBall,Settings.MarbleStage);
       Renderer.Render(GBitmap,GAudio,Time,Settings.Direction,MessageText,Settings.Zoom/100,Settings.X,Settings.Y,Settings.OffsetSeconds);
       if Length(GRgba)<>W*H*4 then SetLength(GRgba,W*H*4);
       Dest:=@GRgba[0];

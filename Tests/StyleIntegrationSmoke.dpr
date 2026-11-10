@@ -99,7 +99,7 @@ var Lib:HMODULE;Init:TInitPlugin;Done:TDonePlugin;GetTable:TGetPlugin;Table:PFIL
  function PreviewHash:string;
  var X,Y:Integer;
  begin
-   Renderer.ConfigureStyle(Style,Ref,100,Settings.EqualizerMode);
+   Renderer.ConfigureStyle(Style,Ref,100,Settings.EqualizerMode,Settings.MarbleBall,Settings.MarbleStage);
    Renderer.UseD2D:=True;Renderer.Render(Image,Cold,Obj.Time,0,'',1,0,0,Offset.Value);SetLength(Expected,Image.Width*Image.Height*4);K:=0;
    for Y:=0 to Image.Height-1 do begin Row:=Image.ScanLine[Y];for X:=0 to Image.Width-1 do begin
      Expected[K]:=Row[2];Expected[K+1]:=Row[1];Expected[K+2]:=Row[0];if Renderer.OutputHasAlpha then Expected[K+3]:=Row[3] else Expected[K+3]:=255;Inc(K,4);Inc(Row,4);
@@ -137,6 +137,18 @@ begin
    Offset.Value:=-1;Obj.Time:=0;ModeHash:=PreviewHash;Frame('Advance at object start',False);Need(CapturedHash=ModeHash,'Advanced start time');Inc(OffsetChecks);
    Obj.Time:=100;ModeHash:=PreviewHash;Frame('Advance after source end',False);Need(CapturedHash=ModeHash,'Advanced end time');Inc(OffsetChecks);
    Obj.Time:=32.3;Offset.Value:=0;Frame('Offset reset',False);Need(CapturedHash=SecondHash,'Offset reset or backwards seek drift');Inc(OffsetChecks);
+   if Style=rsMarbleRelay then begin
+     Settings.MarbleStage:=msFairyTale;
+     JsonText:=Settings.ToJSON;Json.Value:=PWideChar(JsonText);ModeHash:=PreviewHash;
+     Frame('Marble stage change',False);Need((CapturedHash=ModeHash) and (ModeHash<>SecondHash),'Stage toggle missing from host');
+     FirstHash:=ModeHash;
+     Settings.MarbleBall:=mbGlass;
+     JsonText:=Settings.ToJSON;Json.Value:=PWideChar(JsonText);ModeHash:=PreviewHash;
+     Frame('Marble ball change',False);Need((CapturedHash=ModeHash) and (ModeHash<>FirstHash),'Ball toggle missing from host');
+     Settings.MarbleBall:=mbSteel;Settings.MarbleStage:=msWoodWorkshop;
+     JsonText:=OriginalJSON;Json.Value:=PWideChar(JsonText);ModeHash:=PreviewHash;
+     Frame('Marble appearance restored',False);Need((CapturedHash=SecondHash) and (ModeHash=SecondHash),'Appearance toggle return drift');
+   end;
    SavedEqualizer:=Settings.EqualizerMode;
    for Mode:=0 to 1 do begin Settings.EqualizerMode:=Mode;JsonText:=Settings.ToJSON;Json.Value:=PWideChar(JsonText);ModeHash:=PreviewHash;
      Frame('Equalizer toggle '+IntToStr(Mode),False);Need(CapturedHash=ModeHash,'Equalizer DLL/preview mismatch');

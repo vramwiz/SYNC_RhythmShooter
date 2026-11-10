@@ -13,6 +13,8 @@ type
     OffsetSeconds:Double; // 描画専用。ホストではtrackが正、JSONはPreviewへの受渡し用。
     EqualizerMode:Integer; // -1=旧版移行の初期値、0=非表示、1=表示。解析計画とは独立。
     Designs:TRhythmDesigns;
+    MarbleBall:TMarbleBallStyle;
+    MarbleStage:TMarbleStageStyle;
     class function Defaults:TRhythmSettings; static;
     procedure BindHostMusic(const FileName:string);
     function ToJSON:string;
@@ -75,6 +77,8 @@ begin
     if HostMusic then J.AddPair('musicSource','host');
     J.AddPair('bossFrequency',TJSONNumber.Create(EnsureRange(BossFrequency,0,100)));
     J.AddPair('style',StyleId(Style));
+    if MarbleBall<>mbSteel then J.AddPair('marbleBall',TJSONNumber.Create(Ord(MarbleBall)));
+    if MarbleStage<>msWoodWorkshop then J.AddPair('marbleStage',TJSONNumber.Create(Ord(MarbleStage)));
     J.AddPair('audioDensity',TJSONNumber.Create(EnsureRange(GameThreshold,-100,100)));
     J.AddPair('gameThreshold',TJSONNumber.Create(EnsureRange(GameThreshold,-100,100))); // 旧音ゲー版で読むため保持
     if EqualizerMode>=0 then J.AddPair('equalizer',TJSONBool.Create(EqualizerMode>0));
@@ -139,6 +143,12 @@ begin
       O:=TJSONObject(J);
       if O.GetValue<Integer>('schema',0)<>1 then Exit;
       if not TrySavedSelection(O.GetValue<string>('style','shooting'),Value.Style) then Exit;
+      V:=O.GetValue('marbleBall');
+      if (V is TJSONNumber) and TryStrToInt(V.Value,I) and InRange(I,Ord(Low(TMarbleBallStyle)),Ord(High(TMarbleBallStyle))) then
+        Value.MarbleBall:=TMarbleBallStyle(I);
+      V:=O.GetValue('marbleStage');
+      if (V is TJSONNumber) and TryStrToInt(V.Value,I) and InRange(I,Ord(Low(TMarbleStageStyle)),Ord(High(TMarbleStageStyle))) then
+        Value.MarbleStage:=TMarbleStageStyle(I);
       Value.HostMusic:=O.GetValue<string>('musicSource','')='host';
       Value.Music:=O.GetValue<string>('music','');
       Value.Direction:=EnsureRange(O.GetValue<Integer>('direction',0),0,1);

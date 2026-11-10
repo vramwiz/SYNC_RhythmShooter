@@ -1,10 +1,12 @@
 ﻿unit RhythmStyles;
 // 保存ID/計画版の契約と、設定画面だけの分類・機能カタログ。分類値はJSONやホストへ保存しない。
 interface
-type TRhythmStyle=(rsShooting,rsBall,rsJumpAdventure,rsBreakout,rsSideRace,rsBombAction,rsFightingRush,rsMining,rsTrain,rsRhythmGame,rsStepGame,rsMineCart,rsCrashCannon);
+type TRhythmStyle=(rsShooting,rsBall,rsJumpAdventure,rsBreakout,rsSideRace,rsBombAction,rsFightingRush,rsMining,rsTrain,rsRhythmGame,rsStepGame,rsMineCart,rsCrashCannon,rsParkour,rsMarbleRelay);
 type
   TRhythmStyleGroup=(sgShooting,sgBall,sgAction,sgRace,sgMusic);
   TStyleSmallKind=(skFixed,skScroll);
+  TMarbleBallStyle=(mbSteel,mbGlass,mbWood,mbPorcelain);
+  TMarbleStageStyle=(msWoodWorkshop,msFairyTale,msBrassWorks,msStoneRuins,msIcePalace,msNeonCircuit);
   TStyleVariantKind=(svNone,svBoss,svRhythm);
   TStyleFeature=(sfBoss,sfPrepared,sfAssets,sfDesigns,sfThreshold,sfTransparent,sfDefaultBoss50,sfOwnFinale);
   TStyleFeatures=set of TStyleFeature;
@@ -39,6 +41,8 @@ function BossFrequencyFromVariant(Variant:Integer):Integer;
 const FIREWORKS_DEFAULT_RICHNESS=50;BOSS_DEFAULT_FREQUENCY=50;AUDIO_DEFAULT_DENSITY=20;
   TYPE_V_TITLE='Type.V';
   TYPE_D_TITLE='Type.D';
+  MarbleBallTitles:array[TMarbleBallStyle] of string=('鉄球（銀）','ビー玉（緑）','木球','陶器玉');
+  MarbleStageTitles:array[TMarbleStageStyle] of string=('木の工房','メルヘン','真鍮の機械室','石造りの遺跡','氷の宮殿','ネオン回路');
 implementation
 uses System.SysUtils,System.Math;
 const
@@ -56,7 +60,9 @@ const
     (Id:'rhythm-game';Title:TYPE_V_TITLE;MiddleTitle:TYPE_V_TITLE;FixedSmall:'MV重ね（透過）';ProgressText:'音時刻からマーク・カーソル軌道・連打を逆算/保存検証中';Group:sgMusic;Order:0;SmallKind:skFixed;Version:4;Versions:[1,2,3,4];Features:[sfPrepared,sfThreshold,sfTransparent];VariantKind:svRhythm),
     (Id:'prism-step';Title:TYPE_D_TITLE;MiddleTitle:TYPE_D_TITLE;FixedSmall:'縦';ProgressText:'音時刻から4レーン譜面を準備中';Group:sgMusic;Order:1;SmallKind:skFixed;Version:3;Versions:[1,2,3];Features:[sfPrepared,sfThreshold];VariantKind:svRhythm),
     (Id:'mine-cart';Title:'トロッコアクション';MiddleTitle:'トロッコアクション';FixedSmall:'鉱山の横スクロール';ProgressText:'コインの接触・線路・回避を逆算中';Group:sgAction;Order:4;SmallKind:skFixed;Version:4;Versions:[1,2,3,4];Features:[sfPrepared,sfBoss,sfDefaultBoss50];VariantKind:svBoss),
-    (Id:'crash-cannon';Title:'クラッシュキャノン';MiddleTitle:'クラッシュキャノン';FixedSmall:'横からの視点';ProgressText:'音時刻から着弾・反撃・連鎖崩壊を逆算中';Group:sgAction;Order:5;SmallKind:skFixed;Version:1;Versions:[1];Features:[sfPrepared,sfOwnFinale];VariantKind:svNone)
+    (Id:'crash-cannon';Title:'クラッシュキャノン';MiddleTitle:'クラッシュキャノン';FixedSmall:'横からの視点';ProgressText:'音時刻から着弾・反撃・連鎖崩壊を逆算中';Group:sgAction;Order:5;SmallKind:skFixed;Version:1;Versions:[1];Features:[sfPrepared,sfOwnFinale];VariantKind:svNone),
+    (Id:'parkour';Title:'パルクール（試作）';MiddleTitle:'パルクール（試作）';FixedSmall:'屋上の横スクロール';ProgressText:'音時刻から連続ステップ・壁走り・ワイヤーを準備中';Group:sgAction;Order:6;SmallKind:skFixed;Version:2;Versions:[1,2];Features:[sfPrepared,sfOwnFinale];VariantKind:svNone),
+    (Id:'marble-relay';Title:'からくりリレー（試作）';MiddleTitle:'からくりリレー（試作）';FixedSmall:'球を追うコース';ProgressText:'音時刻から球の経路と仕掛けの連鎖を準備中';Group:sgBall;Order:2;SmallKind:skFixed;Version:16;Versions:[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16];Features:[sfPrepared,sfOwnFinale];VariantKind:svNone)
   );
   GroupTitles:array[TRhythmStyleGroup] of string=('シューティング','ボールアクション','アクション','レース','音楽・演出');
 function StyleInfo(Style:TRhythmStyle):TStyleInfo;

@@ -42,7 +42,7 @@
         <GenDll>true</GenDll>
         <DCC_DcuOutput>.\$(Platform)\$(Config)\DCU</DCC_DcuOutput>
         <DCC_ExeOutput>.\$(Platform)\$(Config)</DCC_ExeOutput>
-        <DCC_UnitSearchPath>Source\MineCart;Source\CrashCannon;Source\SideRace;Source\FightingRush;Source\JumpAdventure;Source\RhythmGame;Source\Mining;Source\Train;Source\BombAction;Source\Breakout;Source\Shared\Audio;Source\Shared\Render;Source\Shared\Settings;Source\Shared\Common;Source\Shared\Assets;Source\Shared\UI;Source\Shared\Host;Source\Shared\Integrations;Source\Composition;Source\Shooting;Source\Ball;Source\Fireworks;Source\Lib;Source\Lib\MP3Decoder;Source\Lib\MP3Decoder\Core;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
+        <DCC_UnitSearchPath>Source\MineCart;Source\CrashCannon;Source\Parkour;Source\MarbleRelay;Source\SideRace;Source\FightingRush;Source\JumpAdventure;Source\RhythmGame;Source\Mining;Source\Train;Source\BombAction;Source\Breakout;Source\Shared\Audio;Source\Shared\Render;Source\Shared\Settings;Source\Shared\Common;Source\Shared\Assets;Source\Shared\UI;Source\Shared\Host;Source\Shared\Integrations;Source\Composition;Source\Shooting;Source\Ball;Source\Fireworks;Source\Lib;Source\Lib\MP3Decoder;Source\Lib\MP3Decoder\Core;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
         <DCC_Namespace>System;Xml;Data;Datasnap;Web;Soap;Winapi;Vcl;$(DCC_Namespace)</DCC_Namespace>
         <SanitizedProjectName>SYNC_RhythmShooter</SanitizedProjectName>
     </PropertyGroup>
@@ -79,7 +79,7 @@
         <DCC_DebugInformation>0</DCC_DebugInformation>
     </PropertyGroup>
     <PropertyGroup Condition="'$(Cfg_2_Win64)'!=''">
-        <Debugger_HostApplication>D:\aviutl2_v2.1.6a\aviutl2.exe</Debugger_HostApplication>
+        <Debugger_HostApplication>D:\aviutl2_v2.1.16\aviutl2.exe</Debugger_HostApplication>
         <PreBuildEvent><![CDATA[powershell -NoProfile -ExecutionPolicy Bypass -File "$(PROJECTDIR)\Scripts\BuildPlugin.ps1" -Stage Prepare -Config Release -LibraryPath "$(OUTPUTPATH)"]]></PreBuildEvent>
         <PreBuildEventIgnoreExitCode>False</PreBuildEventIgnoreExitCode>
         <PreLinkEvent><![CDATA[]]></PreLinkEvent>
@@ -92,10 +92,9 @@
         <AppDPIAwarenessMode>none</AppDPIAwarenessMode>
     </PropertyGroup>
     <ItemGroup>
-        <DCCReference Include="Source\RhythmGame\RhythmGameLegacyPlan.pas"/>
-        <DCCReference Include="Source\RhythmGame\RhythmGameLegacyScene.pas"/>
-        <DCCReference Include="Source\RhythmGame\RhythmOrbitTypes.pas"/>
-        <DCCReference Include="Source\RhythmGame\RhythmOrbitCodec.pas"/>
+        <DelphiCompile Include="$(MainSource)">
+            <MainSource>MainSource</MainSource>
+        </DelphiCompile>
         <DCCReference Include="Source\RhythmGame\RhythmOrbitLayout.pas"/>
         <DCCReference Include="Source\JumpAdventure\RhythmJumpPlan.pas"/>
         <DCCReference Include="Source\JumpAdventure\RhythmJumpBuild.pas"/>
@@ -124,10 +123,20 @@
         <DCCReference Include="Source\CrashCannon\RhythmCannonArt.pas"/>
         <DCCReference Include="Source\CrashCannon\RhythmCannonScene.pas"/>
         <DCCReference Include="Source\CrashCannon\RhythmCannonStyle.pas"/>
+        <DCCReference Include="Source\Parkour\RhythmParkourPlan.pas"/>
+        <DCCReference Include="Source\Parkour\RhythmParkourScene.pas"/>
+        <DCCReference Include="Source\Parkour\RhythmParkourStyle.pas"/>
+        <DCCReference Include="Source\MarbleRelay\RhythmMarblePlan.pas"/>
+        <DCCReference Include="Source\MarbleRelay\RhythmMarbleScene.pas"/>
+        <DCCReference Include="Source\MarbleRelay\RhythmMarbleStyle.pas"/>
         <DCCReference Include="Source\RhythmGame\RhythmOrbitGuide.pas"/>
         <DCCReference Include="Source\RhythmGame\RhythmOrbitMarks.pas"/>
         <DCCReference Include="Source\RhythmGame\RhythmOrbitAudio.pas"/>
         <DCCReference Include="Source\RhythmGame\RhythmOrbitShow.pas"/>
+        <DCCReference Include="Source\RhythmGame\RhythmGameLegacyPlan.pas"/>
+        <DCCReference Include="Source\RhythmGame\RhythmGameLegacyScene.pas"/>
+        <DCCReference Include="Source\RhythmGame\RhythmOrbitTypes.pas"/>
+        <DCCReference Include="Source\RhythmGame\RhythmOrbitCodec.pas"/>
         <DCCReference Include="Source\RhythmGame\RhythmOrbitPlan.pas"/>
         <DCCReference Include="Source\RhythmGame\RhythmOrbitScene.pas"/>
         <DCCReference Include="Source\RhythmGame\RhythmGamePlan.pas"/>
@@ -145,9 +154,6 @@
         <DCCReference Include="Source\Mining\RhythmMiningScene.pas"/>
         <DCCReference Include="Source\Train\RhythmTrainPlan.pas"/>
         <DCCReference Include="Source\Train\RhythmTrainScene.pas"/>
-        <DelphiCompile Include="$(MainSource)">
-            <MainSource>MainSource</MainSource>
-        </DelphiCompile>
         <DCCReference Include="Source\BombAction\RhythmBombPlan.pas"/>
         <DCCReference Include="Source\BombAction\RhythmBombScene.pas"/>
         <DCCReference Include="Source\Shared\Settings\RhythmPreparedData.pas"/>
@@ -162,19 +168,19 @@
         <DCCReference Include="Source\Composition\RhythmPrepare.pas"/>
         <DCCReference Include="Source\Ball\RhythmBallGeometry.pas"/>
         <DCCReference Include="Source\Ball\RhythmBallPlan.pas"/>
-        <DCCReference Include="Source\Ball\RhythmBallScene.pas"/>
         <DCCReference Include="Source\Fireworks\RhythmFireworksScene.pas"/>
+        <DCCReference Include="Source\Ball\RhythmBallScene.pas"/>
+        <DCCReference Include="Source\Shared\UI\RhythmControls.pas"/>
+        <DCCReference Include="Source\Shooting\RhythmSections.pas"/>
         <DCCReference Include="Source\Composition\RhythmDesignTypes.pas"/>
         <DCCReference Include="Source\Shared\Assets\RhythmDesignImages.pas"/>
         <DCCReference Include="Source\Shared\Integrations\RhythmDesignRequest.pas"/>
         <DCCReference Include="Source\Shared\Integrations\RhythmCodexClient.pas"/>
         <DCCReference Include="Source\Shared\UI\RhythmDesignFrame.pas"/>
-        <DCCReference Include="Source\Shared\UI\RhythmControls.pas"/>
         <DCCReference Include="Source\Shared\Common\RhythmPaths.pas"/>
         <DCCReference Include="Source\Shooting\RhythmMotion.pas"/>
         <DCCReference Include="Source\Shared\Settings\RhythmSettings.pas"/>
         <DCCReference Include="Source\Composition\RhythmAudio.pas"/>
-        <DCCReference Include="Source\Shooting\RhythmSections.pas"/>
         <DCCReference Include="Source\Shared\Audio\RhythmPlayback.pas"/>
         <DCCReference Include="Source\Shared\Render\RhythmImageBank.pas"/>
         <DCCReference Include="Source\Shooting\RhythmShootingAssets.pas"/>
@@ -187,7 +193,7 @@
         <DCCReference Include="Source\Composition\RhythmScene.pas"/>
         <DCCReference Include="Source\Composition\RhythmPresentation.pas"/>
         <DCCReference Include="Source\Composition\RhythmLayerBlend.pas"/>
-        <DCCReference Include="Source\Composition\RhythmLayerData.pas"/>
+        <DCCReference Include="Source\Composition\RhythmOverlay.pas"/>
         <DCCReference Include="Source\Shared\Render\RhythmD2D.pas"/>
         <DCCReference Include="Source\Shooting\RhythmBarrage.pas"/>
         <DCCReference Include="Source\Shooting\RhythmStage.pas"/>
@@ -234,20 +240,20 @@
     <Import Project="$(BDS)\Bin\CodeGear.Delphi.Targets" Condition="Exists('$(BDS)\Bin\CodeGear.Delphi.Targets')"/>
     <Import Project="$(APPDATA)\Embarcadero\$(BDSAPPDATABASEDIR)\$(PRODUCTVERSION)\UserTools.proj" Condition="Exists('$(APPDATA)\Embarcadero\$(BDSAPPDATABASEDIR)\$(PRODUCTVERSION)\UserTools.proj')"/>
     <PropertyGroup Condition="'$(Config)'=='Debug' And '$(Platform)'=='Win64'">
-        <PreBuildEvent><![CDATA[powershell -NoProfile -ExecutionPolicy Bypass -File "$(PROJECTDIR)\Scripts\BuildPlugin.ps1" -Stage Prepare -Config Debug -LibraryPath "$(OUTPUTPATH)"]]></PreBuildEvent>
+        <PreBuildEvent>powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(PROJECTDIR)\Scripts\BuildPlugin.ps1&quot; -Stage Prepare -Config Debug -LibraryPath &quot;$(OUTPUTPATH)&quot;</PreBuildEvent>
         <PreBuildEventIgnoreExitCode>False</PreBuildEventIgnoreExitCode>
-        <PreLinkEvent><![CDATA[]]></PreLinkEvent>
+        <PreLinkEvent/>
         <PreLinkEventIgnoreExitCode>False</PreLinkEventIgnoreExitCode>
-        <PostBuildEvent><![CDATA[powershell -NoProfile -ExecutionPolicy Bypass -File "$(PROJECTDIR)\Scripts\BuildPlugin.ps1" -Stage Complete -Config Debug -LibraryPath "$(OUTPUTPATH)" -DeployDirectory "$(RhythmDeployDirectory)"]]></PostBuildEvent>
+        <PostBuildEvent>powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(PROJECTDIR)\Scripts\BuildPlugin.ps1&quot; -Stage Complete -Config Debug -LibraryPath &quot;$(OUTPUTPATH)&quot; -DeployDirectory &quot;$(RhythmDeployDirectory)&quot;</PostBuildEvent>
         <PostBuildEventIgnoreExitCode>False</PostBuildEventIgnoreExitCode>
         <PostBuildEventExecuteWhen>Always</PostBuildEventExecuteWhen>
     </PropertyGroup>
     <PropertyGroup Condition="'$(Config)'=='Release' And '$(Platform)'=='Win64'">
-        <PreBuildEvent><![CDATA[powershell -NoProfile -ExecutionPolicy Bypass -File "$(PROJECTDIR)\Scripts\BuildPlugin.ps1" -Stage Prepare -Config Release -LibraryPath "$(OUTPUTPATH)"]]></PreBuildEvent>
+        <PreBuildEvent>powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(PROJECTDIR)\Scripts\BuildPlugin.ps1&quot; -Stage Prepare -Config Release -LibraryPath &quot;$(OUTPUTPATH)&quot;</PreBuildEvent>
         <PreBuildEventIgnoreExitCode>False</PreBuildEventIgnoreExitCode>
-        <PreLinkEvent><![CDATA[]]></PreLinkEvent>
+        <PreLinkEvent/>
         <PreLinkEventIgnoreExitCode>False</PreLinkEventIgnoreExitCode>
-        <PostBuildEvent><![CDATA[powershell -NoProfile -ExecutionPolicy Bypass -File "$(PROJECTDIR)\Scripts\BuildPlugin.ps1" -Stage Complete -Config Release -LibraryPath "$(OUTPUTPATH)" -DeployDirectory "$(RhythmDeployDirectory)"]]></PostBuildEvent>
+        <PostBuildEvent>powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(PROJECTDIR)\Scripts\BuildPlugin.ps1&quot; -Stage Complete -Config Release -LibraryPath &quot;$(OUTPUTPATH)&quot; -DeployDirectory &quot;$(RhythmDeployDirectory)&quot;</PostBuildEvent>
         <PostBuildEventIgnoreExitCode>False</PostBuildEventIgnoreExitCode>
         <PostBuildEventExecuteWhen>Always</PostBuildEventExecuteWhen>
     </PropertyGroup>

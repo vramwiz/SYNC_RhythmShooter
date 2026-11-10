@@ -1,7 +1,7 @@
 ﻿unit RhythmStyleOps;
 // 専用ユニットと共通実行部の契約。生成したScene/ImagesはRendererへ所有権を渡す。
 interface
-uses System.SysUtils,RhythmAudio,RhythmPlanRef,RhythmAnimation,RhythmImageBank,RhythmEqualizer;
+uses System.SysUtils,RhythmAudio,RhythmPlanRef,RhythmAnimation,RhythmImageBank,RhythmEqualizer,RhythmStyles;
 type
   TStylePrepareContext=record
     Audio:TRhythmAudio;
@@ -18,6 +18,7 @@ type
   TStyleLoadAudio=function(const Ref:TRhythmPlanRef;const Source:string;Direction:Integer):TRhythmAudio;
   TStyleCreateImages=function:TAnimationImageBank;
   TStyleTransparency=procedure(Scene:TAnimationScene;Value:Boolean);
+  TStyleMarbleAppearance=procedure(Scene:TAnimationScene;Ball:TMarbleBallStyle;Stage:TMarbleStageStyle);
   TStyleActivity=function(Scene:TAnimationScene;Time:Double;out Value:TEqualizerActivity):Boolean;
   TStyleOperations=record
     UnitName:string;
@@ -28,6 +29,7 @@ type
     LoadAudio:TStyleLoadAudio;
     CreateImages:TStyleCreateImages;
     Transparency:TStyleTransparency;
+    MarbleAppearance:TStyleMarbleAppearance;
     DirectAlphaFromVersion:Integer; // 0は従来の描画経路。指定版からは最初から背景を透過して描く。
     Activity:TStyleActivity;
   end;

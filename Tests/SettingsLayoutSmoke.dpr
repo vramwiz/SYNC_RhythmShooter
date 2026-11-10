@@ -87,17 +87,20 @@ end;
 
 const DPIs:array[0..3] of Integer=(96,120,144,192);
 var Form:TFormRhythmShooterSettings;Settings:TRhythmSettings;Bitmap:TBitmap;PNG:TPngImage;
- Style:TRhythmStyle;Combo:TComboBox;Folder:string;D,W,LogicalWidth,K:Integer;
+ Style,OnlyStyle:TRhythmStyle;Combo,Ball,Stage:TComboBox;Folder:string;D,W,LogicalWidth,K:Integer;
 begin
  try
   // Real monitor DPI is fixed. This verifies VCL scale/layout at each requested
   // PPI using fresh forms, avoiding fake WM_DPICHANGED and OS settings changes.
   SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_UNAWARE);Application.Initialize;Application.ShowMainForm:=False;CheckWaveHitTest;
   Folder:=TPath.Combine(ExtractFileDir(ParamStr(0)),'LayoutVerification');ForceDirectories(Folder);
+  if (ParamCount>0) and not TryStyle(ParamStr(1),OnlyStyle) then raise Exception.Create('Unknown layout style');
   for Style:=Low(TRhythmStyle) to High(TRhythmStyle) do for D:=Low(DPIs) to High(DPIs) do begin
+   if (ParamCount>0) and (Style<>OnlyStyle) then Continue;
    Form:=TFormRhythmShooterSettings.Create(nil);
    try
-    Settings:=TRhythmSettings.Defaults;Settings.Style:=Style;Settings.BossFrequency:=50;Settings.FireworksRichness:=100;Form.ConfigureState(Settings,320,180);
+    Settings:=TRhythmSettings.Defaults;Settings.Style:=Style;Settings.BossFrequency:=50;Settings.FireworksRichness:=100;
+    Settings.MarbleBall:=mbWood;Settings.MarbleStage:=msIcePalace;Form.ConfigureState(Settings,320,180);
     Form.Position:=poDesigned;Form.Left:=-32000;Form.Top:=-32000;Form.Show;ScaleTestForm(Form,DPIs[D]);
     for K:=0 to Form.ComponentCount-1 do if Form.Components[K] is TPanel then if TPanel(Form.Components[K]).Caption<>'' then raise Exception.Create('Internal panel caption visible');
     Combo:=TComboBox(Form.FindComponent('AnimationStyle'));if (Combo.Items.Count<>GroupStyleCount(StyleInfo(Style).Group)) or (Combo.ItemIndex<>GroupStyleIndex(Style)) or (Form.Snapshot.Style<>Style) then raise Exception.Create('Classified style registration/restore');
@@ -110,6 +113,17 @@ begin
     CheckOptionCaption(Form,'GameThresholdCaption','GameThreshold');
     if (Form.FindComponent('EqualizerVisible')=nil) or not TCheckBox(Form.FindComponent('EqualizerVisible')).Visible then raise Exception.Create('Equalizer option missing');
     if TCheckBox(Form.FindComponent('EqualizerVisible')).Checked<>EqualizerEnabled(-1,Style,0) then raise Exception.Create('Equalizer migration default');
+    Ball:=TComboBox(Form.FindComponent('MarbleBall'));Stage:=TComboBox(Form.FindComponent('MarbleStage'));
+    if (Ball=nil) or (Stage=nil) or (Ball.Parent.Visible<>(Style=rsMarbleRelay)) or
+      (Stage.Parent.Visible<>(Style=rsMarbleRelay)) then raise Exception.Create('Marble appearance visibility');
+    if (Ball.Items.Count<>4) or (Stage.Items.Count<>6) or (Ball.ItemIndex<>Ord(mbWood)) or
+      (Stage.ItemIndex<>Ord(msIcePalace)) then raise Exception.Create('Marble appearance restore');
+    if Style=rsMarbleRelay then begin
+      Ball.ItemIndex:=Ord(mbGlass);Ball.OnChange(Ball);
+      Stage.ItemIndex:=Ord(msFairyTale);Stage.OnChange(Stage);
+      Settings:=Form.Snapshot;
+      if (Settings.MarbleBall<>mbGlass) or (Settings.MarbleStage<>msFairyTale) then raise Exception.Create('Marble appearance change');
+    end;
     if Form.FindComponent('PreviewPause')<>nil then raise Exception.Create('Separate pause button');
     if TButton(Form.FindComponent('PreviewPlay')).Caption<>'再生' then raise Exception.Create('Idle play toggle');
     for W:=0 to 2 do begin
@@ -117,6 +131,11 @@ begin
      Form.Constraints.MinWidth:=0;Form.ClientWidth:=MulDiv(LogicalWidth,DPIs[D],96);Form.ClientHeight:=MulDiv(760,DPIs[D],96);
      Form.Repaint;Application.ProcessMessages;CheckLayout(Form);
      CheckOptionCaption(Form,'CategoryCaption','AnimationCategory');CheckOptionCaption(Form,'StyleCaption','AnimationStyle');CheckOptionCaption(Form,'DirectionCaption','ScrollDirection');CheckOptionCaption(Form,'SensitivityCaption','Sensitivity');
+     if Style=rsMarbleRelay then begin
+       CheckOptionCaption(Form,'MarbleBallCaption','MarbleBall');
+       CheckOptionCaption(Form,'MarbleStageCaption','MarbleStage');
+       if (W=1) and (Ball.Parent.Top<>Stage.Parent.Top) then raise Exception.Create('Marble options split unnecessarily');
+     end;
      if W=1 then begin Bitmap:=Form.GetFormImage;PNG:=TPngImage.Create;try PNG.Assign(Bitmap);PNG.SaveToFile(TPath.Combine(Folder,StyleId(Style)+'-'+IntToStr(DPIs[D])+'.png'));finally PNG.Free;Bitmap.Free;end;end;
      if (W=2) and (Style=rsShooting) and (TControl(Form.FindComponent('AnimationOptions')).Height<=MulDiv(44,DPIs[D],96)) then raise Exception.Create('Narrow option rows did not wrap');
     end;
@@ -125,6 +144,7 @@ begin
     WriteLn('LAYOUT ',StyleId(Style),' requested=',DPIs[D],' actual=',Form.CurrentPPI,' PASS');
    finally Form.Free;end;
   end;
-  WriteLn('SETTINGS_LAYOUT_OK: 15 animation choices x 4 PPIs x 3 widths');
+  if ParamCount=0 then WriteLn('SETTINGS_LAYOUT_OK: 15 animation choices x 4 PPIs x 3 widths')
+  else WriteLn('SETTINGS_LAYOUT_OK: ',StyleId(OnlyStyle),' x 4 PPIs x 3 widths');
  except on E:Exception do begin WriteLn(E.ClassName,': ',E.Message);ExitCode:=1;end;end;
 end.
