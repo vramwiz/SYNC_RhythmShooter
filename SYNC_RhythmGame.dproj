@@ -42,7 +42,7 @@
         <GenDll>true</GenDll>
         <DCC_DcuOutput>.\$(Platform)\RhythmGame\$(Config)\DCU</DCC_DcuOutput>
         <DCC_ExeOutput>.\$(Platform)\RhythmGame\$(Config)</DCC_ExeOutput>
-        <DCC_UnitSearchPath>Source\MineCart;Source\CrashCannon;Source\Parkour;Source\MarbleRelay;Source\SideRace;Source\FightingRush;Source\JumpAdventure;Source\RhythmGame;Source\Mining;Source\Train;Source\BombAction;Source\Breakout;Source\Shared\Audio;Source\Shared\Render;Source\Shared\Settings;Source\Shared\Common;Source\Shared\Assets;Source\Shared\UI;Source\Shared\Host;Source\Shared\Integrations;Source\Composition;Source\Shooting;Source\Ball;Source\Fireworks;Source\Lib;Source\Lib\MP3Decoder;Source\Lib\MP3Decoder\Core;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
+        <DCC_UnitSearchPath>Source\MineCart;Source\CrashCannon;Source\Parkour;Source\MarbleRelay;Source\MarbleRelay\Planning;Source\SideRace;Source\FightingRush;Source\JumpAdventure;Source\RhythmGame;Source\RhythmGame\Orbit;Source\RhythmGame\Orbit\Render;Source\RhythmGame\Legacy;Source\RhythmGame\Step;Source\Mining;Source\Train;Source\BombAction;Source\Breakout;Source\Breakout\Score;Source\Shared\Audio;Source\Shared\Render;Source\Shared\Settings;Source\Shared\Common;Source\Shared\Assets;Source\Shared\UI;Source\Shared\Host;Source\Shared\Integrations;Source\Composition;Source\Composition\Presentation;Source\Shooting;Source\Shooting\Assets;Source\Ball;Source\Fireworks;Source\Lib;Source\Lib\MP3Decoder;Source\Lib\MP3Decoder\Core;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
         <DCC_Namespace>System;Xml;Data;Datasnap;Web;Soap;Winapi;Vcl;$(DCC_Namespace)</DCC_Namespace>
         <SanitizedProjectName>SYNC_RhythmGame</SanitizedProjectName>
     </PropertyGroup>
@@ -90,11 +90,11 @@
         <AppDPIAwarenessMode>none</AppDPIAwarenessMode>
     </PropertyGroup>
     <ItemGroup>
-        <DCCReference Include="Source\RhythmGame\RhythmGameLegacyPlan.pas"/>
-        <DCCReference Include="Source\RhythmGame\RhythmGameLegacyScene.pas"/>
-        <DCCReference Include="Source\RhythmGame\RhythmOrbitTypes.pas"/>
-        <DCCReference Include="Source\RhythmGame\RhythmOrbitCodec.pas"/>
-        <DCCReference Include="Source\RhythmGame\RhythmOrbitLayout.pas"/>
+        <DCCReference Include="Source\RhythmGame\Legacy\RhythmGameLegacyPlan.pas"/>
+        <DCCReference Include="Source\RhythmGame\Legacy\RhythmGameLegacyScene.pas"/>
+        <DCCReference Include="Source\RhythmGame\Orbit\RhythmOrbitTypes.pas"/>
+        <DCCReference Include="Source\RhythmGame\Orbit\RhythmOrbitCodec.pas"/>
+        <DCCReference Include="Source\RhythmGame\Orbit\RhythmOrbitLayout.pas"/>
         <DCCReference Include="Source\JumpAdventure\RhythmJumpPlan.pas"/>
         <DCCReference Include="Source\JumpAdventure\RhythmJumpBuild.pas"/>
         <DCCReference Include="Source\JumpAdventure\RhythmJumpCodec.pas"/>
@@ -125,23 +125,27 @@
         <DCCReference Include="Source\Parkour\RhythmParkourPlan.pas"/>
         <DCCReference Include="Source\Parkour\RhythmParkourScene.pas"/>
         <DCCReference Include="Source\Parkour\RhythmParkourStyle.pas"/>
+        <DCCReference Include="Source\MarbleRelay\Planning\RhythmMarbleCourse.pas"/>
+        <DCCReference Include="Source\MarbleRelay\Planning\RhythmMarbleLayout.pas"/>
+        <DCCReference Include="Source\MarbleRelay\Planning\RhythmMarbleLinkage.pas"/>
+        <DCCReference Include="Source\MarbleRelay\RhythmMarbleImages.pas"/>
         <DCCReference Include="Source\MarbleRelay\RhythmMarblePlan.pas"/>
         <DCCReference Include="Source\MarbleRelay\RhythmMarbleScene.pas"/>
         <DCCReference Include="Source\MarbleRelay\RhythmMarbleStyle.pas"/>
-        <DCCReference Include="Source\RhythmGame\RhythmOrbitGuide.pas"/>
-        <DCCReference Include="Source\RhythmGame\RhythmOrbitMarks.pas"/>
-        <DCCReference Include="Source\RhythmGame\RhythmOrbitAudio.pas"/>
-        <DCCReference Include="Source\RhythmGame\RhythmOrbitShow.pas"/>
-        <DCCReference Include="Source\RhythmGame\RhythmOrbitPlan.pas"/>
-        <DCCReference Include="Source\RhythmGame\RhythmOrbitScene.pas"/>
+        <DCCReference Include="Source\RhythmGame\Orbit\RhythmOrbitGuide.pas"/>
+        <DCCReference Include="Source\RhythmGame\Orbit\Render\RhythmOrbitMarks.pas"/>
+        <DCCReference Include="Source\RhythmGame\Orbit\RhythmOrbitAudio.pas"/>
+        <DCCReference Include="Source\RhythmGame\Orbit\Render\RhythmOrbitShow.pas"/>
+        <DCCReference Include="Source\RhythmGame\Orbit\RhythmOrbitPlan.pas"/>
+        <DCCReference Include="Source\RhythmGame\Orbit\Render\RhythmOrbitScene.pas"/>
         <DCCReference Include="Source\RhythmGame\RhythmGamePlan.pas"/>
         <DCCReference Include="Source\RhythmGame\RhythmGameScene.pas"/>
         <DCCReference Include="Source\Shared\Audio\RhythmAudioData.pas"/>
         <DCCReference Include="Source\Shared\Audio\RhythmAudioCache.pas"/>
         <DCCReference Include="Source\Shared\Audio\RhythmAudioDecode.pas"/>
         <DCCReference Include="Source\Ball\RhythmBallLegacyScene.pas"/>
-        <DCCReference Include="Source\Breakout\RhythmBreakoutScoreTypes.pas"/>
-        <DCCReference Include="Source\Breakout\RhythmBreakoutScoreGeometry.pas"/>
+        <DCCReference Include="Source\Breakout\Score\RhythmBreakoutScoreTypes.pas"/>
+        <DCCReference Include="Source\Breakout\Score\RhythmBreakoutScoreGeometry.pas"/>
         <DCCReference Include="Source\Ball\RhythmBallCircuitPlan.pas"/>
         <DCCReference Include="Source\Ball\RhythmBallCircuitScene.pas"/>
         <DCCReference Include="Source\Breakout\RhythmBreakoutAction.pas"/>
@@ -158,7 +162,7 @@
         <DCCReference Include="Source\BombAction\RhythmBombScene.pas"/>
         <DCCReference Include="Source\Shared\Settings\RhythmPreparedData.pas"/>
         <DCCReference Include="Source\Breakout\RhythmBreakoutCampaign.pas"/>
-        <DCCReference Include="Source\Breakout\RhythmBreakoutScore.pas"/>
+        <DCCReference Include="Source\Breakout\Score\RhythmBreakoutScore.pas"/>
         <DCCReference Include="Source\Breakout\RhythmBreakoutGeometry.pas"/>
         <DCCReference Include="Source\Breakout\RhythmBreakoutPlan.pas"/>
         <DCCReference Include="Source\Breakout\RhythmBreakoutScene.pas"/>
@@ -183,7 +187,7 @@
         <DCCReference Include="Source\Shooting\RhythmSections.pas"/>
         <DCCReference Include="Source\Shared\Audio\RhythmPlayback.pas"/>
         <DCCReference Include="Source\Shared\Render\RhythmImageBank.pas"/>
-        <DCCReference Include="Source\Shooting\RhythmShootingAssets.pas"/>
+        <DCCReference Include="Source\Shooting\Assets\RhythmShootingAssets.pas"/>
         <DCCReference Include="Source\Shared\Render\RhythmRenderSurface.pas"/>
         <DCCReference Include="Source\Shared\Render\RhythmParallax.pas"/>
         <DCCReference Include="Source\Shared\Render\RhythmAnimation.pas"/>
@@ -191,8 +195,8 @@
         <DCCReference Include="Source\Shooting\RhythmShootingScene.pas"/>
         <DCCReference Include="Source\Shared\Audio\RhythmAudioAnalysis.pas"/>
         <DCCReference Include="Source\Composition\RhythmScene.pas"/>
-        <DCCReference Include="Source\Composition\RhythmPresentation.pas"/>
-        <DCCReference Include="Source\Composition\RhythmLayerBlend.pas"/>
+        <DCCReference Include="Source\Composition\Presentation\RhythmPresentation.pas"/>
+        <DCCReference Include="Source\Composition\Presentation\RhythmLayerBlend.pas"/>
         <DCCReference Include="Source\Composition\RhythmLayerData.pas"/>
         <DCCReference Include="Source\Shared\Render\RhythmD2D.pas"/>
         <DCCReference Include="Source\Shooting\RhythmBarrage.pas"/>

@@ -1,6 +1,6 @@
 ﻿program BuildAssets;
 {$APPTYPE CONSOLE}
-uses System.SysUtils, RhythmAssets in '..\Source\Shooting\RhythmAssets.pas';
+uses System.SysUtils, RhythmAssets in '..\Source\Shooting\Assets\RhythmAssets.pas';
 begin
   try
     if ParamCount<>1 then raise Exception.Create('Pass the asset output directory.');
