@@ -3,7 +3,7 @@
 uses
   Winapi.Windows, System.SysUtils, System.Classes, System.IOUtils, System.Types,
   Vcl.Forms, Vcl.Controls, Vcl.StdCtrls, Vcl.ComCtrls, Vcl.ExtCtrls, Vcl.Graphics, Vcl.Imaging.pngimage,
-  RhythmSettings, RhythmStyles, RhythmAudio, RhythmWaveView, RhythmDesignFrame, RhythmControls, SYNC_RhythmShooter_SettingsForm;
+  RhythmSettings, RhythmStyles, RhythmAudio, RhythmWaveView, RhythmControls, SYNC_RhythmShooter_SettingsForm;
 
 type
   TControlAccess = class(TControl);
@@ -28,7 +28,6 @@ begin
       if Owner.Components[I] is TControl then
       begin
         Control := TControl(Owner.Components[I]);
-        if Control is TRhythmDesignFrame then CheckLayout(Control);
         if not (Control is TButton) and not (Control is TEdit) and
           not (Control is TComboBox) and not (Control is TTrackBar) and
           not (Control is TLabel) and not (Control is TCheckBox) then Continue;
@@ -139,12 +138,10 @@ begin
      if W=1 then begin Bitmap:=Form.GetFormImage;PNG:=TPngImage.Create;try PNG.Assign(Bitmap);PNG.SaveToFile(TPath.Combine(Folder,StyleId(Style)+'-'+IntToStr(DPIs[D])+'.png'));finally PNG.Free;Bitmap.Free;end;end;
      if (W=2) and (Style=rsShooting) and (TControl(Form.FindComponent('AnimationOptions')).Height<=MulDiv(44,DPIs[D],96)) then raise Exception.Create('Narrow option rows did not wrap');
     end;
-    // Custom-design lifecycle is covered at real monitor DPI by SettingsFormSmoke.
-    if (Style=rsShooting) and (DPIs[D]=96) then begin Form.ClientWidth:=MulDiv(850,DPIs[D],96);TButton(Form.FindComponent('DesignTab')).Click;Form.Repaint;Application.ProcessMessages;CheckLayout(Form);end;
     WriteLn('LAYOUT ',StyleId(Style),' requested=',DPIs[D],' actual=',Form.CurrentPPI,' PASS');
    finally Form.Free;end;
   end;
-  if ParamCount=0 then WriteLn('SETTINGS_LAYOUT_OK: 15 animation choices x 4 PPIs x 3 widths')
+  if ParamCount=0 then WriteLn('SETTINGS_LAYOUT_OK: 16 animation choices x 4 PPIs x 3 widths')
   else WriteLn('SETTINGS_LAYOUT_OK: ',StyleId(OnlyStyle),' x 4 PPIs x 3 widths');
  except on E:Exception do begin WriteLn(E.ClassName,': ',E.Message);ExitCode:=1;end;end;
 end.

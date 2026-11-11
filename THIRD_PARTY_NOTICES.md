@@ -18,7 +18,7 @@ WAVの復号と多チャンネルからのステレオ変換にはWindows標準�
 
 `SYNC_Base_画像参照するフィルター`の必要ソースとフォーム・リソースをコピーした。AviUtl2FilterTypes.pasとPluginFilterTable.pasはバイト単位で変更していない。SDKの更新・移行は実施していない。
 
-Assetsの標準BMPは本プロジェクトの`Source/Engine/RhythmAssets.pas`に記述した独自の図形から生成する。既存ゲームの素材やAI生成画像は利用していない。`Tools/BuildAssets.dpr`で再生成できる。
+標準の機体・弾・爆発は `Source/Shooting/Assets` の独自図形から準備時にメモリー内へ描画し、共通の画像バンクで再利用する。
 
 検証曲はユーザー指定のローカルファイルであり、Assetsや配布物には同梱しない。現在のPCMキャッシュはLocalAppDataのSYNC_RhythmShooter配下、検証画像・JSONはWin64出力内に保存する。初期検証時にWin64出力内へ作成したPCMもローカル検証用として保持し、配布・公開しない。
 

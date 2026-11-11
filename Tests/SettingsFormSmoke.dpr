@@ -3,7 +3,7 @@
 uses
   Winapi.Windows, System.SysUtils, System.Classes,
   Vcl.Forms, Vcl.Controls, Vcl.ComCtrls, Vcl.Graphics, Vcl.StdCtrls, Vcl.ExtCtrls,
-  RhythmSettings, RhythmDesignFrame, AviUtl2FilterTypes,
+  RhythmSettings, AviUtl2FilterTypes,
   SYNC_RhythmShooter_SettingsForm, SYNC_RhythmShooter_FilterPlugin;
 
 type
@@ -35,12 +35,9 @@ end;
 
 var
   Form: TFormRhythmShooterSettings;
-  Host: TForm;
-  Editor: TRhythmDesignFrame;
   Capture: TExceptionCapture;
   Settings: TRhythmSettings;
   Image: TBitmap;
-  Pages: TPageControl;
   CloseTimer: TTimer;
   Table: PFILTER_PLUGIN_TABLE;
   SettingsButton: PFILTER_ITEM_BUTTON;
@@ -54,24 +51,6 @@ begin
       Application.Initialize;
       Application.ShowMainForm := False;
       Application.OnException := Capture.HandleException;
-      Phase := 'create unparented design frame';
-      Editor := TRhythmDesignFrame.Create(nil);
-      Editor.Free;
-      Phase := 'parent design frame after assigning settings';
-      Host := TForm.CreateNew(nil);
-      try
-        Editor := TRhythmDesignFrame.Create(Host);
-        Settings := TRhythmSettings.Defaults;
-        Settings.Designs[6].Memo := 'Retained before parenting';
-        Editor.Designs := Settings.Designs;
-        Editor.Parent := Host;
-        for I := 0 to Editor.ComponentCount - 1 do
-          if (Editor.Components[I] is TMemo) and (Editor.Components[I].Tag = 6) then
-            if TMemo(Editor.Components[I]).Text <> Settings.Designs[6].Memo then
-              raise Exception.Create('Pre-parenting memo was not restored');
-      finally
-        Host.Free;
-      end;
       for Iteration := 1 to 2 do
       begin
         Phase := 'create settings form';
@@ -85,24 +64,18 @@ begin
           Form.SetBounds(-32000, -32000, 1100, 760);
           Phase := 'show and paint settings form';
           Form.Show;
-          Pages := nil;
-          for I := 0 to Form.ComponentCount - 1 do
-            if Form.Components[I] is TPageControl then
-              Pages := TPageControl(Form.Components[I]);
-          if (Pages = nil) or (Pages.PageCount <> 2) then
-            raise Exception.Create('Animation and custom design pages are required');
+          if (Form.FindComponent('DesignTab')<>nil) or (Form.FindComponent('AnimationTab')<>nil) then
+            raise Exception.Create('Retired navigation is still present');
+          for I := 0 to Form.ComponentCount-1 do
+            if Form.Components[I] is TPageControl then raise Exception.Create('Unexpected settings tabs');
           Image := TBitmap.Create;
           try
             Image.SetSize(Form.ClientWidth, Form.ClientHeight);
-            for I := 0 to Pages.PageCount - 1 do
-            begin
-              Pages.ActivePageIndex := I;
-              Form.Repaint;
-              Application.ProcessMessages;
-              Form.PaintTo(Image.Canvas.Handle, 0, 0);
-              if Capture.ErrorText <> '' then
-                raise Exception.Create(Capture.ErrorText);
-            end;
+            Form.Repaint;
+            Application.ProcessMessages;
+            Form.PaintTo(Image.Canvas.Handle, 0, 0);
+            if Capture.ErrorText <> '' then
+              raise Exception.Create(Capture.ErrorText);
           finally
             Image.Free;
           end;

@@ -58,7 +58,7 @@ begin
       end;
       Number('maxHitPositionErrorNormalized',MaxError);Require(MaxError<1E-9,'Bullet misses at hit time');
       Number('maxNominalBulletSpeedError',MaxSpeedError);Require(MaxSpeedError<1E-6,'Distance/speed launch inversion failed');
-      Renderer:=TRhythmRenderer.Create;Renderer.UseD2D:=False;Require(Renderer.AssetCount=15,'Not all module-relative assets loaded');Number('assetCount',Renderer.AssetCount);
+      Renderer:=TRhythmRenderer.Create;Renderer.UseD2D:=False;Require(Renderer.ImageCount=27,'Standard sprites were not prepared');Number('imageCount',Renderer.ImageCount);
       Bitmap:=Vcl.Graphics.TBitmap.Create;Bitmap.PixelFormat:=pf32bit;Bitmap.SetSize(1280,720);
       for Direction:=0 to 1 do
       begin

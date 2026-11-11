@@ -26,7 +26,7 @@ constructor TRhythmLayerBlend.Create;
   function Bitmap:Vcl.Graphics.TBitmap;
   begin Result:=Vcl.Graphics.TBitmap.Create;Result.PixelFormat:=pf32bit;end;
 begin inherited Create;FImage:=Bitmap;FBackdrop:=Bitmap;FZoom:=Bitmap;
-  FSurface:=TAnimationRenderSurface.Create(TAnimationImageBank.Create([],0));
+  FSurface:=TAnimationRenderSurface.Create(TAnimationImageBank.Create(0));
 end;
 destructor TRhythmLayerBlend.Destroy;
 begin FSurface.Free;FImage.Free;FBackdrop.Free;FZoom.Free;inherited;end;

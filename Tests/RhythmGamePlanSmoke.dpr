@@ -35,8 +35,8 @@ begin
     Meta:=TGamePlan.LoadAudioMetadata(R,Source,0);P:=TGamePlan.Load(R,Meta,0);Need((P.Orbit=nil) and (P.Count>0),'v1 facade restore');
     S:=TRhythmSettings.Defaults;S.Style:=rsRhythmGame;S.Music:=Source;S.Plan:=R;
     Need(TRhythmSettings.TryJSON(S.ToJSON,Loaded) and (Loaded.Plan.Version=1) and (Loaded.Plan.Key=R.Key),'v1 settings migration');
-    Wrapped:=TGameAnimation.Create;Wrapped.Audio:=Meta;Wrapped.SetReference(R);A:=TAnimationRenderer.Create(Wrapped,TAnimationImageBank.Create([],0));
-    Direct:=TLegacyGameAnimation.Create;Direct.Audio:=Meta;Direct.SetReference(R);B:=TAnimationRenderer.Create(Direct,TAnimationImageBank.Create([],0));
+    Wrapped:=TGameAnimation.Create;Wrapped.Audio:=Meta;Wrapped.SetReference(R);A:=TAnimationRenderer.Create(Wrapped,TAnimationImageBank.Create(0));
+    Direct:=TLegacyGameAnimation.Create;Direct.Audio:=Meta;Direct.SetReference(R);B:=TAnimationRenderer.Create(Direct,TAnimationImageBank.Create(0));
     for I:=0 to 1 do begin A.UseD2D:=I=1;B.UseD2D:=I=1;
       for J:=0 to 3 do begin A.Render(Image,14.4+J*0.08,0);First:=ImageHash;B.Render(Image,14.4+J*0.08,0);Need(ImageHash=First,'v1 pixels changed');Inc(Seeks);end;
     end;
@@ -51,7 +51,7 @@ begin
     M:=TOrbitPlan.LoadAudioMetadata(R,Source,0);P:=TOrbitPlan.Load(R,M,0);Need((P.Version=2) and (P.Count=160),'v2 restore');
     S:=TRhythmSettings.Defaults;S.Style:=rsRhythmGame;S.Music:=Source;S.Plan:=R;
     Need(TRhythmSettings.TryJSON(S.ToJSON,Loaded) and (Loaded.Plan.Key=R.Key),'v2 settings compatibility');
-    Scene:=TGameAnimation.Create;Scene.Audio:=M;Scene.SetReference(R);Renderer:=TAnimationRenderer.Create(Scene,TAnimationImageBank.Create([],0));
+    Scene:=TGameAnimation.Create;Scene.Audio:=M;Scene.SetReference(R);Renderer:=TAnimationRenderer.Create(Scene,TAnimationImageBank.Create(0));
     for K:=0 to 1 do begin Renderer.UseD2D:=K=1;
       L:=P.Legs[0];Snapshot('v2-orbit-close-'+IntToStr(K),(L.Start+L.Finish)/2);
       L:=P.Legs[1];for J:=0 to 4 do Snapshot('v2-transfer-'+IntToStr(K)+'-'+IntToStr(J),L.Start+(L.Finish-L.Start)*J/4);
@@ -138,7 +138,7 @@ begin
         BadRef:=Ref;BadRef.Digest:=StringOfChar('0',64);Failed:=False;try Again:=TOrbitPlan.Load(BadRef,Meta,0);except on E:Exception do Failed:=True;end;Need(Failed,'Corrupt digest');Inc(Rejected);FreeAndNil(Again);
         BadRef:=NewPlanRef(Audio.Key,50,1,rsRhythmGame,Threshold+101);BadRef.SourceRevision:=Revision;Plan.Save(BadRef,Audio);Again:=TOrbitPlan.Load(BadRef,Meta,1);Need(Again.Count=Plan.Count,'Direction1');FreeAndNil(Again);
       end;
-      Scene:=TGameAnimation.Create;Scene.Audio:=Meta;Scene.SetReference(Ref);Renderer:=TAnimationRenderer.Create(Scene,TAnimationImageBank.Create([],0));
+      Scene:=TGameAnimation.Create;Scene.Audio:=Meta;Scene.SetReference(Ref);Renderer:=TAnimationRenderer.Create(Scene,TAnimationImageBank.Create(0));
       if ParamStr(1)<>'GeometryOnly' then for Backend:=0 to 1 do begin Renderer.UseD2D:=Backend=1;
         for J:=0 to 11 do begin Time:=Duration*((J*7) mod 13)/13;Renderer.Render(Image,Time,0);Need(Scene.Notice='','Render '+Scene.Notice);Hash:=ImageHash;
           Renderer.Render(Image,Duration-Time,0);Renderer.Render(Image,Time,0);Need(ImageHash=Hash,'Frame seek drift');Inc(Seeks);end;

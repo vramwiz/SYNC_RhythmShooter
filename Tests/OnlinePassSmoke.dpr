@@ -14,7 +14,7 @@ var Stream:TMemoryStream;Bytes:TBytes;Hash:THashSHA2;
 begin Stream:=TMemoryStream.Create;try Image.SaveToStream(Stream);SetLength(Bytes,Stream.Size);Stream.Position:=0;Stream.ReadBuffer(Bytes[0],Length(Bytes));Hash:=THashSHA2.Create;Hash.Update(Bytes);Result:=Hash.HashAsString;finally Stream.Free;end;end;
 procedure Snapshot(const Name:string;T:Double);
 var PNG:TPngImage;
-begin Render.Render(Image,T,0);Need(Render.DesignWarning='','Material warning');Need(Scene.Notice='','Jump scene load: '+Scene.Notice);PNG:=TPngImage.Create;try PNG.Assign(Image);PNG.SaveToFile(TPath.Combine(OutDir,Name+'.png'));finally PNG.Free;end;end;
+begin Render.Render(Image,T,0);Need(Render.Notice='','Material warning');Need(Scene.Notice='','Jump scene load: '+Scene.Notice);PNG:=TPngImage.Create;try PNG.Assign(Image);PNG.SaveToFile(TPath.Combine(OutDir,Name+'.png'));finally PNG.Free;end;end;
 procedure CheckFireworks(Time:Double;Visible:Boolean);
 var Before:string;
 begin
@@ -49,7 +49,7 @@ begin
     Scene:=TJumpAnimation.Create;Scene.Audio:=Cold;Scene.SetReference(Ref);
     Presented:=TRhythmPresentationScene.Create(Scene);
     Presented.Audio:=Cold;
-    Render:=TAnimationRenderer.Create(Presented,TAnimationImageBank.Create([],0));Render.UseD2D:=False;
+    Render:=TAnimationRenderer.Create(Presented,TAnimationImageBank.Create(0));Render.UseD2D:=False;
     N:=0;for J:=0 to High(Plan.Nodes) do if Plan.Nodes[J].Landing in [jlStomp,jlRoll] then begin
       Time:=Plan.Nodes[J].Time;Snapshot('jump-'+IntToStr(N)+'-windup',Max(0.0,Time-0.025));Snapshot('jump-'+IntToStr(N)+'-contact',Time);Snapshot('jump-'+IntToStr(N)+'-follow',Time+0.035);Inc(N);if N=4 then Break;
     end;

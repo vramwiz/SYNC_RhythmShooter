@@ -1,7 +1,7 @@
 ﻿unit RhythmScene;
 // 全種類の描画窓口。MV重ねの種類は透明RGBA、他の種類は単独描画。
 interface
-uses Vcl.Graphics,RhythmAudio,RhythmMotion,RhythmDesignTypes,RhythmAnimation,RhythmStyleOps,RhythmStyleRegistry,RhythmStyles,RhythmPlanRef,RhythmPresentation,RhythmLayerBlend,RhythmOverlay;
+uses Vcl.Graphics,RhythmAudio,RhythmMotion,RhythmAnimation,RhythmStyleOps,RhythmStyleRegistry,RhythmStyles,RhythmPlanRef,RhythmPresentation,RhythmLayerBlend,RhythmOverlay;
 type
   TRhythmPoint=RhythmMotion.TRhythmPoint;
   // Compatibility facade shared by AviUtl2 and the preview. New animations can
@@ -15,12 +15,11 @@ type
     FWasComposite,FCompositeD2D,FHasAlpha:Boolean;
     FLayers:TRhythmLayerBlend;FOverlay:TRhythmOverlay;
     FStyle:TRhythmStyle;
-    FChoices:TRhythmDesigns;
     FUseD2D:Boolean;
     FBossFrequency:Integer;
     procedure CreateStyle(Style:TRhythmStyle);
-    function GetAssetCount:Integer;
-    function GetWarning:string;
+    function GetImageCount:Integer;
+    function GetNotice:string;
     function GetUseD2D:Boolean;
     procedure SetUseD2D(Value:Boolean);
     function GetLastD2D:Boolean;
@@ -29,12 +28,10 @@ type
     destructor Destroy;override;
     procedure ConfigureStyle(Style:TRhythmStyle;const Plan:TRhythmPlanRef;BossFrequency:Integer=-1;EqualizerMode:Integer=-1;
       MarbleBall:TMarbleBallStyle=mbSteel;MarbleStage:TMarbleStageStyle=msWoodWorkshop);
-    procedure ApplyDesigns(const Designs:TRhythmDesigns;Force:Boolean=False);
-    procedure StandardBackgroundPreview(Target:TBitmap;Direction,Layer:Integer);
     procedure Render(Target:TBitmap;Audio:TRhythmAudio;Time:Double;Direction:Integer;
       const MessageText:string='';Zoom:Double=1;OffsetX:Double=0;OffsetY:Double=0;OffsetSeconds:Double=0);
-    property AssetCount:Integer read GetAssetCount;
-    property DesignWarning:string read GetWarning;
+    property ImageCount:Integer read GetImageCount;
+    property Notice:string read GetNotice;
     property UseD2D:Boolean read GetUseD2D write SetUseD2D;
     property LastUsedD2D:Boolean read GetLastD2D;
     property OutputHasAlpha:Boolean read FHasAlpha;
@@ -54,7 +51,7 @@ begin
   try Images:=Ops.CreateImages;except Child.Free;raise;end;
   try Presented:=TRhythmPresentationScene.Create(Child,Ops.Activity);except Images.Free;Child.Free;raise;end;
   NewRenderer:=TAnimationRenderer.Create(Presented,Images);
-  try NewRenderer.UseD2D:=FUseD2D;if StyleHas(Style,sfAssets) then NewRenderer.ApplyChoices(FChoices);except NewRenderer.Free;raise;end;
+  NewRenderer.UseD2D:=FUseD2D;
   FRenderer.Free;FRenderer:=NewRenderer;FChild:=Child;FOps:=Ops;
   FPresentation:=TRhythmPresentationScene(Presented);FStyle:=Style;
 end;
@@ -71,20 +68,16 @@ begin
 end;
 destructor TRhythmRenderer.Destroy;
 begin FOverlay.Free;FLayers.Free;FRenderer.Free;inherited;end;
-function TRhythmRenderer.GetAssetCount:Integer;
-begin Result:=FRenderer.AssetCount;end;
-function TRhythmRenderer.GetWarning:string;
-begin Result:=FRenderer.DesignWarning;end;
+function TRhythmRenderer.GetImageCount:Integer;
+begin Result:=FRenderer.ImageCount;end;
+function TRhythmRenderer.GetNotice:string;
+begin Result:=FRenderer.Notice;end;
 function TRhythmRenderer.GetUseD2D:Boolean;
 begin Result:=FRenderer.UseD2D;end;
 procedure TRhythmRenderer.SetUseD2D(Value:Boolean);
 begin FUseD2D:=Value;FRenderer.UseD2D:=Value;end;
 function TRhythmRenderer.GetLastD2D:Boolean;
 begin if FWasComposite then Result:=FCompositeD2D else Result:=FRenderer.LastUsedD2D;end;
-procedure TRhythmRenderer.ApplyDesigns(const Designs:TRhythmDesigns;Force:Boolean);
-begin FChoices:=Designs;if StyleHas(FStyle,sfAssets) then FRenderer.ApplyChoices(Designs,Force);end;
-procedure TRhythmRenderer.StandardBackgroundPreview(Target:TBitmap;Direction,Layer:Integer);
-begin if StyleHas(FStyle,sfDesigns) then FRenderer.StandardBackgroundPreview(Target,Direction,Layer) else begin Target.Canvas.Brush.Color:=clBlack;Target.Canvas.FillRect(Target.Canvas.ClipRect);end;end;
 procedure TRhythmRenderer.Render(Target:TBitmap;Audio:TRhythmAudio;Time:Double;Direction:Integer;
   const MessageText:string;Zoom,OffsetX,OffsetY,OffsetSeconds:Double);
 var Text:string;EQ,DirectAlpha,Transform:Boolean;Frame:TAnimationFrame;Activity:TEqualizerActivity;OldColor:TColor;Row:Integer;

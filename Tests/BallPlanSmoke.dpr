@@ -53,14 +53,14 @@ begin
   J:=TJSONObject.Create;
   try J.AddPair('sourceSHA256',Audio.Key);J.AddPair('sourceStamp',Audio.SourceRevision);IndexJSON:=J.ToJSON;finally J.Free;end;
   Plan:=TRhythmBallPlan.BuildLegacy(Audio);ColdRef:=LegacyPlanRef(Audio,0);ColdRef.SourceRevision:=Audio.SourceRevision;Plan.Save(ColdRef);
-  Saved:=TRhythmSettings.Defaults;Saved.Style:=rsBall;Saved.Music:=SourceFile;Saved.Plan:=ColdRef;Saved.Designs[8].Memo:='retain per-object memo';
+  Saved:=TRhythmSettings.Defaults;Saved.Style:=rsBall;Saved.Music:=SourceFile;Saved.Plan:=ColdRef;
   TFile.WriteAllText(StateFile,Saved.ToJSON,TEncoding.UTF8);
   Renderer:=TRhythmRenderer.Create;Renderer.UseD2D:=False;Renderer.ConfigureStyle(rsBall,ColdRef);
   Image:=TBitmap.Create;Image.PixelFormat:=pf32bit;Image.SetSize(1280,720);Renderer.Render(Image,Audio,2.75,0);FirstHash:=ImageHash;
   FreeAndNil(Renderer);FreeAndNil(Plan);FreeAndNil(Audio); // No in-memory preparation survives.
   try
     Require(TRhythmSettings.TryJSON(TFile.ReadAllText(StateFile,TEncoding.UTF8),Cold),'Cannot reopen saved object JSON');
-    Require((Cold.Style=rsBall) and (Cold.Plan.Key=ColdRef.Key) and (Cold.Plan.SourceRevision=Saved.Plan.SourceRevision) and (Cold.Designs[8].Memo=Saved.Designs[8].Memo),'Cold settings lost fields');
+    Require((Cold.Style=rsBall) and (Cold.Plan.Key=ColdRef.Key) and (Cold.Plan.SourceRevision=Saved.Plan.SourceRevision),'Cold settings lost fields');
     Meta:=TRhythmBallPlan.LoadAudioMetadata(Cold.Plan,Cold.Music,Cold.Direction);
     Require((Length(Meta.PCM)=0) and (Meta.Key=Cold.Plan.SourceKey),'Cold restoration requires PCM');
     Plan:=TRhythmBallPlan.Load(Cold.Plan,Meta,Cold.Direction);
@@ -162,13 +162,13 @@ begin
         Require(Abs(Loaded.Obstacle[I].Spawn-Plan.Obstacle[I].Spawn)<1E-9,'Spawn was not saved');
         Require(BallLength(BallSub(Loaded.Obstacle[I].Origin,Plan.Obstacle[I].Origin))<1E-12,'Moving origin was not saved');
       end;FreeAndNil(Loaded);
-      State:=TRhythmSettings.Defaults;State.Music:='keep.wav';State.Style:=rsBall;State.Plan:=Ref;State.Designs[8].Memo:='keep shooting design';
-      Require(TRhythmSettings.TryJSON(State.ToJSON,Restored) and (Restored.Style=rsBall) and (Restored.Plan.Digest=Ref.Digest) and (Restored.Designs[8].Memo=State.Designs[8].Memo),'Style, plan or shooting settings did not round trip');
+      State:=TRhythmSettings.Defaults;State.Music:='keep.wav';State.Style:=rsBall;State.Plan:=Ref;
+      Require(TRhythmSettings.TryJSON(State.ToJSON,Restored) and (Restored.Style=rsBall) and (Restored.Plan.Digest=Ref.Digest),'Style or plan did not round trip');
       BadRef:=Ref;BadRef.Version:=3;State.Plan:=BadRef;
-      Require(TRhythmSettings.TryJSON(State.ToJSON,Restored) and (Restored.Plan.Key='') and (Restored.Music=State.Music) and (Restored.Designs[8].Memo=State.Designs[8].Memo),'Old plan was not invalidated without losing settings');
+      Require(TRhythmSettings.TryJSON(State.ToJSON,Restored) and (Restored.Plan.Key='') and (Restored.Music=State.Music),'Old plan was not invalidated without losing settings');
       Require(not BadRef.Matches(Audio.Key,50,0,rsBall),'Old plan accepted');
       State.Plan:=Default(TRhythmPlanRef);
-      Require(TRhythmSettings.TryJSON(State.ToJSON,Restored) and (Restored.Plan.Key='') and (Restored.Music=State.Music) and (Restored.Designs[8].Memo=State.Designs[8].Memo),'Pending settings cannot be saved without a plan');
+      Require(TRhythmSettings.TryJSON(State.ToJSON,Restored) and (Restored.Plan.Key='') and (Restored.Music=State.Music),'Pending settings cannot be saved without a plan');
       BadRef:=Ref;BadRef.Digest:=StringOfChar('0',64);Rejected:=False;
       try Loaded:=TRhythmBallPlan.Load(BadRef,Audio,0);except Rejected:=True;end;Require(Rejected,'Invalid plan digest accepted');FreeAndNil(Loaded);
       Require(AnimationPlanKey(Audio.Key,50,1,rsBall)<>Ref.Key,'Direction failed to invalidate the plan');

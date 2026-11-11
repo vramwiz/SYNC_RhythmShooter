@@ -67,14 +67,14 @@ begin
         Need(Abs(Plan.CameraAt(T)-Cold.CameraAt(T))<1E-12,'Seek changes camera');Need(Plan.SceneAt(T)=Cold.SceneAt(T),'Seek changes scene');
       end;
       if C=0 then begin
-        Scene:=TTrainAnimation.Create;Scene.Audio:=Audio;Scene.SetReference(Ref);Renderer:=TAnimationRenderer.Create(Scene,TAnimationImageBank.Create([],0));Renderer.UseD2D:=False;
+        Scene:=TTrainAnimation.Create;Scene.Audio:=Audio;Scene.SetReference(Ref);Renderer:=TAnimationRenderer.Create(Scene,TAnimationImageBank.Create(0));Renderer.UseD2D:=False;
         Image:=TBitmap.Create;Image.PixelFormat:=pf32bit;Image.SetSize(1280,720);PNG:=TPngImage.Create;
         Snapshot('train-normal',5.3);T:=Plan.Boss[0].Show+3;Snapshot('train-boss',T);Hash:=ImageHash;
         Renderer.Render(Image,Plan.EndTime+10,0);Renderer.Render(Image,T,0);Need(ImageHash=Hash,'Native shuffled frame changed');
         for I:=1 to 400 do if Plan.SceneAt(Plan.EndTime*I/400)<>0 then begin Snapshot('train-landmark',Plan.EndTime*I/400);Break;end;
         for I:=0 to Plan.ShotCount-1 do if Plan.Shot[I].Outcome=2 then begin Snapshot('train-graze',Plan.Shot[I].Near+0.08);Break;end;
         Snapshot('train-finish',Plan.GoalTime+0.6);FreeAndNil(Renderer);
-        Scene:=TTrainAnimation.Create;Scene.Audio:=Meta;Scene.SetReference(Ref);Renderer:=TAnimationRenderer.Create(Scene,TAnimationImageBank.Create([],0));Renderer.UseD2D:=False;
+        Scene:=TTrainAnimation.Create;Scene.Audio:=Meta;Scene.SetReference(Ref);Renderer:=TAnimationRenderer.Create(Scene,TAnimationImageBank.Create(0));Renderer.UseD2D:=False;
         Renderer.Render(Image,T,0);Need(ImageHash=Hash,'Cold native frame differs');
         Image.SetSize(720,1280);Snapshot('train-portrait',T);FreeAndNil(Renderer);FreeAndNil(Image);FreeAndNil(PNG);
       end;

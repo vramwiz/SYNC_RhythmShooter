@@ -136,7 +136,7 @@ begin
       end;
       Ref:=NewPlanRef(Audio.Key,50,0,rsBreakout);Ref.SourceRevision:=Audio.SourceRevision;Plan.Save(Ref,Audio);
       if C in [0,7] then CheckLegacyNine;
-      Settings:=TRhythmSettings.Defaults;Settings.Music:=Path;Settings.BossFrequency:=Audio.BossFrequency;Settings.Plan:=Ref;Settings.Designs[8].Memo:='keep custom design';Serialized:=Settings.ToJSON;
+      Settings:=TRhythmSettings.Defaults;Settings.Music:=Path;Settings.BossFrequency:=Audio.BossFrequency;Settings.Plan:=Ref;Serialized:=Settings.ToJSON;
       FreeAndNil(Again);FreeAndNil(Plan);FreeAndNil(Audio);Need(TRhythmSettings.TryJSON(Serialized,Settings),'Settings roundtrip');
       Meta:=TBreakoutPlan.LoadAudioMetadata(Settings.Plan,Settings.Music,0);Need(Length(Meta.PCM)=0,'Restoration requires PCM');
       Plan:=TBreakoutPlan.Load(Settings.Plan,Meta,0);Again:=TBreakoutPlan.Load(Settings.Plan,Meta,0);

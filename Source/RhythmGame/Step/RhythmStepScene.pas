@@ -103,7 +103,7 @@ end;
 
 function StepImages:TAnimationImageBank;
 begin
-  Result:=TStepImages.Create([],StepSpriteCount);
+  Result:=TStepImages.Create(StepSpriteCount);
 end;
 
 function Glyph(C:Char):UInt64;

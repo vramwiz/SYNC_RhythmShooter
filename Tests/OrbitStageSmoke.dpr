@@ -39,7 +39,7 @@ begin A:=nil;P:=nil;R:=nil;Image:=nil;PNG:=nil;Checks:=0;Frames:=0;
           Need((Q.X>0.03) and (Q.X<0.97) and (Q.Y>0.03) and (Q.Y<0.97),'Stage lost ship');Inc(Checks);
         end;
       end;
-      Scene:=TOrbitAnimation.Create;Scene.Audio:=A;Scene.SetReference(Ref);R:=TAnimationRenderer.Create(Scene,TAnimationImageBank.Create([],0));
+      Scene:=TOrbitAnimation.Create;Scene.Audio:=A;Scene.SetReference(Ref);R:=TAnimationRenderer.Create(Scene,TAnimationImageBank.Create(0));
       for J:=0 to 1 do begin R.UseD2D:=J=1;
         for K:=0 to 6 do begin
           case K of 0:T:=0;1:T:=P.Stages[0]*0.5;2:T:=P.Stages[0];3:T:=P.Stages[1];

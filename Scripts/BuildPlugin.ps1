@@ -1,4 +1,4 @@
-﻿param(
+param(
     [Parameter(Mandatory = $true)][ValidateSet('Prepare', 'Complete')][string]$Stage,
     [Parameter(Mandatory = $true)][ValidateSet('Debug', 'Release')][string]$Config,
     [Parameter(Mandatory = $true)][string]$LibraryPath,
@@ -34,16 +34,13 @@ if ($Config -eq 'Release') {
     }
 }
 
-$runtimeFiles = foreach ($folder in @('Assets', 'ThirdParty')) {
-    Get-ChildItem -LiteralPath (Join-Path $projectRoot $folder) -Recurse -File | ForEach-Object {
-        $relativePath = $_.FullName.Substring($projectRoot.Length).TrimStart('\')
-        $outputPath = Join-Path $outputDirectory $relativePath
-        [IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($outputPath)) | Out-Null
-        if ($_.FullName -ne $outputPath) {
-            [IO.File]::Copy($_.FullName, $outputPath, $true)
-        }
-        [pscustomobject]@{ Source = $outputPath; RelativePath = $relativePath }
-    }
+$runtimeFiles = foreach ($notice in @('LICENSE.md','provenance.json','CORE_CHANGES.md','integration.json')) {
+    $relativePath = 'ThirdParty\MP3Decoder\' + $notice
+    $sourcePath = Join-Path $projectRoot $relativePath
+    $outputPath = Join-Path $outputDirectory $relativePath
+    [IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($outputPath)) | Out-Null
+    if ($sourcePath -ne $outputPath) { [IO.File]::Copy($sourcePath, $outputPath, $true) }
+    [pscustomobject]@{ Source = $outputPath; RelativePath = $relativePath }
 }
 Write-Output ('PLUGIN_OUTPUT_COPIED ' + $Config + ': ' + $pluginPath)
 if ([string]::IsNullOrWhiteSpace($DeployDirectory)) { exit 0 }
@@ -71,5 +68,5 @@ foreach ($entry in $deployment) {
     [IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($destination)) | Out-Null
     [IO.File]::Copy($entry.Source, $destination, $true)
 }
-# DesignAssets and user settings are outside the deployment file list.
+# Deployment includes the plugin, optional preview and decoder notices.
 Write-Output ('PLUGIN_DEPLOYED ' + $Config + ': ' + (Join-Path $deployRoot ($ProjectName+'.auf2')))

@@ -4,11 +4,10 @@ uses
   RhythmBombPlan in '..\Source\BombAction\RhythmBombPlan.pas',
   RhythmBombScene in '..\Source\BombAction\RhythmBombScene.pas',
   System.SysUtils,System.Math,System.Classes,System.IOUtils,System.JSON,System.Types,System.Hash,
-  Vcl.Graphics,Vcl.Imaging.pngimage,RhythmAudio,RhythmBarrage,RhythmMotion,RhythmStage,RhythmScene,RhythmDesignTypes,RhythmDesignImages;
+  Vcl.Graphics,Vcl.Imaging.pngimage,RhythmAudio,RhythmBarrage,RhythmMotion,RhythmStage,RhythmScene;
 var Audio:TRhythmAudio;Plan,RepeatPlan:TArray<TRhythmFlyby>;Enemy:TRhythmFlyby;Schedule:TRhythmStageSchedule;
   P,Q,Again:TRhythmPoint;I,J,Backend,Kind:Integer;Duration,Time,Minimum,Distance:Double;Counts:array[0..2] of Integer;
   LeftCount,RightCount:Integer;Root:TJSONObject;Renderer:TRhythmRenderer;Image:TBitmap;PNG:TPngImage;Folder,ErrorText,Hash:string;
-  Designs:TRhythmDesigns;Custom:TRhythmDesign;CustomImage:TBitmap;Pixel:PByte;X,Y:Integer;SourcePath,SourceHash,DefaultHash:string;
 const SampleTimes:array[0..3] of Double=(3.3,8.7,10.5,16.6);
 procedure Require(Value:Boolean;const MessageText:string);
 begin if not Value then raise Exception.Create(MessageText);end;
@@ -25,7 +24,7 @@ begin
   Result.UpdateSoundBounds;
 end;
 begin
-  Audio:=nil;Renderer:=nil;Image:=nil;CustomImage:=nil;Root:=TJSONObject.Create;
+  Audio:=nil;Renderer:=nil;Image:=nil;Root:=TJSONObject.Create;
   Folder:=TPath.Combine(ExtractFileDir(ParamStr(0)),'LowerReview');ForceDirectories(Folder);
   try
     try
@@ -64,27 +63,9 @@ begin
           Require(Hash=ImageHash,'Lower traffic changed after clear seek or direction switch');
         end;
       end;
-      // Exercise the new upward variants with an asymmetric, transparent custom
-      // sprite. Imports and test settings stay beside this test executable.
-      SourcePath:=TPath.Combine(Folder,'custom-source.png');CustomImage:=TBitmap.Create;
-      CustomImage.PixelFormat:=pf32bit;CustomImage.SetSize(42,64);CustomImage.AlphaFormat:=afPremultiplied;
-      for Y:=0 to 63 do begin Pixel:=CustomImage.ScanLine[Y];for X:=0 to 41 do begin
-        FillChar(Pixel^,4,0);
-        if (Y>3) and (Y<59) and (Abs(X-21)<(59-Y)/2) then begin Pixel[0]:=180;Pixel[1]:=40;Pixel[2]:=120;Pixel[3]:=210;end;
-        Inc(Pixel,4);
-      end;end;
-      WriteDesignPNG(CustomImage,SourcePath);SourceHash:=THashSHA2.GetHashStringFromFile(SourcePath);Designs:=Default(TRhythmDesigns);
-      for I in [8,13,14] do begin Custom:=ImportDesignImage(SourcePath,I);Designs[I]:=Custom;end;
-      for Backend:=0 to 1 do begin
-        Renderer.UseD2D:=Backend=1;Renderer.ApplyDesigns(Default(TRhythmDesigns),True);Renderer.Render(Image,Audio,3.3,0);DefaultHash:=ImageHash;
-        Renderer.ApplyDesigns(Designs);Require(Renderer.DesignWarning='','Custom image unexpectedly fell back');Renderer.Render(Image,Audio,3.3,0);Hash:=ImageHash;Require(Hash<>DefaultHash,'Custom enemy did not reach the renderer');
-        Renderer.Render(Image,Audio,16.6,1);Renderer.Render(Image,Audio,3.3,0);Require(Hash=ImageHash,'Custom lower traffic seek changed');
-        Renderer.ApplyDesigns(Default(TRhythmDesigns));Renderer.Render(Image,Audio,3.3,0);Require(DefaultHash=ImageHash,'Custom reset did not restore standard enemy art');
-      end;
-      Require(SourceHash=THashSHA2.GetHashStringFromFile(SourcePath),'Custom source image was changed');Root.AddPair('customAlphaAndReset','passed');
       Root.AddPair('result','passed');
     except on E:Exception do begin ErrorText:=E.Message;Root.AddPair('result','failed');Root.AddPair('error',ErrorText);end;end;
     TFile.WriteAllText(TPath.Combine(Folder,'lower-enemy-smoke.json'),Root.ToJSON,TEncoding.UTF8);Writeln(Root.ToJSON);
-  finally CustomImage.Free;Audio.Free;Image.Free;Renderer.Free;Root.Free;end;
+  finally Audio.Free;Image.Free;Renderer.Free;Root.Free;end;
   if ErrorText<>'' then Halt(1);
 end.

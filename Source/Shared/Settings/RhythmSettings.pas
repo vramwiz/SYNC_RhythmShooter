@@ -1,7 +1,7 @@
 ﻿unit RhythmSettings;
 // schema1設定と旧保存互換。ホスト音源の変更時は保存プランの取り違えを防ぐ。
 interface
-uses RhythmDesignTypes,RhythmStyles,RhythmPlanRef;
+uses RhythmStyles,RhythmPlanRef;
 type
   TRhythmSettings=record
     Music:string;
@@ -12,7 +12,6 @@ type
     Zoom,X,Y:Double;
     OffsetSeconds:Double; // 描画専用。ホストではtrackが正、JSONはPreviewへの受渡し用。
     EqualizerMode:Integer; // -1=旧版移行の初期値、0=非表示、1=表示。解析計画とは独立。
-    Designs:TRhythmDesigns;
     MarbleBall:TMarbleBallStyle;
     MarbleStage:TMarbleStageStyle;
     class function Defaults:TRhythmSettings; static;
@@ -60,9 +59,7 @@ end;
 
 function TRhythmSettings.ToJSON:string;
 var
-  J,Item,PlanObject:TJSONObject;
-  Assets:TJSONArray;
-  I:Integer;
+  J,PlanObject:TJSONObject;
 begin
   J:=TJSONObject.Create;
   try J.AddPair('schema',TJSONNumber.Create(1));
@@ -98,16 +95,6 @@ begin
       if Plan.AudioDensity<>0 then PlanObject.AddPair('density',TJSONNumber.Create(Plan.AudioDensity));
       if Plan.Generation<>'' then PlanObject.AddPair('generation',Plan.Generation);
     end;
-    Assets:=TJSONArray.Create;
-    J.AddPair('designs',Assets);
-    for I:=0 to High(Designs) do if (Designs[I].Path<>'') or (Designs[I].Memo<>'') then begin
-      Item:=TJSONObject.Create;
-      Item.AddPair('id',DesignInfo(I).Id);
-      Item.AddPair('path',Designs[I].Path);
-      Item.AddPair('sha256',Designs[I].SHA256);
-      Item.AddPair('memo',Designs[I].Memo);
-      Assets.AddElement(Item);
-    end;
     Result:=J.ToJSON;
   finally J.Free;
   end;
@@ -120,11 +107,9 @@ const
 var
   Stage:TMarbleStageStyle;
   J,V:TJSONValue;
-  O,Item,PlanObject,Layers,Movie:TJSONObject;
-  Assets:TJSONArray;
+  O,PlanObject,Layers,Movie:TJSONObject;
   I,ExpectedVariant:Integer;LegacyPlan:TRhythmPlanRef;LegacyStyle:TRhythmStyle;
   LegacyMovie,LegacyForeground:Boolean;
-  Seen:array[0..RHYTHM_DESIGN_COUNT-1] of Boolean;
 
   function TrySavedSelection(const Id:string;out Style:TRhythmStyle):Boolean;
   begin
@@ -180,27 +165,7 @@ begin
       Value.Y:=O.GetValue<Double>('y',0);
       if IsNan(Value.Zoom) or IsInfinite(Value.Zoom) or IsNan(Value.X) or IsInfinite(Value.X) or IsNan(Value.Y) or IsInfinite(Value.Y) then Exit;
       Value.Zoom:=EnsureRange(Value.Zoom,1.0,400.0);
-      Assets:=nil;
-      V:=O.GetValue('designs');
-      if V<>nil then begin if not (V is TJSONArray) then Exit;
-        Assets:=TJSONArray(V);
-      end;
-      FillChar(Seen,SizeOf(Seen),0);
-      if Assets<>nil then begin
-        if Assets.Count>RHYTHM_DESIGN_COUNT then Exit;
-        for V in Assets do begin
-          if not (V is TJSONObject) then Exit;
-          Item:=TJSONObject(V);
-          I:=DesignIndex(Item.GetValue<string>('id',''));
-          if I<0 then Continue;
-          if Seen[I] then Exit;
-          Seen[I]:=True;
-          Value.Designs[I].Path:=Item.GetValue<string>('path','');
-          Value.Designs[I].SHA256:=Item.GetValue<string>('sha256','');
-          Value.Designs[I].Memo:=Item.GetValue<string>('memo','');
-          if (Length(Value.Designs[I].Memo)>2000) or not ValidDesignReference(Value.Designs[I].Path,Value.Designs[I].SHA256) then Exit;
-        end;
-      end;
+      // 旧カスタム画像の項目は読み飛ばし、音楽・種類・準備済み計画を復元する。
       V:=O.GetValue('plan');
       if V is TJSONObject then begin
         PlanObject:=TJSONObject(V);

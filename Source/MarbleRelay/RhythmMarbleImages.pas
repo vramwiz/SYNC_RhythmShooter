@@ -117,7 +117,7 @@ end;
 
 function CreateMarbleImages: TAnimationImageBank;
 begin
-  Result := TMarbleImages.Create([], AuxiliaryGlassAsset + 1);
+  Result := TMarbleImages.Create(AuxiliaryGlassAsset + 1);
 end;
 
 end.

@@ -4,11 +4,11 @@
 uses System.SysUtils,System.Classes,System.Hash,System.IOUtils,System.JSON,
   RhythmStyles,RhythmStyleSelection,RhythmSettings,RhythmPlanRef,RhythmStyleOps,RhythmStyleRegistry,
   RhythmAudio,RhythmAnimation,RhythmImageBank;
-const Ids:array[TRhythmStyle] of string=('shooting','ball','jump-adventure','breakout','side-race','bomb-action','fighting-rush','mining','train','rhythm-game','prism-step','mine-cart','crash-cannon','parkour','marble-relay');
-  Versions:array[TRhythmStyle] of Integer=(1,6,3,10,1,2,1,1,1,4,3,4,1,2,16);
-  Groups:array[TRhythmStyle] of TRhythmStyleGroup=(sgShooting,sgBall,sgAction,sgBall,sgRace,sgAction,sgAction,sgAction,sgShooting,sgMusic,sgMusic,sgAction,sgAction,sgAction,sgBall);
-  Scenes:array[TRhythmStyle] of string=('TShootingAnimation','TBallAnimation','TJumpAnimation','TBreakoutAnimation','TSideRaceAnimation','TBombActionAnimation','TRushAnimation','TMiningAnimation','TTrainAnimation','TGameAnimation','TStepAnimation','TCartAnimation','TCannonAnimation','TParkourAnimation','TMarbleAnimation');
-  GroupCounts:array[TRhythmStyleGroup] of Integer=(2,3,7,1,2);
+const Ids:array[TRhythmStyle] of string=('shooting','ball','jump-adventure','breakout','side-race','bomb-action','fighting-rush','mining','train','rhythm-game','prism-step','mine-cart','crash-cannon','parkour','marble-relay','robot-war');
+  Versions:array[TRhythmStyle] of Integer=(1,6,3,10,1,2,1,1,1,4,3,4,1,2,16,1);
+  Groups:array[TRhythmStyle] of TRhythmStyleGroup=(sgShooting,sgBall,sgAction,sgBall,sgRace,sgAction,sgAction,sgAction,sgShooting,sgMusic,sgMusic,sgAction,sgAction,sgAction,sgBall,sgAction);
+  Scenes:array[TRhythmStyle] of string=('TShootingAnimation','TBallAnimation','TJumpAnimation','TBreakoutAnimation','TSideRaceAnimation','TBombActionAnimation','TRushAnimation','TMiningAnimation','TTrainAnimation','TGameAnimation','TStepAnimation','TCartAnimation','TCannonAnimation','TParkourAnimation','TMarbleAnimation','TRobotAnimation');
+  GroupCounts:array[TRhythmStyleGroup] of Integer=(2,3,8,1,2);
   Levels:array[0..4] of Integer=(-100,-1,0,50,100);
 var S,Other,ParsedStyle:TRhythmStyle;G:TRhythmStyleGroup;D,I,J,K,V,Expected,Checks,Stage,Combinations:Integer;
   Sel,Restored:TStyleSelection;Saved,Loaded:TRhythmSettings;Ref:TRhythmPlanRef;Ops:TStyleOperations;
@@ -108,8 +108,8 @@ begin Scene:=nil;Images:=nil;Names:=nil;Checks:=0;Combinations:=0;
     Need(not TryStyle('unknown',ParsedStyle) and (ParsedStyle=rsShooting),'Unknown ID handling');
     Stage:=0;Context.Progress:=procedure(Value:Integer) begin Stage:=Value;end;Context.SetStage(4);Need(Stage=4,'Progress callback');
     Context.Cancel:=function:Boolean begin Result:=True;end;Failed:=False;try Context.CheckCancel;except on E:EAbort do Failed:=True;end;Need(Failed,'Cancellation callback');
-    TFile.WriteAllText(TPath.Combine(Folder,'result.json'),Format('{"checks":%d,"groups":5,"styles":15,"smallChoices":17,"selectionTransitions":%d,"adapters":15,"gui":false}',[Checks,Combinations]),TEncoding.UTF8);
-    WriteLn('Style catalog PASS checks=',Checks,' groups=5 styles=15 transitions=',Combinations,' no GUI');
+    TFile.WriteAllText(TPath.Combine(Folder,'result.json'),Format('{"checks":%d,"groups":5,"styles":16,"smallChoices":18,"selectionTransitions":%d,"adapters":16,"gui":false}',[Checks,Combinations]),TEncoding.UTF8);
+    WriteLn('Style catalog PASS checks=',Checks,' groups=5 styles=16 transitions=',Combinations,' no GUI');
   except on E:Exception do begin WriteLn(E.ClassName,': ',E.Message);ExitCode:=1;end;end;
   Scene.Free;Images.Free;Names.Free;
 end.

@@ -34,7 +34,7 @@ begin
   try
     // A source-free probe proves that the core can be composed without a
     // shooting scene, enemy image catalog or music decoder.
-    Probe:=TProbeScene.Create;Renderer:=TAnimationRenderer.Create(Probe,TAnimationImageBank.Create([],0));
+    Probe:=TProbeScene.Create;Renderer:=TAnimationRenderer.Create(Probe,TAnimationImageBank.Create(0));
     Renderer.UseD2D:=False;Image:=TBitmap.Create;Image.PixelFormat:=pf32bit;Image.SetSize(320,180);
     Renderer.Render(Image,1.25,0);Hash:=ImageHash;
     Renderer.Render(Image,8.5,1);Renderer.Render(Image,1.25,0);

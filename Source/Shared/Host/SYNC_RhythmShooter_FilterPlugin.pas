@@ -7,7 +7,7 @@ procedure FinalizeRhythmShooterPlugin;
 function GetRhythmShooterFilterTable:PFILTER_PLUGIN_TABLE;
 implementation
 uses System.SysUtils, System.IOUtils, System.Hash, RhythmPaths, System.Math, System.UITypes, System.Generics.Collections, Vcl.Forms, Vcl.Dialogs, Vcl.Graphics,
-PluginFilterTable, RhythmAudio, RhythmStyleRegistry, RhythmScene, RhythmSettings,RhythmDesignTypes,RhythmStyles,RhythmProduct,RhythmTiming, SYNC_RhythmShooter_SettingsForm;
+PluginFilterTable, RhythmAudio, RhythmStyleRegistry, RhythmScene, RhythmSettings,RhythmStyles,RhythmProduct,RhythmTiming, SYNC_RhythmShooter_SettingsForm;
 const
   MUSIC_NAME:PWideChar=#$97F3#$697D#$30D5#$30A1#$30A4#$30EB;
 type
@@ -31,8 +31,7 @@ var
   GLastWidth,GLastHeight:Integer;
   GInitialized:Boolean;
   GLock:TRTLCriticalSection;
-  GRenderer:TRhythmRenderer;
-  GDesignRenderers:TObjectDictionary<string,TRhythmRenderer>;
+  GRenderers:TObjectDictionary<string,TRhythmRenderer>;
   GBitmap:TBitmap;
   GRgba:TBytes;
   GAudio:TRhythmAudio;
@@ -75,16 +74,14 @@ var
   Key:string;
   Created:TRhythmRenderer;
 begin
-  if (Settings.Style=rsShooting) and (ProductDefaultStyle=rsShooting) and (DesignKey(Settings.Designs)='') and (Settings.Plan.Variant=0) and (Settings.BossFrequency=100) then Exit(GRenderer);
-  Key:=StyleId(Settings.Style)+'|'+DesignKey(Settings.Designs)+'|'+Settings.Plan.Key+'|'+Settings.Plan.Digest;
+  Key:=StyleId(Settings.Style)+'|'+Settings.Plan.Key+'|'+Settings.Plan.Digest;
   if StyleHas(Settings.Style,sfBoss) then Key:=Key+'|boss='+IntToStr(Settings.BossFrequency);
-  if GDesignRenderers.TryGetValue(Key,Result) then Exit;
+  if GRenderers.TryGetValue(Key,Result) then Exit;
   Created:=TRhythmRenderer.Create;
   try
     Created.ConfigureStyle(Settings.Style,Settings.Plan,Settings.BossFrequency,Settings.EqualizerMode,Settings.MarbleBall,Settings.MarbleStage);
-    Created.ApplyDesigns(Settings.Designs);
-    if GDesignRenderers.Count>=4 then GDesignRenderers.Clear;
-    GDesignRenderers.Add(Key,Created);
+    if GRenderers.Count>=4 then GRenderers.Clear;
+    GRenderers.Add(Key,Created);
     Result:=Created;
     Created:=nil;
   finally Created.Free;
@@ -317,7 +314,7 @@ begin
           GAudio:=nil;
           GCache.Clear;
           GCacheBytes:=0;
-          GDesignRenderers.Clear;
+          GRenderers.Clear;
         finally LeaveCriticalSection(GLock);
         end;
       end;
@@ -336,8 +333,7 @@ begin
     InitializeCriticalSection(GLock);
     GInitialized:=True;
     GCache:=TObjectDictionary<string,TRhythmAudio>.Create([doOwnsValues]);
-    GDesignRenderers:=TObjectDictionary<string,TRhythmRenderer>.Create([doOwnsValues]);
-    GRenderer:=TRhythmRenderer.Create;
+    GRenderers:=TObjectDictionary<string,TRhythmRenderer>.Create([doOwnsValues]);
     GBitmap:=TBitmap.Create;
     GBitmap.PixelFormat:=pf32bit;
     Result:=1;
@@ -351,9 +347,8 @@ begin
   GAudio:=nil;
   FreeAndNil(GCache);
   GCacheBytes:=0;
-  FreeAndNil(GDesignRenderers);
+  FreeAndNil(GRenderers);
   FreeAndNil(GBitmap);
-  FreeAndNil(GRenderer);
   GRgba:=nil;
   GRequest:='';
   GError:='';

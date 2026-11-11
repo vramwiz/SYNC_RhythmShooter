@@ -2,7 +2,7 @@
 // 設定と単体Previewの準備UI。ホスト音源は読取専用とし、描画側では解析しない。
 interface
 uses System.Classes, System.SysUtils, Winapi.Messages, Vcl.Controls, Vcl.ExtCtrls, Vcl.Forms,
-Vcl.Graphics, Vcl.StdCtrls, Vcl.ComCtrls, Vcl.Dialogs, RhythmAudio, RhythmPlayback, RhythmScene, RhythmWaveView, RhythmSettings,RhythmDesignFrame,RhythmOverlay,RhythmControls,RhythmStyles,RhythmStyleSelection,RhythmPlanRef,RhythmPrepare;
+Vcl.Graphics, Vcl.StdCtrls, Vcl.ComCtrls, Vcl.Dialogs, RhythmAudio, RhythmPlayback, RhythmScene, RhythmWaveView, RhythmSettings,RhythmOverlay,RhythmControls,RhythmStyles,RhythmStyleSelection,RhythmPlanRef,RhythmPrepare;
 type
   TFormRhythmShooterSettings = class(TForm)
   private
@@ -18,7 +18,7 @@ type
     FOptionsHeader,FOptionsBar,FStylePanel,FDirectionPanel,FSensitivityPanel,FBossRow,FGameRow:TPanel;
     FStyleLabel,FSensitivityLabel,FBossLabel,FBossValue,FGameLabel,FGameValue:TLabel;
     FLayoutBusy,FLayoutReady,FDpiChanging:Boolean;
-    FNavigation,FMusicRow,FBottom,FTransport,FTransportButtons,FAnimationBody:TPanel;
+    FMusicRow,FBottom,FTransport,FTransportButtons,FAnimationBody:TPanel;
     FAnimationScroll:TScrollBox;
     FMusicLabel:TLabel;
     FBrowse,FAnalyze,FStop:TButton;
@@ -27,8 +27,6 @@ type
     FLastPreparationError:string;
     FPrepareStarted:UInt64;
     FPreview:TRhythmPreviewSurface;
-    FPages:TPageControl;
-    FAnimationTab,FDesignTab:TRhythmButton;
     FWave:TRhythmWaveView;
     FTimer:TTimer;
     FFrame:TBitmap;
@@ -42,11 +40,6 @@ type
     FReloadAt:UInt64;
     FState:TRhythmSettings;
     FViewWidth,FViewHeight:Integer;
-    FDesignEditor:TRhythmDesignFrame;
-    procedure DesignChanged(Sender:TObject);
-    procedure DesignBusyChanged(Sender:TObject);
-    procedure Navigate(Sender:TObject);
-    procedure PageChanged(Sender:TObject);
     procedure LayoutOptions(Sender:TObject);
     procedure FitToWorkArea;
     procedure SetBusy(Value:Boolean);
@@ -96,11 +89,9 @@ uses Winapi.Windows, System.Math, System.Types, System.UITypes, System.IniFiles,
 
 procedure TFormRhythmShooterSettings.FormCreate(Sender:TObject);
 var
-  Top,MusicRow,Transport,TransportButtons,Bottom,Navigation:TPanel;
+  Top,MusicRow,Transport,TransportButtons,Bottom:TPanel;
   B:TButton;
   Ini:TMemIniFile;
-  Pages:TPageControl;
-  Animation,Design:TTabSheet;
   WorkArea:TRect;
   PanelIndex:Integer;
   function S(Value:Integer):Integer;
@@ -155,45 +146,11 @@ begin
   FRenderer:=TRhythmRenderer.Create;
   FFrame:=Vcl.Graphics.TBitmap.Create;
   FFrame.PixelFormat:=pf32bit;
-  Navigation:=Panel(Self,alTop,48);
-  FNavigation:=Navigation;
-  Navigation.Padding.SetBounds(S(12),0,S(12),0);
-  Button(Navigation,'アニメーション',alLeft,160,Navigate);
-  FAnimationTab:=TRhythmButton(B);
-  B.Name:='AnimationTab';
-  B.Tag:=0;
-  Button(Navigation,'カスタムデザイン',alLeft,160,Navigate);
-  FDesignTab:=TRhythmButton(B);
-  B.Name:='DesignTab';
-  B.Tag:=1;
-  B.Left:=S(180);
-  Pages:=TPageControl.Create(Self);
-  Pages.Parent:=Self;
-  Pages.Align:=alClient;
-  Pages.DoubleBuffered:=True;
-  Pages.Style:=tsFlatButtons;
-  Pages.AlignWithMargins:=True;
-  Pages.Margins.SetBounds(S(12),0,S(12),S(8));
-  FPages:=Pages;
-  Pages.OnChange:=PageChanged;
-  Animation:=TTabSheet.Create(Self);
-  Animation.PageControl:=Pages;
-  Animation.Caption:='アニメーション';
-  Animation.DoubleBuffered:=True;
-  Animation.TabVisible:=False;
-  Design:=TTabSheet.Create(Self);
-  Design.PageControl:=Pages;
-  Design.Caption:='カスタムデザイン';
-  Design.DoubleBuffered:=True;
-  Design.TabVisible:=False;
-  FDesignEditor:=TRhythmDesignFrame.Create(Self);
-  FDesignEditor.Parent:=Design;
-  FDesignEditor.Align:=alClient;
-  FDesignEditor.OnChange:=DesignChanged;
-  FDesignEditor.OnBusyChange:=DesignBusyChanged;
   FAnimationScroll:=TScrollBox.Create(Self);
-  FAnimationScroll.Parent:=Animation;
+  FAnimationScroll.Parent:=Self;
   FAnimationScroll.Align:=alClient;
+  FAnimationScroll.AlignWithMargins:=True;
+  FAnimationScroll.Margins.SetBounds(S(12),S(8),S(12),S(8));
   FAnimationScroll.BorderStyle:=bsNone;
   FAnimationScroll.HorzScrollBar.Visible:=False;
   FAnimationScroll.VertScrollBar.Tracking:=True;
@@ -405,39 +362,23 @@ begin
   FGameThreshold.Position:=FState.GameThreshold;
   FFile.OnChange:=SettingChange;
   if (FFile.Text<>'') and FileExists(FFile.Text) then FReloadAt:=GetTickCount64+100;
-  FDesignEditor.Designs:=FState.Designs;
-  Pages.ActivePage:=Animation;
   FUpdating:=False;
   FTimer.Enabled:=True;
   ApplyRhythmColors(Self);
   Color:=RhythmBackground;
-  Navigation.Color:=RhythmBackground;
   Bottom.Color:=RhythmBackground;
   // Naming a VCL panel also sets its caption; internal component names are not UI text.
   for PanelIndex:=0 to ComponentCount-1 do if Components[PanelIndex] is TPanel then TPanel(Components[PanelIndex]).Caption:='';
   FLayoutReady:=True;
   OnResize:=LayoutOptions;
   FAnimationScroll.OnResize:=LayoutOptions;
+  FAnimationBody.OnResize:=LayoutOptions;
   FStatus.Font.Color:=RhythmMuted;
   FLevel.Font.Color:=RhythmAccent;
   FGameValue.Font.Color:=RhythmAccent;
   FBossValue.Font.Color:=RhythmAccent;
-  PageChanged(Self);
   UpdateStyleControls;
   ApplyRhythmTitleBar(Self);
-end;
-
-procedure TFormRhythmShooterSettings.Navigate(Sender:TObject);
-begin FPages.ActivePageIndex:=TControl(Sender).Tag;
-  PageChanged(Self);
-end;
-
-procedure TFormRhythmShooterSettings.PageChanged(Sender:TObject);
-begin
-  if FPages=nil then Exit;
-  FAnimationTab.Selected:=FPages.ActivePageIndex=0;
-  FDesignTab.Selected:=FPages.ActivePageIndex=1;
-  if FPages.ActivePageIndex=0 then LayoutOptions(Self);
 end;
 
 procedure TFormRhythmShooterSettings.LayoutOptions(Sender:TObject);
@@ -445,7 +386,7 @@ var
   Groups:array[0..8] of TPanel;
   Widths,CaptionWidths:array[0..8] of Integer;
   I,Pass,W,H,X,Y,Gap,Total,Extra,Numbers,BarHeight,TextHeight,ButtonHeight,ButtonTop,SavedScrollY:Integer;
-  MusicCaptionWidth,BrowseWidth,AnalyzeWidth,MusicActionsWidth,FileHeight,EqualizerHeight:Integer;
+  MusicCaptionWidth,BrowseWidth,AnalyzeWidth,MusicActionsWidth,FileHeight,EqualizerHeight,MusicRowWidth:Integer;
   PlayWidth,StopWidth,ClockWidth,ValueWidth,BossValueWidth,CategoryWidth,RowWidth:Integer;
   SeparateAudio:Boolean;
   function S(Value:Integer):Integer;
@@ -507,18 +448,12 @@ begin
     ButtonTop:=(H-ButtonHeight) div 2;
     FileHeight:=TextHeight+S(4);
     EqualizerHeight:=Max(S(24),TextHeight+S(6));
-    FNavigation.Height:=Max(S(48),ButtonHeight+S(12));
-    FAnimationTab.Width:=ButtonWidth(FAnimationTab,160);
-    FDesignTab.Width:=ButtonWidth(FDesignTab,160);
     FApply.Width:=ButtonWidth(FApply,170);
     FBottom.Height:=Max(S(52),Max(ButtonHeight+S(12),TextHeight*2+S(12)));
-    FNavigation.Padding.SetBounds(S(12),0,S(12),0);
     FBottom.Padding.SetBounds(S(12),0,S(12),0);
-    FPages.Margins.SetBounds(S(12),0,S(12),S(8));
+    FAnimationScroll.Margins.SetBounds(S(12),S(8),S(12),S(8));
     FOptionsHeader.Padding.SetBounds(S(8),S(4),S(8),S(4));
     FTransport.Padding.SetBounds(S(8),S(4),S(8),S(4));
-    FAnimationTab.Margins.SetBounds(S(6),S(6),S(6),S(6));
-    FDesignTab.Margins.SetBounds(S(6),S(6),S(6),S(6));
     FApply.Margins.SetBounds(S(6),S(6),S(6),S(6));
     FStatus.Margins.SetBounds(S(6),S(6),S(12),S(6));
     MusicCaptionWidth:=LabelWidth(FMusicLabel,96);
@@ -547,9 +482,10 @@ begin
     // scrollbar. Restore the user's scroll position once the final range exists.
     FAnimationBody.Height:=FAnimationScroll.ClientHeight;
     FAnimationScroll.Realign;
-    // The second pass accounts for the vertical scrollbar appearing/disappearing.
-    for Pass:=0 to 1 do begin
+    // スクロールバーによる実幅の変化を次の配置へ反映し、幅が安定したら終える。
+    for Pass:=0 to 3 do begin
       W:=Max(1,FMusicRow.ClientWidth);
+      MusicRowWidth:=W;
       Place(FMusicLabel,0,0,MusicCaptionWidth,H);
       if W>=MusicCaptionWidth+S(180)+MusicActionsWidth+2*Gap then begin
         Place(FAnalyze,W-AnalyzeWidth,ButtonTop,AnalyzeWidth,ButtonHeight);
@@ -629,6 +565,7 @@ begin
       FTransport.Height:=Max(S(128),FWave.Height+FSeek.Height+FTransportButtons.Height+S(8));
       FAnimationBody.Height:=Max(FAnimationScroll.ClientHeight,FOptionsHeader.Height+FTransport.Height+S(100));
       FAnimationScroll.Realign;
+      if FMusicRow.ClientWidth=MusicRowWidth then Break;
     end;
   finally
     FAnimationScroll.VertScrollBar.Position:=Min(SavedScrollY,Max(0,FAnimationBody.Height-FAnimationScroll.ClientHeight));
@@ -713,7 +650,6 @@ begin
   if HostMusicMode then FFile.Hint:='AviUtl2側の「音楽ファイル」で指定します。この画面で準備・解析してください。';
   FViewWidth:=Max(1,ViewWidth);
   FViewHeight:=Max(1,ViewHeight);
-  FDesignEditor.Designs:=State.Designs;
   FUpdating:=True;
   try RefreshSelection;
     FFile.Text:=State.Music;
@@ -744,7 +680,6 @@ begin
   Result.Sensitivity:=DetectionSensitivity;
   Result.BossFrequency:=FBossFrequency.Position;
   Result.GameThreshold:=FGameThreshold.Position;
-  Result.Designs:=FDesignEditor.Designs;
   if not CanApplyPrepared then begin Result.Plan:=Default(TRhythmPlanRef);end;
 end;
 
@@ -756,7 +691,6 @@ begin
   for I:=0 to ComponentCount-1 do
   if (Components[I] is TButton) or (Components[I] is TEdit) or (Components[I] is TComboBox) or (Components[I] is TTrackBar) then
   TControl(Components[I]).Enabled:=not Value;
-  if FDesignEditor<>nil then FDesignEditor.Enabled:=not Value and StyleHas(SelectedStyle,sfDesigns);
   UpdateStyleControls;
   if Value then begin SetStatus('解析・動作計画を準備中...');
     FStatus.Update;
@@ -778,7 +712,7 @@ begin
     try FDirection.Items.Clear;for I:=0 to StyleSmallCount(FSelection.Style)-1 do FDirection.Items.Add(StyleSmallTitle(FSelection.Style,I));
       FDirection.ItemIndex:=FSelection.SmallIndex;
     finally FDirection.Items.EndUpdate;end;
-    Available:=not FPreparing and not ((FDesignEditor<>nil) and FDesignEditor.Busy);
+    Available:=not FPreparing;
     FCategory.Enabled:=Available;FStyle.Enabled:=Available and (GroupStyleCount(FSelection.Group)>1);
     FDirection.Enabled:=Available and (StyleSmallCount(FSelection.Style)>1);
   finally FUpdating:=WasUpdating;end;
@@ -844,14 +778,9 @@ begin
   FGameValue.Caption:=IntToStr(FGameThreshold.Position);
   FDirectionPanel.Visible:=True;
   UpdatePlayCaption;
-  if FDesignTab<>nil then FDesignTab.Enabled:=(StyleHas(SelectedStyle,sfDesigns)) and (FWorker=nil);
-  if FDesignEditor<>nil then FDesignEditor.Enabled:=(StyleHas(SelectedStyle,sfDesigns)) and (FWorker=nil);
-  if (not StyleHas(SelectedStyle,sfDesigns)) and (FPages<>nil) then begin FPages.ActivePageIndex:=0;
-    PageChanged(Self);
-  end;
   IsReady:=Ready;
   if FApply<>nil then begin
-    FApply.Enabled:=not FDesignEditor.Busy;
+    FApply.Enabled:=not FPreparing;
     if IsReady or (MusicFile='') then FApply.Caption:='適用して閉じる' else FApply.Caption:='設定のみ保存して閉じる';
   end;
   for I:=0 to ComponentCount-1 do if Components[I] is TControl then begin
@@ -874,27 +803,6 @@ begin
   end;
 end;
 
-procedure TFormRhythmShooterSettings.DesignChanged(Sender:TObject);
-begin FState.Designs:=FDesignEditor.Designs;
-  if FUpdating then Exit;
-  FRenderer.ApplyDesigns(FState.Designs,True);
-  FPreview.Invalidate;
-end;
-
-procedure TFormRhythmShooterSettings.DesignBusyChanged(Sender:TObject);
-var
-  I:Integer;
-begin
-  for I:=0 to ComponentCount-1 do
-  if (Components[I] is TButton) or (Components[I] is TEdit) or (Components[I] is TComboBox) or (Components[I] is TTrackBar) then begin
-    TControl(Components[I]).Enabled:=not FDesignEditor.Busy;
-    if (Components[I].Name='PreviewPlay') or (Components[I].Name='PreviewStop') or (Components[I].Name='Timeline') then TControl(Components[I]).Enabled:=True;
-  end;
-  if FDesignEditor.Busy then FStatus.Caption:='AI作成中... カスタムデザインの「取消」で中止できます。'
-  else FStatus.Caption:='画像は候補を採用した後、この画面の「適用して閉じる」で保存します。';
-  RefreshSelection;
-end;
-
 function TFormRhythmShooterSettings.MusicFile:string;
 begin Result:=Trim(FFile.Text);
 end;
@@ -911,7 +819,7 @@ procedure TFormRhythmShooterSettings.BeginLoad(Force:Boolean);
 var
   Existing:TRhythmAudio;
 begin
-  if ((FDesignEditor<>nil) and FDesignEditor.Busy) or (FWorker<>nil) then Exit;
+  if FWorker<>nil then Exit;
   FReloadAt:=0;
   FState.Plan:=Default(TRhythmPlanRef);
   Inc(FRequestSerial);
@@ -1061,9 +969,6 @@ var
   Pending:Boolean;
   Notice:string;
 begin
-  if FDesignEditor.Busy then begin SetStatus('AI作成中です。素材画面で採用または取消を終えてから保存してください。');
-    Exit;
-  end;
   Pending:=(MusicFile<>'') and not CanApplyPrepared;
   if Pending then begin
     CancelLoad;
@@ -1223,7 +1128,6 @@ var
 begin
   FFrame.SetSize(FViewWidth,FViewHeight);
   FRenderer.ConfigureStyle(SelectedStyle,FState.Plan,FBossFrequency.Position,FState.EqualizerMode,FState.MarbleBall,FState.MarbleStage);
-  FRenderer.ApplyDesigns(FDesignEditor.Designs);
   if Ready then begin
     FRenderer.Render(FFrame,FAudio,FTime,ScrollDirection,'WAV / MP3 を選択してプレビュー',FState.Zoom/100,FState.X,FState.Y,FState.OffsetSeconds);
     if FRenderer.OutputHasAlpha then OverlayPreview(FFrame);

@@ -1,15 +1,15 @@
 ﻿unit RhythmAssets;
-// 標準素材を生成する。外部音源やユーザー設定を変更しない。
+// 自機・敵機・ボスの標準図形を準備済みBitmapへ描く。ファイルへの出力は行わない。
 
 interface
 
 uses Vcl.Graphics;
 
-procedure BuildStandardAssets(const Folder: string);
+procedure PaintStandardSprite(Index: Integer; Bitmap: Vcl.Graphics.TBitmap);
 
 implementation
 
-uses System.SysUtils, System.Types, System.UITypes, System.IOUtils, Winapi.Windows, System.Math;
+uses System.SysUtils, System.Types, System.UITypes, Winapi.Windows, System.Math;
 
 // Fixed, original mechanical silhouettes. Large planes and deep cut-outs remain
 // readable at gameplay scale; lighting belongs to the bitmap, not the battle.
@@ -169,55 +169,38 @@ begin
   B.Canvas.Brush.Style:=bsSolid;B.Canvas.Pen.Style:=psSolid;B.Canvas.Pen.Width:=1;
 end;
 
-procedure BuildStandardAssets(const Folder: string);
-var B: Vcl.Graphics.TBitmap; Layer, Direction, I, X, Y: Integer; Name: string;
-  procedure Clear(W, H: Integer; Color: TColor);
+procedure PaintStandardSprite(Index: Integer; Bitmap: Vcl.Graphics.TBitmap);
+  procedure Clear;
   begin
-    B.SetSize(W,H); B.PixelFormat := pf24bit;
-    B.Canvas.Brush.Color := Color; B.Canvas.FillRect(Rect(0,0,W,H));
-    B.Canvas.Pen.Color := Color;
+    ClearShip(Bitmap,64,64);
   end;
-  procedure Save(const FileName: string);
-  begin B.SaveToFile(TPath.Combine(Folder,FileName + '.bmp')); end;
-  procedure Polygon(const P: array of TPoint; Color: TColor);
-  begin B.Canvas.Brush.Color := Color; B.Canvas.Pen.Color := Color; B.Canvas.Polygon(P); end;
+  procedure Polygon(const Points: array of TPoint; Color: TColor);
+  begin
+    Bitmap.Canvas.Brush.Color:=Color;
+    Bitmap.Canvas.Pen.Color:=Color;
+    Bitmap.Canvas.Polygon(Points);
+  end;
 begin
-  ForceDirectories(Folder); B := Vcl.Graphics.TBitmap.Create;
-  try
-    for Direction := 0 to 1 do
-      for Layer := 0 to 2 do
-      begin
-        if Layer=0 then Clear(256,256,RGB(7,13,29)) else Clear(256,256,clFuchsia);
-        for I := 0 to 55 - Layer*16 do
-        begin
-          X := 4 + ((I*73 + Layer*31 + Direction*47) mod 248);
-          Y := 4 + ((I*137 + Layer*61 + Direction*17) mod 248);
-          B.Canvas.Brush.Color := RGB(40+Layer*25,75+Layer*30,115+Layer*40);
-          B.Canvas.Pen.Color := B.Canvas.Brush.Color;
-          B.Canvas.Ellipse(X,Y,X+2+Layer,Y+2+Layer);
-        end;
-        if Direction=0 then Name := 'vertical' else Name := 'horizontal';
-        Save(Name+'_layer'+IntToStr(Layer));
-      end;
-    Clear(64,64,clFuchsia);
-    Polygon([Point(32,3),Point(40,28),Point(59,49),Point(38,44),Point(32,56),Point(26,44),Point(5,49),Point(24,28)],RGB(71,209,238));
-    Polygon([Point(32,14),Point(37,34),Point(32,40),Point(27,34)],RGB(232,249,255));
-    Save('player_vertical');
-    Clear(64,64,clFuchsia);
-    Polygon([Point(61,32),Point(36,40),Point(15,59),Point(20,38),Point(8,32),Point(20,26),Point(15,5),Point(36,24)],RGB(71,209,238));
-    Polygon([Point(50,32),Point(30,37),Point(24,32),Point(30,27)],RGB(232,249,255));
-    Save('player_horizontal');
-    DrawEnemyShip(B,0);Save('enemy');
-    DrawEnemyShip(B,1);Save('enemy1');
-    DrawEnemyShip(B,2);Save('enemy2');
-    DrawBossShip(B,0);Save('boss0');
-    DrawBossShip(B,1);Save('boss1');
-    Clear(20,32,clFuchsia); B.Canvas.Brush.Color:=RGB(144,250,224); B.Canvas.Pen.Color:=RGB(144,250,224);
-    B.Canvas.Ellipse(6,2,14,30); Save('bullet');
-    Clear(64,64,clFuchsia); B.Canvas.Brush.Color:=RGB(255,175,72); B.Canvas.Pen.Color:=RGB(255,175,72);
-    B.Canvas.Polygon([Point(32,1),Point(39,21),Point(58,8),Point(45,28),Point(63,32),Point(44,39),Point(57,56),Point(38,45),Point(32,63),Point(25,45),Point(7,56),Point(20,38),Point(1,32),Point(21,25),Point(8,7),Point(27,20)]);
-    B.Canvas.Brush.Color:=RGB(255,243,177); B.Canvas.Ellipse(21,21,43,43); Save('explosion');
-  finally B.Free; end;
+  if Bitmap=nil then raise EArgumentNilException.Create('Bitmap');
+  case Index of
+    6:begin
+      Clear;
+      Polygon([Point(32,3),Point(40,28),Point(59,49),Point(38,44),Point(32,56),Point(26,44),Point(5,49),Point(24,28)],RGB(71,209,238));
+      Polygon([Point(32,14),Point(37,34),Point(32,40),Point(27,34)],RGB(232,249,255));
+    end;
+    7:begin
+      Clear;
+      Polygon([Point(61,32),Point(36,40),Point(15,59),Point(20,38),Point(8,32),Point(20,26),Point(15,5),Point(36,24)],RGB(71,209,238));
+      Polygon([Point(50,32),Point(30,37),Point(24,32),Point(30,27)],RGB(232,249,255));
+    end;
+    8:DrawEnemyShip(Bitmap,0);
+    13:DrawEnemyShip(Bitmap,1);
+    14:DrawEnemyShip(Bitmap,2);
+    9:DrawBossShip(Bitmap,0);
+    10:DrawBossShip(Bitmap,1);
+  else
+    raise EArgumentOutOfRangeException.Create('Standard sprite index');
+  end;
 end;
 
 end.

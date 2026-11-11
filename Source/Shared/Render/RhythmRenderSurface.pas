@@ -1,7 +1,7 @@
 ﻿unit RhythmRenderSurface;
 // GDIとDirect2Dの描画入口を揃え、シーン側の座標を共通化する。
 interface
-uses System.Types,Vcl.Graphics,RhythmImageBank,RhythmDesignTypes,RhythmD2D,RhythmAlphaRaster;
+uses System.Types,Vcl.Graphics,RhythmImageBank,RhythmD2D,RhythmAlphaRaster;
 type
   TAnimationQuad=array[0..3] of TPoint;
   PAnimationQuad=^TAnimationQuad;
@@ -35,7 +35,6 @@ type
     procedure Line(X1,Y1,X2,Y2:Double;Color:TColor;Stroke:Double=1;Opacity:Double=1);
     procedure FillRect(X1,Y1,X2,Y2:Double;Color:TColor;Opacity:Double=1);
     procedure FillQuad(const A,B,C,D:TPointF;Color:TColor;Opacity:Double=1);
-    procedure ApplyChoices(const Choices:array of TRhythmDesign;Force:Boolean=False);
     property Images:TAnimationImageBank read FImages;
     property Canvas:TCanvas read GetCanvas;
     property D2D:TRhythmD2D read FActiveD2D;
@@ -215,12 +214,6 @@ begin
   Winapi.Windows.AlphaBlend(FTarget.Canvas.Handle,L,T,W,H,FAlphaLayer.Canvas.Handle,0,0,W,H,Blend);
 end;
 
-procedure TAnimationRenderSurface.ApplyChoices(const Choices:array of TRhythmDesign;Force:Boolean);
-begin
-  if not FImages.ApplyChoices(Choices,Force) then Exit;
-  ResetScaled;FreeAndNil(FD2D);FreeAndNil(FAlphaD2D);FAlphaUnavailable:=False;
-  try FD2D:=TRhythmD2D.Create(FImages.Images,FImages.ColorKeys);except FUseD2D:=False;end;
-end;
 
 procedure TAnimationRenderSurface.DrawAsset(Index:Integer;const Center:TPoint;
   W,H:Integer;Opacity:Double;ForceAlpha:Boolean;Bucket:Integer);

@@ -40,5 +40,5 @@ begin if Assigned(Cancel) and Cancel() then Abort;end;
 procedure TStylePrepareContext.SetStage(Value:Integer);
 begin if Assigned(Progress) then Progress(Value);end;
 function EmptyStyleImages:TAnimationImageBank;
-begin Result:=TAnimationImageBank.Create([],0);end;
+begin Result:=TAnimationImageBank.Create(0);end;
 end.

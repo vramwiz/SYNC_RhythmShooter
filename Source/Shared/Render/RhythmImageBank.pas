@@ -1,87 +1,64 @@
 ﻿unit RhythmImageBank;
-// スタイル共通の画像所有権・準備・透過資材。計画や音時刻には触れない。
+// 各スタイルが事前描画した画像を所有し、方向別・透過用の複製を一度だけ準備する。
 interface
-uses Vcl.Graphics,RhythmDesignTypes;
+uses Vcl.Graphics;
 type
-  TAnimationAssetSpec=record
-    Name,Title:string;
-    Opaque:Boolean;
-  end;
   TAnimationImageBank=class
   private
-    FSpecs:TArray<TAnimationAssetSpec>;
-    FDesignKey,FDesignWarning:string;
-    FAssetCount:Integer;
+    FImageCount:Integer;
     FPrepared:Boolean;
   protected
     FImages,FAlphaImages:TArray<TBitmap>;
-    FCustom,FColorKeys:TArray<Boolean>;
+    FColorKeys:TArray<Boolean>;
   private
-    procedure LoadDefault(Index:Integer);
     procedure PrepareAlphaAssets;
-    function ChoiceKey(const Choices:array of TRhythmDesign):string;
     function GetImage(Index:Integer):TBitmap;
     function GetAlphaImage(Index:Integer):TBitmap;
-    function GetCustom(Index:Integer):Boolean;
   protected
     procedure PrepareImages;virtual;
     function UsesAlpha(Index:Integer):Boolean;virtual;
     procedure RotateImage(SourceIndex,TargetIndex,QuarterTurns:Integer);
   public
-    // Owns all images. Derived preparation runs only after base images exist.
-    constructor Create(const Specs:array of TAnimationAssetSpec;TotalCount:Integer);
+    // 全画像を所有する。PrepareImagesは確保済みBitmapへ描き、EnsurePreparedで一度だけ実行する。
+    constructor Create(TotalCount:Integer);
     destructor Destroy;override;
     procedure EnsurePrepared;
-    function ApplyChoices(const Choices:array of TRhythmDesign;Force:Boolean=False):Boolean;
     property Images:TArray<TBitmap> read FImages;
     property ColorKeys:TArray<Boolean> read FColorKeys;
     property Image[Index:Integer]:TBitmap read GetImage;
     property AlphaImage[Index:Integer]:TBitmap read GetAlphaImage;
-    property IsCustom[Index:Integer]:Boolean read GetCustom;
-    property AssetCount:Integer read FAssetCount;
-    property DesignWarning:string read FDesignWarning;
+    property ImageCount:Integer read FImageCount;
   end;
 implementation
-uses System.SysUtils,System.IOUtils,System.Hash,Winapi.Windows,RhythmPaths,RhythmDesignImages;
+uses System.SysUtils,Winapi.Windows;
 
-constructor TAnimationImageBank.Create(const Specs:array of TAnimationAssetSpec;TotalCount:Integer);
+constructor TAnimationImageBank.Create(TotalCount:Integer);
 var I:Integer;
 begin
   inherited Create;
-  if TotalCount<Length(Specs) then raise EArgumentException.Create('Image bank is smaller than its catalog.');
-  SetLength(FSpecs,Length(Specs));for I:=0 to High(Specs) do FSpecs[I]:=Specs[I];
+  if TotalCount<0 then raise EArgumentOutOfRangeException.Create('Image count');
   SetLength(FImages,TotalCount);SetLength(FAlphaImages,TotalCount);
-  SetLength(FCustom,TotalCount);SetLength(FColorKeys,TotalCount);
-  for I:=0 to TotalCount-1 do begin
-    FImages[I]:=Vcl.Graphics.TBitmap.Create;
-    if I>=Length(FSpecs) then Continue;
-    if FileExists(TPath.Combine(AssetFolder,FSpecs[I].Name+'.bmp')) then begin LoadDefault(I);Inc(FAssetCount);end;
-  end;
+  SetLength(FColorKeys,TotalCount);
+  for I:=0 to TotalCount-1 do FImages[I]:=Vcl.Graphics.TBitmap.Create;
 end;
 
 procedure TAnimationImageBank.EnsurePrepared;
+var Image:Vcl.Graphics.TBitmap;
 begin
   if FPrepared then Exit;
-  PrepareImages;PrepareAlphaAssets;FPrepared:=True;
+  PrepareImages;PrepareAlphaAssets;
+  FImageCount:=0;
+  for Image in FImages do if not Image.Empty then Inc(FImageCount);
+  FPrepared:=True;
 end;
 
 destructor TAnimationImageBank.Destroy;
 var B:Vcl.Graphics.TBitmap;
 begin for B in FImages do B.Free;for B in FAlphaImages do B.Free;inherited;end;
-procedure TAnimationImageBank.LoadDefault(Index:Integer);
-var Path:string;
-begin
-  Path:=TPath.Combine(AssetFolder,FSpecs[Index].Name+'.bmp');
-  if FileExists(Path) then FImages[Index].LoadFromFile(Path);
-  FColorKeys[Index]:=not FSpecs[Index].Opaque;
-  FImages[Index].Transparent:=FColorKeys[Index];FImages[Index].TransparentColor:=clFuchsia;
-end;
 function TAnimationImageBank.GetImage(Index:Integer):Vcl.Graphics.TBitmap;
 begin Result:=FImages[Index];end;
 function TAnimationImageBank.GetAlphaImage(Index:Integer):Vcl.Graphics.TBitmap;
 begin Result:=FAlphaImages[Index];end;
-function TAnimationImageBank.GetCustom(Index:Integer):Boolean;
-begin Result:=FCustom[Index];end;
 procedure TAnimationImageBank.PrepareImages;
 begin end;
 function TAnimationImageBank.UsesAlpha(Index:Integer):Boolean;
@@ -111,30 +88,6 @@ begin
     end;
   end;
   if not UseAlpha then begin Rotated.TransparentColor:=clFuchsia;Rotated.Transparent:=FColorKeys[TargetIndex];end;
-end;
-
-function TAnimationImageBank.ChoiceKey(const Choices:array of TRhythmDesign):string;
-var I:Integer;Text:string;
-begin
-  Text:='';for I:=0 to High(Choices) do if Choices[I].Path<>'' then
-    Text:=Text+IntToStr(I)+':'+Choices[I].Path+'|'+Choices[I].SHA256+';';
-  Result:='';if Text<>'' then Result:=THashSHA2.GetHashString(Text);
-end;
-function TAnimationImageBank.ApplyChoices(const Choices:array of TRhythmDesign;Force:Boolean):Boolean;
-var Key,Path:string;I:Integer;Loaded:Vcl.Graphics.TBitmap;
-begin
-  if Length(Choices)<>Length(FSpecs) then raise EArgumentException.Create('Image choices do not match the catalog.');
-  Key:=ChoiceKey(Choices);Result:=Force or (Key<>FDesignKey);if not Result then Exit;
-  FDesignWarning:='';
-  for I:=0 to High(FSpecs) do begin
-    FCustom[I]:=False;FImages[I].Free;FImages[I]:=Vcl.Graphics.TBitmap.Create;
-    if Choices[I].Path<>'' then try
-      Path:=ResolveDesignImage(Choices[I]);Loaded:=ReadDesignBitmap(Path);
-      FImages[I].Free;FImages[I]:=Loaded;FCustom[I]:=True;FColorKeys[I]:=not FSpecs[I].Opaque;
-    except on E:Exception do FDesignWarning:=FDesignWarning+FSpecs[I].Title+': '+E.Message+' ';end;
-    if not FCustom[I] then LoadDefault(I);
-  end;
-  FPrepared:=False;EnsurePrepared;FDesignKey:=Key;
 end;
 
 procedure TAnimationImageBank.PrepareAlphaAssets;

@@ -1,10 +1,9 @@
 ﻿unit RhythmPaths;
-// モジュール・素材・音キャッシュ・設定・計画の保存先を解決する。
+// モジュール・音キャッシュ・設定・計画の保存先を解決する。
 
 interface
 
 function ModuleFolder: string;
-function AssetFolder: string;
 function CacheFolder: string;
 function SettingsPath: string;
 function PlanFolder:string;
@@ -20,8 +19,6 @@ begin
   Result := ExtractFilePath(string(Buffer));
 end;
 
-function AssetFolder: string;
-begin Result := TPath.Combine(ModuleFolder, 'Assets'); end;
 
 function CacheFolder: string;
 begin

@@ -1,7 +1,7 @@
 ﻿unit RhythmAnimation;
 // 全スタイル共通のフレーム契約と描画実行を定義する。
 interface
-uses Vcl.Graphics,RhythmRenderSurface,RhythmImageBank,RhythmDesignTypes;
+uses Vcl.Graphics,RhythmRenderSurface,RhythmImageBank;
 type
   TAnimationFrame=record
     Time:Double;
@@ -22,8 +22,8 @@ type
     FScene:TAnimationScene;
     FSurface:TAnimationRenderSurface;
     FTransform:TBitmap;FBackgroundOnly:Boolean;FClearColor:TColor;
-    function GetAssetCount:Integer;
-    function GetWarning:string;
+    function GetImageCount:Integer;
+    function GetNotice:string;
     function GetUseD2D:Boolean;
     procedure SetUseD2D(Value:Boolean);
     function GetLastD2D:Boolean;
@@ -34,17 +34,15 @@ type
     procedure Render(Target:TBitmap;Time:Double;Direction:Integer;const MessageText:string='';
       Zoom:Double=1;OffsetX:Double=0;OffsetY:Double=0);
     function TryRenderAlpha(Target:TBitmap;Time:Double;Direction:Integer):Boolean;
-    procedure ApplyChoices(const Choices:array of TRhythmDesign;Force:Boolean=False);
-    procedure StandardBackgroundPreview(Target:TBitmap;Direction,Layer:Integer);
     property BackgroundOnly:Boolean read FBackgroundOnly write FBackgroundOnly;
     property ClearColor:TColor read FClearColor write FClearColor;
-    property AssetCount:Integer read GetAssetCount;
-    property DesignWarning:string read GetWarning;
+    property ImageCount:Integer read GetImageCount;
+    property Notice:string read GetNotice;
     property UseD2D:Boolean read GetUseD2D write SetUseD2D;
     property LastUsedD2D:Boolean read GetLastD2D;
   end;
 implementation
-uses System.SysUtils,System.Types,System.Math,Winapi.Windows,RhythmParallax;
+uses System.SysUtils,System.Types,System.Math,Winapi.Windows;
 function TAnimationScene.Notice:string;
 begin Result:='';end;
 function TAnimationScene.GoalTime:Double;
@@ -57,20 +55,17 @@ begin
 end;
 destructor TAnimationRenderer.Destroy;
 begin FTransform.Free;FScene.Free;FSurface.Free;inherited;end;
-function TAnimationRenderer.GetAssetCount:Integer;
-begin Result:=FSurface.Images.AssetCount;end;
-function TAnimationRenderer.GetWarning:string;
-begin Result:=FSurface.Images.DesignWarning;end;
+function TAnimationRenderer.GetImageCount:Integer;
+begin Result:=FSurface.Images.ImageCount;end;
+function TAnimationRenderer.GetNotice:string;
+begin Result:=FScene.Notice;end;
 function TAnimationRenderer.GetUseD2D:Boolean;
 begin Result:=FSurface.UseD2D;end;
 procedure TAnimationRenderer.SetUseD2D(Value:Boolean);
 begin FSurface.UseD2D:=Value;end;
 function TAnimationRenderer.GetLastD2D:Boolean;
 begin Result:=FSurface.LastUsedD2D;end;
-procedure TAnimationRenderer.ApplyChoices(const Choices:array of TRhythmDesign;Force:Boolean);
-begin FSurface.ApplyChoices(Choices,Force);end;
-procedure TAnimationRenderer.StandardBackgroundPreview(Target:Vcl.Graphics.TBitmap;Direction,Layer:Integer);
-begin DrawParallax(Target.Canvas,FSurface.Images,nil,False,0,Target.Width,Target.Height,Direction,Layer,True);end;
+
 procedure TAnimationRenderer.Render(Target:Vcl.Graphics.TBitmap;Time:Double;Direction:Integer;
   const MessageText:string;Zoom,OffsetX,OffsetY:Double);
 var I,J,Width,Height:Integer;C:TCanvas;Text:string;Frame:TAnimationFrame;
@@ -86,7 +81,7 @@ begin
   Frame.Width:=Width;Frame.Height:=Height;Frame.BackgroundOnly:=FBackgroundOnly;FScene.Prepare(Frame);
   FSurface.BeginFrame(Target,FClearColor);FScene.Draw(FSurface,Frame);
   if not FSurface.EndFrame then begin Render(Target,Time,Direction,MessageText);Exit;end;
-  if DesignWarning<>'' then Text:='素材が見つからないため標準表示: '+DesignWarning else if FScene.Notice<>'' then Text:=FScene.Notice else Text:=MessageText;
+  if FScene.Notice<>'' then Text:=FScene.Notice else Text:=MessageText;
   if Text<>'' then begin
     C:=Target.Canvas;
     C.Font.Name:='Segoe UI';C.Font.Size:=Max(9,Round(Min(Width,Height)/60));C.Font.Color:=RGB(184,212,235);C.Brush.Style:=bsClear;

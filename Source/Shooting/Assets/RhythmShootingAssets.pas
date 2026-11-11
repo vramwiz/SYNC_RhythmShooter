@@ -1,8 +1,9 @@
 ﻿unit RhythmShootingAssets;
+// 標準の機体・弾・爆発を共通画像バンクへ事前描画し、向きと透過用の複製を準備する。
 interface
 uses RhythmImageBank;
 
-// Private render slots. The 15 public custom-design IDs remain unchanged.
+// 描画側の固定スロット。0〜5は旧背景画像の予約領域で、背景は直接描画する。
 const SHOOT_BOSS_BULLET_FIRST=24;SHOOT_BOSS_BULLET_LAST=27;SHOOT_FLASH=28;SHOOT_SHOCKWAVE=29;
   SHOOT_SPARK=30;SHOOT_SMOKE=31;SHOOT_EMBER=32;
 type
@@ -17,18 +18,22 @@ type
     constructor Create;
   end;
 implementation
-uses System.SysUtils,System.Math,Winapi.Windows,Vcl.Graphics,RhythmDesignTypes;
+uses System.SysUtils,System.Math,Winapi.Windows,Vcl.Graphics,RhythmAssets;
 constructor TShootingImageBank.Create;
-var Specs:array[0..RHYTHM_DESIGN_COUNT-1] of TAnimationAssetSpec;I:Integer;
 begin
-  for I:=0 to High(Specs) do begin Specs[I].Name:=DesignInfo(I).Id;Specs[I].Title:=DesignInfo(I).Title;Specs[I].Opaque:=I in [0,3];end;
-  inherited Create(Specs,SHOOT_EMBER+1);
+  inherited Create(SHOOT_EMBER+1);
 end;
 procedure TShootingImageBank.PrepareImages;
 const Originals:array[0..5] of Integer=(8,9,10,11,13,14);
   Upward:array[0..2] of Integer=(8,13,14);
 var I:Integer;
 begin
+  for I in [6,7,8,9,10,13,14] do begin
+    PaintStandardSprite(I,FImages[I]);
+    FColorKeys[I]:=True;
+    FImages[I].Transparent:=True;
+    FImages[I].TransparentColor:=clFuchsia;
+  end;
   BrightenStandardEnemies;
   PrepareStandardEffects;
   for I:=0 to High(Originals) do RotateImage(Originals[I],15+I,1);
@@ -101,10 +106,8 @@ procedure TShootingImageBank.PrepareStandardEffects;
     end;
   end;
 begin
-  // Factory defaults are rebuilt in memory only; custom pixels and disk assets
-  // are never painted over. Extra slots have no public design IDs or JSON data.
-  if not FCustom[11] then Paint(11,0,RGB(77,218,255));
-  if not FCustom[12] then Paint(12,3,RGB(255,174,61));
+  Paint(11,0,RGB(77,218,255));
+  Paint(12,3,RGB(255,174,61));
   // Same order as the explicit bpPetals/bpSpiral/bpFans/bpCross scene mapping.
   Paint(SHOOT_BOSS_BULLET_FIRST,1,RGB(255,112,156));
   Paint(SHOOT_BOSS_BULLET_FIRST+1,1,RGB(174,139,255));
@@ -129,11 +132,9 @@ const Originals:array[0..4] of Integer=(8,9,10,13,14);
 var I,X,Y,R,G,B,Luma,Peak,Lift,Kind,LowTone,HighTone,Weight,Scale,Channel:Integer;
   Bitmap:Vcl.Graphics.TBitmap;Pixel:PByte;
 begin
-  // Correct factory artwork once per disk load, before directional/alpha copies.
-  // Small enemies need colored faces, while bosses retain their accepted curve.
-  // Object-specific images keep their colors, including their original seams.
+  // 事前描画直後、向きと透過用の複製を作る前に装甲色を整える。
+  // 小さい通常敵の配色と、受入済みのボスの明度曲線を使う。
   for I in Originals do begin
-    if FCustom[I] then Continue;
     Kind:=-1;if I=8 then Kind:=0 else if I=13 then Kind:=1 else if I=14 then Kind:=2;
     Bitmap:=FImages[I];if Bitmap.Empty then Continue;
     Bitmap.PixelFormat:=pf24bit;

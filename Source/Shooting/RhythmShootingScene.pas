@@ -67,9 +67,6 @@ var Center:TPoint;W,H,Swap,Bucket:Integer;
 begin
   if Opacity<=0 then Exit;Opacity:=Min(1.0,Opacity);
   Center:=MapPoint(P,Width,Height,Direction);
-  // Keep arbitrary custom ship silhouettes inside the existing avoidance
-  // corridor, including opaque square imports. Default artwork is unchanged.
-  if Index in [6,7] then if Surface.Images.IsCustom[Index] then Size:=Size*0.8;
   W:=Max(2,Round(Size*Min(Width,Height))); H:=W;
   if Index in [9,10] then W:=W*8 div 5;
   if Direction=1 then
@@ -93,15 +90,11 @@ begin
     bpSpiral:Index:=SHOOT_BOSS_BULLET_FIRST+1;
     bpFans:Index:=SHOOT_BOSS_BULLET_FIRST+2;
   else Index:=SHOOT_BOSS_BULLET_FIRST+3;end;
-  if Surface.Images.IsCustom[11] then begin
-    // Keep the user's shared bullet intact, with a pattern-coloured halo behind it.
-    Sprite(Surface,Index,P,Size*1.5,Width,Height,Direction,Opacity*0.8);
-    Sprite(Surface,11,P,Size,Width,Height,Direction,Opacity);
-  end else Sprite(Surface,Index,P,Size,Width,Height,Direction,Opacity);
+  Sprite(Surface,Index,P,Size,Width,Height,Direction,Opacity);
 end;
 procedure TShootingAnimation.Explosion(Surface:TAnimationRenderSurface;const P:TRhythmPoint;Age:Double;Boss:Boolean;Width,Height,Direction:Integer);
 var Lifetime,LocalAge,Size,Alpha,U,Magnitude,Seed,Angle,Radius,DX,DY,LocalU,Fade,FlashLife:Double;
-  I,Count:Integer;Burst:TRhythmPoint;Center:TPoint;ShortSide:Integer;
+  I,Count:Integer;Center:TPoint;ShortSide:Integer;
   procedure Layer(Index:Integer;X,Y,Diameter,Opacity:Double);
   var Target:TPoint;Pixels:Integer;
   begin
@@ -114,17 +107,6 @@ begin
   if Boss then begin Lifetime:=1.35;Size:=0.16+Age*0.20;end
   else begin Lifetime:=0.60;Size:=0.04+Age*0.18;end;
   Alpha:=ExplosionOpacity(Age,Lifetime);if Alpha<=0 then Exit;
-  if Surface.Images.IsCustom[12] then begin
-    // Preserve the existing custom-image growth, opacity and delayed boss bursts.
-    Sprite(Surface,12,P,Size,Width,Height,Direction,Alpha);
-    if Boss then for I:=0 to 5 do begin
-      LocalAge:=Age-I*0.055-0.06;
-      Burst.X:=P.X+Cos(I*2.399)*0.07;Burst.Y:=P.Y+Sin(I*2.399)*0.05;
-      Sprite(Surface,12,Burst,0.05+Max(0.0,LocalAge)*0.14,Width,Height,Direction,
-        ExplosionOpacity(LocalAge,0.7)*0.8);
-    end;
-    Exit;
-  end;
   // Every layer is reconstructed from absolute age. Screen-space offsets keep
   // rings circular and smoke rising in either scrolling direction/aspect ratio.
   U:=Age/Lifetime;Magnitude:=1;if Boss then Magnitude:=2.2;
@@ -201,7 +183,7 @@ var Audio:TRhythmAudio;Schedule:TRhythmStageSchedule;I,J,First,Last,BossIndex,Wi
   EnemyBullet:TRhythmEnemyBullet;Enemy:TRhythmFlyby;
 begin
   Audio:=FAudio;Schedule:=FSchedule;Time:=Frame.Time;Width:=Frame.Width;Height:=Frame.Height;Direction:=Frame.Direction;
-  DrawParallax(Surface.Canvas,Surface.Images,Surface.D2D,Surface.D2DActive,Time,Width,Height,Direction,-1,False,False);
+  DrawParallax(Surface.Canvas,Surface.D2D,Surface.D2DActive,Time,Width,Height,Direction,False);
   if Frame.BackgroundOnly then Exit;
   if Audio<>nil then
   begin

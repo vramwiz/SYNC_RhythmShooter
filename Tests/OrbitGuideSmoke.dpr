@@ -31,7 +31,7 @@ begin Audio:=nil;Plan:=nil;Render:=nil;Image:=nil;PNG:=nil;Checks:=0;Seek:=0;Max
       if C=5 then begin Audio.Hits:=nil;Audio.SoundEnd:=0;end;
       Plan:=TOrbitPlan.Build(Audio,20);Ref:=NewPlanRef(Audio.Key,50,0,rsRhythmGame,121);Ref.SourceRevision:=Revision;Plan.Save(Ref,Audio);
       Scene:=TOrbitAnimation.Create;Scene.Audio:=Audio;Scene.SetReference(Ref);
-      Scene.TransparentBackground:=True;Render:=TAnimationRenderer.Create(Scene,TAnimationImageBank.Create([],0));
+      Scene.TransparentBackground:=True;Render:=TAnimationRenderer.Create(Scene,TAnimationImageBank.Create(0));
       Course[0].Prepare(Plan,960,540);
       Course[1].Prepare(Plan,540,960);
       Course[2].Prepare(Plan,720,720);

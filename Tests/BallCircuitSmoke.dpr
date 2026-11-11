@@ -20,7 +20,7 @@ begin
   Audio:=nil;Meta:=nil;Plan:=nil;Again:=nil;Cold:=nil;Surface:=nil;Image:=nil;PNG:=nil;Wrap:=nil;RestoredWrap:=nil;Animation:=nil;
   try
     ConfigureRhythmProduct('SYNC_RhythmBall','Circuit native test',rsBall);Need((StylePlanVersion(rsBall)=6) and CompatiblePlanVersion(rsBall,4) and CompatiblePlanVersion(rsBall,5),'Style compatibility');
-    OutFolder:=TPath.Combine(ExtractFilePath(ParamStr(0)),'Frames');ForceDirectories(OutFolder);Surface:=TAnimationRenderSurface.Create(TAnimationImageBank.Create([],0));Surface.UseD2D:=False;Image:=TBitmap.Create;Image.PixelFormat:=pf32bit;PNG:=TPngImage.Create;
+    OutFolder:=TPath.Combine(ExtractFilePath(ParamStr(0)),'Frames');ForceDirectories(OutFolder);Surface:=TAnimationRenderSurface.Create(TAnimationImageBank.Create(0));Surface.UseD2D:=False;Image:=TBitmap.Create;Image.PixelFormat:=pf32bit;PNG:=TPngImage.Create;
     for C:=0 to 9 do begin
       Goal:=20;Gap:=0.16;case C of 1:begin Goal:=40;Gap:=0.60;end;2:begin Goal:=8;Gap:=0.008;end;3:begin Goal:=0.1;Gap:=0.001;end;4:begin Goal:=3000;Gap:=0.72;end;5:begin Goal:=60;Gap:=2.4;end;6:begin Goal:=0;Gap:=1;end;7:begin Goal:=3000;Gap:=0.030001;end;end;
       Audio:=TRhythmAudio.Create;Audio.Duration:=Max(0.1,Goal+0.8);Audio.SoundEnd:=Goal;Audio.Sensitivity:=50;CreateGUID(Id);Audio.Key:=THashSHA2.GetHashString(GUIDToString(Id));

@@ -25,14 +25,11 @@ $version = $catalog[0].version[-1]
 $pluginEntry = $version.file | Where-Object path -eq "{pluginsDir}/$packageName/$pluginName"
 if (-not $pluginEntry) { throw 'The last catalog version must list the installed AUF2.' }
 
-$assets = @(Get-ChildItem -LiteralPath (Join-Path $projectDir 'Assets') -Filter '*.bmp' -File)
-if (-not $assets) { throw 'No standard BMP assets found.' }
 $packageFiles = [ordered]@{
     'README.md' = Join-Path $PSScriptRoot 'README.md'
     'LICENSE' = Join-Path $projectDir 'LICENSE'
     'THIRD_PARTY_NOTICES.md' = Join-Path $projectDir 'THIRD_PARTY_NOTICES.md'
 }
-foreach ($asset in $assets) { $packageFiles["Assets\$($asset.Name)"] = $asset.FullName }
 foreach ($notice in @('LICENSE.md','provenance.json','CORE_CHANGES.md','integration.json')) {
     $relativePath = 'ThirdParty\MP3Decoder\' + $notice
     $sourcePath = Join-Path $projectDir $relativePath

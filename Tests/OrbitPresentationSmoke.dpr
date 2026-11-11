@@ -479,7 +479,7 @@ begin A:=nil;Meta:=nil;Plan:=nil;Render:=nil;Surface:=nil;Image:=nil;PNG:=nil;Ch
     Need(not TRhythmSettings.TryJSON('{"schema":1,"style":"rhythm-game","equalizer":"false"}',Loaded),'Bad boolean accepted');
     Need((Abs(OrbitHitRadius(540)*2-49.68)<1E-9) and (Abs(OrbitHitRadius(1080)*2-99.36)<1E-9),
       'Type.V target diameter does not follow the viewport');
-    Image:=TBitmap.Create;Image.PixelFormat:=pf32bit;Image.SetSize(360,120);Surface:=TAnimationRenderSurface.Create(TAnimationImageBank.Create([],0));
+    Image:=TBitmap.Create;Image.PixelFormat:=pf32bit;Image.SetSize(360,120);Surface:=TAnimationRenderSurface.Create(TAnimationImageBank.Create(0));
     for B:=0 to 1 do begin Surface.UseD2D:=B=1;
       for J:=0 to 1 do begin Surface.BeginFrame(Image);
         if J=0 then Surface.FillRect(0,0,360,120,RGB(240,10,10)) else Surface.FillRect(0,0,360,120,RGB(10,10,240));
