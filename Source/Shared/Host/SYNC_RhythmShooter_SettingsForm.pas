@@ -10,6 +10,9 @@ type
     FEqualizer:TCheckBox;FEqualizerRow:TPanel;
     FDirection,FStyle,FCategory:TComboBox;
     FCategoryPanel:TPanel;FCategoryLabel:TLabel;
+    FTrapStage:TComboBox;
+    FTrapStagePanel:TPanel;
+    FTrapStageLabel:TLabel;
     FMarbleBall,FMarbleStage:TComboBox;
     FMarbleBallPanel,FMarbleStagePanel:TPanel;
     FMarbleBallLabel,FMarbleStageLabel:TLabel;
@@ -288,6 +291,12 @@ begin
   FMarbleStage.Hint:='背景、レール、仕掛けの外観を変更します。再準備は不要です。';
   FMarbleStage.OnChange:=SettingChange;
   FMarbleStageLabel.FocusControl:=FMarbleStage;
+  FTrapStagePanel:=Panel(FOptionsBar,alNone,44);
+  FTrapStagePanel.Name:='TrapStageOptions';FTrapStagePanel.Visible:=False;
+  FTrapStageLabel:=LabelAt(FTrapStagePanel,'ステージ',alNone,56);
+  FTrapStage:=TRhythmComboBox.Create(Self);FTrapStage.Parent:=FTrapStagePanel;FTrapStage.Name:='TrapStage';
+  for PanelIndex:=0 to Ord(High(TTrapStage)) do FTrapStage.Items.Add(TrapStageTitles[TTrapStage(PanelIndex)]);
+  FTrapStage.ItemIndex:=0;FTrapStage.OnChange:=SettingChange;FTrapStageLabel.FocusControl:=FTrapStage;
   FOptionsBar.OnResize:=LayoutOptions;
   Bottom:=Panel(Self,alBottom,52);
   FBottom:=Bottom;
@@ -383,8 +392,8 @@ end;
 
 procedure TFormRhythmShooterSettings.LayoutOptions(Sender:TObject);
 var
-  Groups:array[0..8] of TPanel;
-  Widths,CaptionWidths:array[0..8] of Integer;
+  Groups:array[0..9] of TPanel;
+  Widths,CaptionWidths:array[0..9] of Integer;
   I,Pass,W,H,X,Y,Gap,Total,Extra,Numbers,BarHeight,TextHeight,ButtonHeight,ButtonTop,SavedScrollY:Integer;
   MusicCaptionWidth,BrowseWidth,AnalyzeWidth,MusicActionsWidth,FileHeight,EqualizerHeight,MusicRowWidth:Integer;
   PlayWidth,StopWidth,ClockWidth,ValueWidth,BossValueWidth,CategoryWidth,RowWidth:Integer;
@@ -469,7 +478,7 @@ begin
     BossValueWidth:=Max(S(144),TextWidth('100 / 約135秒',FBossValue.Font)+S(4));
     Groups[0]:=FCategoryPanel;Groups[1]:=FStylePanel;Groups[2]:=FDirectionPanel;
     Groups[3]:=FSensitivityPanel;Groups[4]:=FGameRow;Groups[5]:=FEqualizerRow;Groups[6]:=FBossRow;
-    Groups[7]:=FMarbleBallPanel;Groups[8]:=FMarbleStagePanel;
+    Groups[7]:=FMarbleBallPanel;Groups[8]:=FMarbleStagePanel;Groups[9]:=FTrapStagePanel;
     CaptionWidths[0]:=LabelWidth(FCategoryLabel,44);
     CaptionWidths[1]:=LabelWidth(FStyleLabel,44);
     CaptionWidths[2]:=LabelWidth(FDirectionLabel,40);
@@ -477,7 +486,7 @@ begin
     CaptionWidths[4]:=LabelWidth(FGameLabel,82);
     CaptionWidths[6]:=LabelWidth(FBossLabel,86);
     CaptionWidths[7]:=LabelWidth(FMarbleBallLabel,68);
-    CaptionWidths[8]:=LabelWidth(FMarbleStageLabel,56);
+    CaptionWidths[8]:=LabelWidth(FMarbleStageLabel,56);CaptionWidths[9]:=LabelWidth(FTrapStageLabel,56);
     // Re-evaluate from full width so a previous wrap cannot retain a needless
     // scrollbar. Restore the user's scroll position once the final range exists.
     FAnimationBody.Height:=FAnimationScroll.ClientHeight;
@@ -508,6 +517,7 @@ begin
       Widths[6]:=CaptionWidths[6]+BossValueWidth+S(88);
       Widths[7]:=CaptionWidths[7]+S(6)+ComboWidth(FMarbleBall,108);
       Widths[8]:=CaptionWidths[8]+S(6)+ComboWidth(FMarbleStage,122);
+      Widths[9]:=CaptionWidths[9]+S(6)+ComboWidth(FTrapStage,122);
       W:=Max(1,FOptionsBar.ClientWidth);
       Total:=0;
       Numbers:=2;
@@ -543,7 +553,7 @@ begin
       Combo(FStyleLabel,FStyle,CaptionWidths[1]);
       Combo(FDirectionLabel,FDirection,CaptionWidths[2]);
       Combo(FMarbleBallLabel,FMarbleBall,CaptionWidths[7]);
-      Combo(FMarbleStageLabel,FMarbleStage,CaptionWidths[8]);
+      Combo(FMarbleStageLabel,FMarbleStage,CaptionWidths[8]);Combo(FTrapStageLabel,FTrapStage,CaptionWidths[9]);
       Slider(FSensitivityLabel,FLevel,FSensitivity,CaptionWidths[3],ValueWidth);
       Slider(FGameLabel,FGameValue,FGameThreshold,CaptionWidths[4],ValueWidth);
       Slider(FBossLabel,FBossValue,FBossFrequency,CaptionWidths[6],BossValueWidth);
@@ -721,7 +731,7 @@ function TFormRhythmShooterSettings.SelectedStyle:TRhythmStyle;
 begin Result:=FSelection.Style;end;
 
 function TFormRhythmShooterSettings.SelectedVariant:Integer;
-begin Result:=StyleVariant(SelectedStyle,FState.FireworksRichness,FBossFrequency.Position,FGameThreshold.Position);
+begin Result:=StyleVariant(SelectedStyle,FState.FireworksRichness,FBossFrequency.Position,FGameThreshold.Position,FState.TrapStage);
 end;
 
 function TFormRhythmShooterSettings.Ready:Boolean;
@@ -767,10 +777,10 @@ begin
   try
     FEqualizer.Checked:=EqualizerEnabled(FState.EqualizerMode,SelectedStyle,FState.Plan.Version);
     FMarbleBall.ItemIndex:=Ord(FState.MarbleBall);
-    FMarbleStage.ItemIndex:=Ord(FState.MarbleStage);
+    FMarbleStage.ItemIndex:=Ord(FState.MarbleStage);FTrapStage.ItemIndex:=Ord(FState.TrapStage);
   finally FUpdating:=WasUpdating;end;
   FMarbleBallPanel.Visible:=SelectedStyle=rsMarbleRelay;
-  FMarbleStagePanel.Visible:=SelectedStyle=rsMarbleRelay;
+  FMarbleStagePanel.Visible:=SelectedStyle=rsMarbleRelay;FTrapStagePanel.Visible:=SelectedStyle=rsTrapAction;
   FState.GameThreshold:=FGameThreshold.Position;
   FState.BossFrequency:=FBossFrequency.Position;
   FBossRow.Visible:=StyleHas(SelectedStyle,sfBoss);
@@ -1017,6 +1027,7 @@ begin
     FPreview.Invalidate;
     Exit;
   end;
+  if (Sender=FTrapStage) and (FTrapStage.ItemIndex>=0) then FState.TrapStage:=TTrapStage(FTrapStage.ItemIndex);
   if Sender=FCategory then begin FSelection.ChooseGroup(TRhythmStyleGroup(FCategory.ItemIndex));RefreshSelection;end
   else if Sender=FStyle then begin FSelection.ChooseMiddle(FStyle.ItemIndex);RefreshSelection;end
   else if Sender=FDirection then FSelection.ChooseSmall(FDirection.ItemIndex);

@@ -1,13 +1,14 @@
 ﻿unit RhythmStyles;
 // 保存ID/計画版の契約と、設定画面だけの分類・機能カタログ。分類値はJSONやホストへ保存しない。
 interface
-type TRhythmStyle=(rsShooting,rsBall,rsJumpAdventure,rsBreakout,rsSideRace,rsBombAction,rsFightingRush,rsMining,rsTrain,rsRhythmGame,rsStepGame,rsMineCart,rsCrashCannon,rsParkour,rsMarbleRelay,rsRobotWar);
+type TRhythmStyle=(rsShooting,rsBall,rsJumpAdventure,rsBreakout,rsSideRace,rsBombAction,rsFightingRush,rsMining,rsTrain,rsRhythmGame,rsStepGame,rsMineCart,rsCrashCannon,rsParkour,rsMarbleRelay,rsRobotWar,rsTrapAction);
 type
   TRhythmStyleGroup=(sgShooting,sgBall,sgAction,sgRace,sgMusic);
   TStyleSmallKind=(skFixed,skScroll);
   TMarbleBallStyle=(mbSteel,mbGlass,mbWood,mbPorcelain);
   TMarbleStageStyle=(msWoodWorkshop,msDeskCraft,msSteampunk,msClearAcrylic,msNeonArcade,msColorToys,msStoneRuins);
-  TStyleVariantKind=(svNone,svBoss,svRhythm);
+  TTrapStage=(tsCave,tsRuins,tsFactory,tsCastle,tsFacility,tsVolcano,tsIceCave,tsForestRuins);
+  TStyleVariantKind=(svNone,svBoss,svRhythm,svTrap);
   TStyleFeature=(sfBoss,sfPrepared,sfThreshold,sfTransparent,sfDefaultBoss50,sfOwnFinale);
   TStyleFeatures=set of TStyleFeature;
   TStyleInfo=record
@@ -33,12 +34,14 @@ function StyleTitle(Style:TRhythmStyle):string;
 function TryStyle(const Id:string;out Style:TRhythmStyle):Boolean;
 function StylePlanVersion(Style:TRhythmStyle):Integer;
 function CompatiblePlanVersion(Style:TRhythmStyle;Version:Integer):Boolean;
-function StyleVariant(Style:TRhythmStyle;FireworksRichness:Integer;BossFrequency:Integer=-1;GameThreshold:Integer=20):Integer;
+function StyleVariant(Style:TRhythmStyle;FireworksRichness:Integer;BossFrequency:Integer=-1;GameThreshold:Integer=20;TrapStage:TTrapStage=tsCave):Integer;
 function AudioDensityKey(Style:TRhythmStyle;Value:Integer):Integer;
 function BossPeriod(Frequency:Integer):Double;
 function BossFrequencyText(Frequency:Integer):string;
 function BossFrequencyFromVariant(Variant:Integer):Integer;
 const FIREWORKS_DEFAULT_RICHNESS=50;BOSS_DEFAULT_FREQUENCY=50;AUDIO_DEFAULT_DENSITY=20;
+  TrapStageTitles:array[TTrapStage] of string=('洞窟','遺跡','工場','城内','地下施設','火山','氷の洞窟','森林遺跡');
+  TrapStageIds:array[TTrapStage] of string=('cave','ruins','factory','castle','facility','volcano','ice','forest');
   TYPE_V_TITLE='Type.V';
   TYPE_D_TITLE='Type.D';
   MarbleBallTitles:array[TMarbleBallStyle] of string=('鉄球（銀）','ビー玉（緑）','木球','陶器玉');
@@ -65,7 +68,8 @@ const
     (Id:'crash-cannon';Title:'クラッシュキャノン';MiddleTitle:'クラッシュキャノン';FixedSmall:'横からの視点';ProgressText:'音時刻から着弾・反撃・連鎖崩壊を逆算中';Group:sgAction;Order:5;SmallKind:skFixed;Version:1;Versions:[1];Features:[sfPrepared,sfOwnFinale];VariantKind:svNone),
     (Id:'parkour';Title:'パルクール（試作）';MiddleTitle:'パルクール（試作）';FixedSmall:'屋上の横スクロール';ProgressText:'音時刻から連続ステップ・壁走り・ワイヤーを準備中';Group:sgAction;Order:6;SmallKind:skFixed;Version:2;Versions:[1,2];Features:[sfPrepared,sfOwnFinale];VariantKind:svNone),
     (Id:'marble-relay';Title:'からくりリレー（試作）';MiddleTitle:'からくりリレー（試作）';FixedSmall:'球を追うコース';ProgressText:'音時刻から球の経路と仕掛けの連鎖を準備中';Group:sgBall;Order:2;SmallKind:skFixed;Version:16;Versions:[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16];Features:[sfPrepared,sfOwnFinale];VariantKind:svNone),
-    (Id:'robot-war';Title:'ロボット大戦';MiddleTitle:'ロボット大戦';FixedSmall:'都市の変形・合体戦';ProgressText:'音時刻から変形・合体・都市戦を準備中';Group:sgAction;Order:7;SmallKind:skFixed;Version:1;Versions:[1];Features:[sfPrepared,sfOwnFinale];VariantKind:svNone)
+    (Id:'robot-war';Title:'ロボット大戦';MiddleTitle:'ロボット大戦';FixedSmall:'都市の変形・合体戦';ProgressText:'音時刻から変形・合体・都市戦を準備中';Group:sgAction;Order:7;SmallKind:skFixed;Version:1;Versions:[1];Features:[sfPrepared,sfOwnFinale];VariantKind:svNone),
+    (Id:'trap-action';Title:'初見殺しアクション';MiddleTitle:'初見殺しアクション';FixedSmall:'罠を突破する横スクロール';ProgressText:'回避軌道・連動する罠・安全距離を逆算中';Group:sgAction;Order:8;SmallKind:skFixed;Version:1;Versions:[1];Features:[sfPrepared,sfOwnFinale];VariantKind:svTrap)
   );
   GroupTitles:array[TRhythmStyleGroup] of string=('シューティング','ボールアクション','アクション','レース','音楽・演出');
 function StyleInfo(Style:TRhythmStyle):TStyleInfo;
@@ -104,9 +108,10 @@ function StylePlanVersion(Style:TRhythmStyle):Integer;
 begin Result:=Catalog[Style].Version;end;
 function CompatiblePlanVersion(Style:TRhythmStyle;Version:Integer):Boolean;
 begin Result:=(Version>=0) and (Version<=255);if Result then Result:=Byte(Version) in Catalog[Style].Versions;end;
-function StyleVariant(Style:TRhythmStyle;FireworksRichness:Integer;BossFrequency,GameThreshold:Integer):Integer;
+function StyleVariant(Style:TRhythmStyle;FireworksRichness:Integer;BossFrequency,GameThreshold:Integer;TrapStage:TTrapStage):Integer;
 begin Result:=0;case Catalog[Style].VariantKind of
   svRhythm:Result:=EnsureRange(GameThreshold,-100,100)+101;
+  svTrap:Result:=Ord(TrapStage)+1;
   svBoss:if BossFrequency>=0 then Result:=Min(BossFrequency,100)+1;
 end;end;
 function AudioDensityKey(Style:TRhythmStyle;Value:Integer):Integer;

@@ -42,7 +42,7 @@
         <GenDll>true</GenDll>
         <DCC_DcuOutput>.\$(Platform)\$(Config)\DCU</DCC_DcuOutput>
         <DCC_ExeOutput>.\$(Platform)\$(Config)</DCC_ExeOutput>
-        <DCC_UnitSearchPath>Source\MineCart;Source\CrashCannon;Source\Parkour;Source\RobotWar;Source\MarbleRelay;Source\MarbleRelay\Planning;Source\SideRace;Source\FightingRush;Source\JumpAdventure;Source\RhythmGame;Source\RhythmGame\Orbit;Source\RhythmGame\Orbit\Render;Source\RhythmGame\Legacy;Source\RhythmGame\Step;Source\Mining;Source\Train;Source\BombAction;Source\Breakout;Source\Breakout\Score;Source\Shared\Audio;Source\Shared\Render;Source\Shared\Settings;Source\Shared\Common;Source\Shared\UI;Source\Shared\Host;Source\Composition;Source\Composition\Presentation;Source\Shooting;Source\Shooting\Assets;Source\Ball;Source\Fireworks;Source\Lib;Source\Shared\Audio\MP3Decoder;Source\Shared\Audio\MP3Decoder\Core;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
+        <DCC_UnitSearchPath>Source\MineCart;Source\CrashCannon;Source\TrapAction;Source\Parkour;Source\RobotWar;Source\MarbleRelay;Source\MarbleRelay\Planning;Source\SideRace;Source\FightingRush;Source\JumpAdventure;Source\RhythmGame;Source\RhythmGame\Orbit;Source\RhythmGame\Orbit\Render;Source\RhythmGame\Legacy;Source\RhythmGame\Step;Source\Mining;Source\Train;Source\BombAction;Source\Breakout;Source\Breakout\Score;Source\Shared\Audio;Source\Shared\Render;Source\Shared\Settings;Source\Shared\Common;Source\Shared\UI;Source\Shared\Host;Source\Composition;Source\Composition\Presentation;Source\Shooting;Source\Shooting\Assets;Source\Ball;Source\Fireworks;Source\Lib;Source\Shared\Audio\MP3Decoder;Source\Shared\Audio\MP3Decoder\Core;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
         <DCC_Namespace>System;Xml;Data;Datasnap;Web;Soap;Winapi;Vcl;$(DCC_Namespace)</DCC_Namespace>
         <SanitizedProjectName>SYNC_RhythmShooter</SanitizedProjectName>
     </PropertyGroup>
@@ -123,6 +123,12 @@
         <DCCReference Include="Source\CrashCannon\RhythmCannonArt.pas"/>
         <DCCReference Include="Source\CrashCannon\RhythmCannonScene.pas"/>
         <DCCReference Include="Source\CrashCannon\RhythmCannonStyle.pas"/>
+        <DCCReference Include="Source\TrapAction\RhythmTrapPlan.pas"/>
+        <DCCReference Include="Source\TrapAction\RhythmTrapBuild.pas"/>
+        <DCCReference Include="Source\TrapAction\RhythmTrapCodec.pas"/>
+        <DCCReference Include="Source\TrapAction\RhythmTrapArt.pas"/>
+        <DCCReference Include="Source\TrapAction\RhythmTrapScene.pas"/>
+        <DCCReference Include="Source\TrapAction\RhythmTrapStyle.pas"/>
         <DCCReference Include="Source\RobotWar\RhythmRobotPlan.pas"/>
         <DCCReference Include="Source\RobotWar\RhythmRobotPose.pas"/>
         <DCCReference Include="Source\RobotWar\RhythmRobotCodec.pas"/>

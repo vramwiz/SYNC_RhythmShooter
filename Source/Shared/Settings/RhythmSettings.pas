@@ -14,6 +14,7 @@ type
     EqualizerMode:Integer; // -1=旧版移行の初期値、0=非表示、1=表示。解析計画とは独立。
     MarbleBall:TMarbleBallStyle;
     MarbleStage:TMarbleStageStyle;
+    TrapStage:TTrapStage;
     class function Defaults:TRhythmSettings; static;
     procedure BindHostMusic(const FileName:string);
     function ToJSON:string;
@@ -76,6 +77,7 @@ begin
     J.AddPair('style',StyleId(Style));
     if MarbleBall<>mbSteel then J.AddPair('marbleBall',TJSONNumber.Create(Ord(MarbleBall)));
     if MarbleStage<>msWoodWorkshop then J.AddPair('marbleStage',MarbleStageIds[MarbleStage]);
+    J.AddPair('trapStage',TrapStageIds[TrapStage]);
     J.AddPair('audioDensity',TJSONNumber.Create(EnsureRange(GameThreshold,-100,100)));
     J.AddPair('gameThreshold',TJSONNumber.Create(EnsureRange(GameThreshold,-100,100))); // 旧音ゲー版で読むため保持
     if EqualizerMode>=0 then J.AddPair('equalizer',TJSONBool.Create(EqualizerMode>0));
@@ -105,7 +107,7 @@ const
   LegacyMarbleStages:array[0..5] of TMarbleStageStyle=
     (msWoodWorkshop,msDeskCraft,msSteampunk,msStoneRuins,msClearAcrylic,msNeonArcade);
 var
-  Stage:TMarbleStageStyle;
+  Stage:TMarbleStageStyle;TrapTheme:TTrapStage;
   J,V:TJSONValue;
   O,PlanObject,Layers,Movie:TJSONObject;
   I,ExpectedVariant:Integer;LegacyPlan:TRhythmPlanRef;LegacyStyle:TRhythmStyle;
@@ -143,6 +145,12 @@ begin
         InRange(I,Low(LegacyMarbleStages),High(LegacyMarbleStages)) then
         // 旧設定の番号は旧メニューの並びに従って復元する。
         Value.MarbleStage:=LegacyMarbleStages[I];
+      V:=O.GetValue('trapStage');
+      if V<>nil then begin
+        if not (V is TJSONString) then Exit;I:=-1;
+        for TrapTheme:=Low(TTrapStage) to High(TTrapStage) do if V.Value=TrapStageIds[TrapTheme] then I:=Ord(TrapTheme);
+        if I<0 then Exit;Value.TrapStage:=TTrapStage(I);
+      end;
       Value.HostMusic:=O.GetValue<string>('musicSource','')='host';
       Value.Music:=O.GetValue<string>('music','');
       Value.Direction:=EnsureRange(O.GetValue<Integer>('direction',0),0,1);
@@ -182,7 +190,7 @@ begin
           if Value.Plan.Style=rsJumpAdventure then Value.Plan.Generation:=PlanObject.GetValue<string>('generation','');
           V:=PlanObject.GetValue('density');
           if (V<>nil) and ((not (V is TJSONNumber)) or not TryStrToInt(V.Value,Value.Plan.AudioDensity)) then Exit;
-          ExpectedVariant:=StyleVariant(Value.Style,Value.FireworksRichness,Value.BossFrequency,Value.GameThreshold);
+          ExpectedVariant:=StyleVariant(Value.Style,Value.FireworksRichness,Value.BossFrequency,Value.GameThreshold,Value.TrapStage);
           if (Value.Style=rsRhythmGame) and (Value.Plan.Version=1) then ExpectedVariant:=0;
           if (Value.Style=rsRhythmGame) and (Value.Plan.Version=2) then ExpectedVariant:=Value.GameThreshold+1;
           if (Value.Style in [rsShooting,rsBreakout]) and (Value.Plan.Variant=0) and (Value.BossFrequency=100) then ExpectedVariant:=0;
