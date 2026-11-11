@@ -1,4 +1,5 @@
-unit MP3Layer3;
+﻿unit MP3Layer3;
+// MP3 Layer IIIの係数処理と合成を実行し、左右のPCMを生成する。
 
 {$POINTERMATH ON}
 

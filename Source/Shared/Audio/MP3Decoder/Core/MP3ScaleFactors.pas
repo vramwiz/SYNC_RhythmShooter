@@ -1,4 +1,5 @@
-unit MP3ScaleFactors;
+﻿unit MP3ScaleFactors;
+// MP3 Layer IIIのスケールファクターと強度ステレオの係数を復号する。
 
 {
   MP3ScaleFactors.pas - Scale factor decode for MP3 Layer III

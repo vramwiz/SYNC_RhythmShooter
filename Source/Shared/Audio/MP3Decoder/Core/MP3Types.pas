@@ -1,4 +1,5 @@
-unit MP3Types;
+﻿unit MP3Types;
+// MP3復号に使用する定数、テーブル、フレーム状態の型を定義する。
 
 {
   MP3Types.pas - Types and constants for minimp3-faithful MP3 decoder

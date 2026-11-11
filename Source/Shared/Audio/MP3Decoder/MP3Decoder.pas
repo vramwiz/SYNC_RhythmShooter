@@ -1,4 +1,5 @@
 ﻿unit MP3Decoder;
+// MP3フレームの復号、ギャップレス補正、共通PCM形式への変換を公開する。
 
 interface
 uses System.SysUtils, System.Classes;

@@ -1,10 +1,10 @@
-# 参照・同梱物
+﻿# 参照・同梱物
 
 ## 純Delphi MP3デコーダー
 
-`V:\DelphiProg\MP3_Decoder` の `pascal-minimp3-2` を `Source/Lib/MP3Decoder` へコピーした。MP3のデコードと44.1kHz・16bit・ステレオへの変換をプロセス内で行い、FFmpegやMedia Foundationは呼び出さない。再生は既存のWindows waveOutを使用する。参照元プロジェクトは変更していない。
+`V:\DelphiProg\MP3_Decoder` の `pascal-minimp3-2` を `Source/Shared/Audio/MP3Decoder` へコピーした。MP3のデコードと44.1kHz・16bit・ステレオへの変換をプロセス内で行い、FFmpegやMedia Foundationは呼び出さない。再生は既存のWindows waveOutを使用する。参照元プロジェクトは変更していない。
 
-Layer IIIの演算部分は [minimp3](https://github.com/lieff/minimp3) の [Delphi移植](https://github.com/gustavoeenriquez/delphi-libraries)（固定commit `849dbaf1892486a6dc5f1ebb555c949a6c4dd4d9`、CC0-1.0）に修正を加えたもの。ライセンス、元ソースとハッシュ、修正内容、今回取り込んだ7ユニットのSHA-256は `ThirdParty/MP3Decoder` に保持する。配布ZIPには `LICENSE.md`、`provenance.json`、`CORE_CHANGES.md`、`integration.json` を含める。
+Layer IIIの演算部分は [minimp3](https://github.com/lieff/minimp3) の [Delphi移植](https://github.com/gustavoeenriquez/delphi-libraries)（固定commit `849dbaf1892486a6dc5f1ebb555c949a6c4dd4d9`、CC0-1.0）に修正を加えたもの。改修済みのデコーダーを共通音声ソースとして管理する。出典・ライセンス、比較用の原典とハッシュ、修正記録は `Source/Shared/Audio/MP3Decoder` に保持する。比較用原典は `.pas.original` として保存し、コンパイル対象のCoreと区別する。
 
 ## Windows標準のWAV読み込み
 

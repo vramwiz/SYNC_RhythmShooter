@@ -1,4 +1,5 @@
-unit MP3BitStream;
+﻿unit MP3BitStream;
+// MP3のビット列を境界検査付きで読み取る。
 
 {
   MP3BitStream.pas - Bit-level stream reader for MP3 decoding

@@ -1,4 +1,5 @@
-unit MP3Huffman;
+﻿unit MP3Huffman;
+// MP3 Layer IIIのハフマン符号をスペクトル係数へ復号する。
 {$POINTERMATH ON}
 
 {

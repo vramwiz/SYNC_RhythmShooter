@@ -1,4 +1,14 @@
-﻿## 2026-11-11 残存FFmpegフォルダーの削除
+﻿## 2026-11-11 MP3デコーダーを共通音声ソースへ移動
+
+本人の指示により、デコーダー本体7ユニットをSource/Lib/MP3DecoderからSource/Shared/Audio/MP3Decoderへ移した。ThirdParty/MP3Decoderの出典・ライセンス・修正記録・原典比較資料も同じフォルダーへ集約した。原典6ユニットはOriginal内の.pas.originalへ改名し、コンパイル対象から区別する。minimp3由来のCC0表記と既存の出典情報をソース側で保持する。provenance.jsonのsha256は保存ファイルの実バイト、upstreamSHA256は改行正規化前の上流原典ハッシュとして記録した。
+
+全7製品と7プレビューへ実装ユニットの明示参照を追加し、コンパイラー検索パスも更新。ThirdPartyを必要とするビルド/ZIP作成時の確認・コピー処理を撤去し、ルートとWin64配下に残っていたThirdPartyフォルダーを削除した。カタログのThirdParty削除項目は旧版更新・アンインストールの掃除用として保持する。FFmpegのライセンス類は前回までに削除済みだった。
+
+7ユニットは責務コメントの追加を除いてPascal実装トークンが一致。原典6件も改行をLFへ正規化すると上流ハッシュと一致し、内容の一致を確認。Releaseビルドが成功し、ビルド後処理の出力がDLL/AUF2のみでThirdPartyを生成しないことを確認した。循環・宣言順違反・責務コメント欠落0件。検証記録はWin64/MP3SourceMove。
+
+---
+
+## 2026-11-11 残存FFmpegフォルダーの削除
 
 本人の指示でFFmpegの使用状況を再確認。製品ソース・プロジェクト・ビルド/配布処理に呼び出しや依存はなく、MP3は純DelphiのMP3Decoder、WAVはWindows標準のRhythmWaveDecodeを使用している。残存していたThirdParty/FFmpegをフォルダーごと削除した。旧EXE/DLL計9ファイル、約239 MiBを削減。作業フォルダー全体を再走査し、FFmpeg/ffprobe関連フォルダーと本体・依存バイナリの残存0件を確認した。
 

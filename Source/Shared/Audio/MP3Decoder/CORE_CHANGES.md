@@ -1,6 +1,6 @@
 # Decoder core review
 
-Scope: six units in Source/Core. The vendored originals in ThirdParty were preserved. No files in SYNC_RhythmShooter were changed. Reviewed the units as self-contained mathematical decoding and stream parsing: no process execution, network access, installation or external runtime dependency.
+Scope: the six units in Core. The comparison sources are kept in Original with the .pas.original extension. This document records the decoder review before integration into SYNC_RhythmShooter. Reviewed the units as self-contained mathematical decoding and stream parsing: no process execution, network access, installation or external runtime dependency.
 
 ## Algorithm corrections
 

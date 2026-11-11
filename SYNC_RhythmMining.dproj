@@ -42,7 +42,7 @@
         <GenDll>true</GenDll>
         <DCC_DcuOutput>.\$(Platform)\RhythmMining\$(Config)\DCU</DCC_DcuOutput>
         <DCC_ExeOutput>.\$(Platform)\RhythmMining\$(Config)</DCC_ExeOutput>
-        <DCC_UnitSearchPath>Source\MineCart;Source\CrashCannon;Source\Parkour;Source\RobotWar;Source\MarbleRelay;Source\MarbleRelay\Planning;Source\SideRace;Source\FightingRush;Source\JumpAdventure;Source\RhythmGame;Source\RhythmGame\Orbit;Source\RhythmGame\Orbit\Render;Source\RhythmGame\Legacy;Source\RhythmGame\Step;Source\Mining;Source\Train;Source\BombAction;Source\Breakout;Source\Breakout\Score;Source\Shared\Audio;Source\Shared\Render;Source\Shared\Settings;Source\Shared\Common;Source\Shared\UI;Source\Shared\Host;Source\Composition;Source\Composition\Presentation;Source\Shooting;Source\Shooting\Assets;Source\Ball;Source\Fireworks;Source\Lib;Source\Lib\MP3Decoder;Source\Lib\MP3Decoder\Core;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
+        <DCC_UnitSearchPath>Source\MineCart;Source\CrashCannon;Source\Parkour;Source\RobotWar;Source\MarbleRelay;Source\MarbleRelay\Planning;Source\SideRace;Source\FightingRush;Source\JumpAdventure;Source\RhythmGame;Source\RhythmGame\Orbit;Source\RhythmGame\Orbit\Render;Source\RhythmGame\Legacy;Source\RhythmGame\Step;Source\Mining;Source\Train;Source\BombAction;Source\Breakout;Source\Breakout\Score;Source\Shared\Audio;Source\Shared\Render;Source\Shared\Settings;Source\Shared\Common;Source\Shared\UI;Source\Shared\Host;Source\Composition;Source\Composition\Presentation;Source\Shooting;Source\Shooting\Assets;Source\Ball;Source\Fireworks;Source\Lib;Source\Shared\Audio\MP3Decoder;Source\Shared\Audio\MP3Decoder\Core;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
         <DCC_Namespace>System;Xml;Data;Datasnap;Web;Soap;Winapi;Vcl;$(DCC_Namespace)</DCC_Namespace>
         <SanitizedProjectName>SYNC_RhythmMining</SanitizedProjectName>
     </PropertyGroup>
@@ -148,6 +148,13 @@
         <DCCReference Include="Source\RhythmGame\Orbit\Render\RhythmOrbitScene.pas"/>
         <DCCReference Include="Source\RhythmGame\RhythmGamePlan.pas"/>
         <DCCReference Include="Source\RhythmGame\RhythmGameScene.pas"/>
+        <DCCReference Include="Source\Shared\Audio\MP3Decoder\MP3Decoder.pas"/>
+        <DCCReference Include="Source\Shared\Audio\MP3Decoder\Core\MP3BitStream.pas"/>
+        <DCCReference Include="Source\Shared\Audio\MP3Decoder\Core\MP3Frame.pas"/>
+        <DCCReference Include="Source\Shared\Audio\MP3Decoder\Core\MP3Huffman.pas"/>
+        <DCCReference Include="Source\Shared\Audio\MP3Decoder\Core\MP3Layer3.pas"/>
+        <DCCReference Include="Source\Shared\Audio\MP3Decoder\Core\MP3ScaleFactors.pas"/>
+        <DCCReference Include="Source\Shared\Audio\MP3Decoder\Core\MP3Types.pas"/>
         <DCCReference Include="Source\Shared\Audio\RhythmAudioData.pas"/>
         <DCCReference Include="Source\Shared\Audio\RhythmAudioCache.pas"/>
         <DCCReference Include="Source\Shared\Audio\RhythmAudioDecode.pas"/>

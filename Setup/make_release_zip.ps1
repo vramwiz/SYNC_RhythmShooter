@@ -30,15 +30,6 @@ $packageFiles = [ordered]@{
     'LICENSE' = Join-Path $projectDir 'LICENSE'
     'THIRD_PARTY_NOTICES.md' = Join-Path $projectDir 'THIRD_PARTY_NOTICES.md'
 }
-foreach ($notice in @('LICENSE.md','provenance.json','CORE_CHANGES.md','integration.json')) {
-    $relativePath = 'ThirdParty\MP3Decoder\' + $notice
-    $sourcePath = Join-Path $projectDir $relativePath
-    if (-not (Test-Path -LiteralPath $sourcePath -PathType Leaf)) {
-        throw "MP3 decoder notice not found: $sourcePath"
-    }
-    $packageFiles[$relativePath] = $sourcePath
-}
-
 Add-Type -AssemblyName System.IO.Compression, System.IO.Compression.FileSystem
 $zipPath = Join-Path $PSScriptRoot "$packageName.zip"
 $tempBase = Join-Path $PSScriptRoot ('.release-' + [guid]::NewGuid().ToString('N'))

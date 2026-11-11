@@ -1,4 +1,8 @@
-﻿# 純Delphi MP3デコーダーへの切り替え（2026-11-08）
+﻿## 2026-11-11 ソース配置の整理
+
+改修済みデコーダーは共通音声ソースとして Source/Shared/Audio/MP3Decoder に移動した。出典・CC0ライセンス・修正記録と比較用原典も同じフォルダーに置く。ThirdPartyからのビルド/配布時コピーを撤去した。以下は導入時点の記録。
+
+# 純Delphi MP3デコーダーへの切り替え（2026-11-08）
 
 MP3の準備時デコードを `V:\DelphiProg\MP3_Decoder` の `pascal-minimp3-2` に切り替えた。プレビューは従来のWindows waveOutでPCMを再生する。MP3のデコード・再生でFFmpeg、Media Foundation、外部デコーダーEXEは呼び出さない。WAVはWindows標準のMedia Foundationで復号し、MP3と共通のリサンプラーで44.1kHzへ変換する。64bit floatのmono/stereo WAVはDelphiで読み込む。FFmpeg本体・DLL・子プロセス処理・ダウンロードスクリプトは削除済み。
 

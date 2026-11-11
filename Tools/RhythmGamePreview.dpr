@@ -59,6 +59,13 @@ uses
   RhythmGamePlan in '..\Source\RhythmGame\RhythmGamePlan.pas',
   RhythmGameScene in '..\Source\RhythmGame\RhythmGameScene.pas',
   // 共通データ／版別描画／計画責務をIDEから辿れる明示参照。
+  MP3Decoder in '..\Source\Shared\Audio\MP3Decoder\MP3Decoder.pas',
+  MP3BitStream in '..\Source\Shared\Audio\MP3Decoder\Core\MP3BitStream.pas',
+  MP3Frame in '..\Source\Shared\Audio\MP3Decoder\Core\MP3Frame.pas',
+  MP3Huffman in '..\Source\Shared\Audio\MP3Decoder\Core\MP3Huffman.pas',
+  MP3Layer3 in '..\Source\Shared\Audio\MP3Decoder\Core\MP3Layer3.pas',
+  MP3ScaleFactors in '..\Source\Shared\Audio\MP3Decoder\Core\MP3ScaleFactors.pas',
+  MP3Types in '..\Source\Shared\Audio\MP3Decoder\Core\MP3Types.pas',
   RhythmAudioData in '..\Source\Shared\Audio\RhythmAudioData.pas',
   RhythmAudioCache in '..\Source\Shared\Audio\RhythmAudioCache.pas',
   RhythmAudioDecode in '..\Source\Shared\Audio\RhythmAudioDecode.pas',

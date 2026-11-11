@@ -1,4 +1,5 @@
-unit MP3Frame;
+﻿unit MP3Frame;
+// MPEGフレームヘッダーとサイド情報を読み取り、構造を検証する。
 
 {
   MP3Frame.pas - MP3 frame header and side information parser
