@@ -3,6 +3,7 @@
 interface
 uses RhythmTrapPlan,RhythmRenderSurface,RhythmAnimation;
 procedure DrawTrapAction(Surface:TAnimationRenderSurface;Plan:TTrapPlan;const Frame:TAnimationFrame);
+procedure DrawTrapBackdrop(Surface:TAnimationRenderSurface;Plan:TTrapPlan;const Frame:TAnimationFrame);
 implementation
 uses System.Math,System.Types,Vcl.Graphics,RhythmStyles;
 type
@@ -14,6 +15,7 @@ type
     procedure Dot(X,Y,R:Double;Color:TColor);
     procedure Quad(A,B,C,D:TTrapPoint;Color:TColor);
     procedure Backdrop;
+    procedure Setup;
     procedure Terrain;
     procedure Traps;
     procedure Hero;
@@ -39,12 +41,14 @@ procedure TPainter.Quad(A,B,C,D:TTrapPoint;Color:TColor);
 begin S.FillQuad(PointF((A.X-L)*K,(Top-A.Y)*K),PointF((B.X-L)*K,(Top-B.Y)*K),
   PointF((C.X-L)*K,(Top-C.Y)*K),PointF((D.X-L)*K,(Top-D.Y)*K),Color);end;
 procedure TPainter.Backdrop;
-var I,J:Integer;X,Y,B:Double;
+var I,J:Integer;X,Y,B,SavedLeft:Double;
 begin
+  // 背景専用の画面座標へ切替え、横追従・時刻から完全に切り離す。
+  SavedLeft:=L;L:=0;
   S.FillRect(0,0,F.Width,F.Height,BG);
   B:=Top-F.Height/K;
-  for I:=System.Math.Floor((L*0.25)/2.8)-2 to Ceil((L*0.25+VW)/2.8)+2 do begin
-    X:=I*2.8+L*0.75;Y:=2.4+Sin(I*2.4)*0.6;
+  for I:=-2 to Ceil(VW/2.8)+2 do begin
+    X:=I*2.8;Y:=2.4+Sin(I*2.4)*0.6;
     case P.Theme of
       tsCave,tsVolcano,tsIceCave:begin
         Quad(TrapPoint(X,Top),TrapPoint(X+1.9,Top),TrapPoint(X+1.1,Y),TrapPoint(X+0.8,Y+0.5),Stone);
@@ -71,164 +75,149 @@ begin
     end;
   end;
   for I:=0 to 30 do begin
-    X:=L+Frac(I*0.618033+T*0.007)*VW;Y:=Top-Frac(I*0.381966+T*0.013)*F.Height/K;
+    X:=Frac(I*0.618033)*VW;Y:=Top-Frac(I*0.381966)*F.Height/K;
     Dot(X,Y,0.013+Ord(P.Theme=tsVolcano)*0.012,Edge);
   end;
-  Bar(L,B,L+VW,B+0.10,Glow);
+  Bar(0,B,VW,B+0.10,Glow);
+  L:=SavedLeft;
 end;
 procedure TPainter.Terrain;
-var I,J:Integer;Floor:TTrapPlatform;A,B,Y,Z,Age,X:Double;V:TTrapPoint;M:TTrapMove;
+var I,J:Integer;Floor:TTrapPlatform;A,B,Y,Age,X:Double;
 begin
   for I:=0 to High(P.Platforms) do begin
-    Floor:=P.Platforms[I];A:=Floor.Left;B:=Floor.Right;Y:=Floor.Y;Z:=Floor.EndY;
-    if Floor.Move>=0 then begin M:=P.Moves[Floor.Move];V:=M.Position(T);A:=A+V.X;B:=B+V.X;Y:=Y+V.Y;Z:=Z+V.Y;end;
-    if (B<L-2) or (A>L+VW+2) then Continue;
-    Age:=Max(0.0,T-Floor.Finish);
-    if (Floor.Move<0) and (T>=Floor.Finish) and (Floor.Finish<P.Duration) then begin
-      if Floor.Kind in [tkVanish,tkFalseFloor,tkPit,tkSink] then Continue;
-      if Floor.Kind in [tkCrumble,tkBridge,tkCollapse] then begin
-        for J:=0 to 7 do begin X:=A+(B-A)*J/8;
-          Bar(X,Y-Age*Age*(6+J*0.25)-0.25,X+(B-A)*0.10,Y-Age*Age*(6+J*0.25),Stone);
+    Floor:=P.Platforms[I];A:=Floor.Left;B:=Floor.Right;Y:=Floor.Y;
+    if (B<L-2) or (A>L+VW+2) or (T<Floor.Start) then Continue;
+    if (T>=Floor.Finish) and (Floor.Finish<P.Duration) then begin
+      if Floor.Kind=tkCrumble then begin
+        Age:=T-Floor.Finish;
+        if Age<0.7 then for J:=0 to 5 do begin
+          X:=A+(B-A)*J/6;
+          Bar(X,Y-0.25-Age*Age*7,X+(B-A)*0.13,Y-Age*Age*7,Stone);
         end;
-        Continue;
       end;
-      if Floor.Kind=tkFlip then begin Y:=Y-Age*Age*7;Z:=Z-Age*Age*7-Sin(Min(1.0,Age)*Pi)*0.8;end;
+      Continue;
     end;
-    Quad(TrapPoint(A,Y),TrapPoint(B,Z),TrapPoint(B,Z-0.55),TrapPoint(A,Y-0.55),Stone);
-    Line(A,Y,B,Z,0.09,Edge);Line(A,Y-0.15,B,Z-0.15,0.035,BG);
-    for J:=Ceil(A/0.7) to System.Math.Floor(B/0.7) do begin X:=J*0.7;Line(X,Y+(Z-Y)*(X-A)/(B-A)-0.2,X+0.13,Y+(Z-Y)*(X-A)/(B-A)-0.43,0.025,Edge);end;
-    if Floor.Kind=tkIce then Line(A,Y+0.03,B,Z+0.03,0.05,$00FFFFCE);
+    Bar(A,Min(-1.5,Y-0.65),B,Y,Stone);Line(A,Y,B,Y,0.09,Edge);
+    Line(A,Y-0.15,B,Y-0.15,0.035,BG);
+    for J:=Ceil(A/0.7) to System.Math.Floor(B/0.7) do begin
+      X:=J*0.7;Line(X,Y-0.2,Min(B,X+0.13),Y-0.43,0.025,Edge);
+    end;
+    if Floor.Kind=tkCrumble then
+      Line(A+(B-A)*0.45,Y,A+(B-A)*0.56,Y-0.22,0.025,BG);
   end;
-  for I:=Max(0,P.MoveAt(T)-3) to Min(High(P.Moves),P.MoveAt(T)+3) do begin
-    M:=P.Moves[I];if M.Kind<>tmWallKick then Continue;
-    Bar(M.Origin.X-0.55,M.Origin.Y-0.4,M.Origin.X-0.34,M.Origin.Y+2.2,Stone);
-    Line(M.Origin.X-0.34,M.Origin.Y-0.4,M.Origin.X-0.34,M.Origin.Y+2.2,0.04,Edge);
-  end;
-  // 最後の安全そうな門を通る直前にも扉が落ちる。
-  for I:=Max(0,P.MoveAt(T)-4) to Min(High(P.Moves),P.MoveAt(T)+3) do begin
-    M:=P.Moves[I];if (M.Pattern<>17) or ((I>0) and (P.Moves[I-1].Pattern=17)) then Continue;
-    X:=M.Target.X;Line(X,-0.2,X,2.8,0.09,Edge);Line(X,2.8,X+1.6,2.8,0.09,Edge);
-    Bar(X+0.10,2.1,X+1.5,2.23,Glow);
-  end;
-  // 崩落片は通過済みの経路の後方へ落とす。
-  for I:=Max(0,P.MoveAt(T)-5) to P.MoveAt(T) do begin
-    M:=P.Moves[I];Age:=T-M.Cue;
-    if (Age<0) or (Age>1.2) or not (M.Pattern in [1,4,9,10,12,14,18]) then Continue;
-    for J:=0 to 5 do begin X:=M.Origin.X-1.3+J*0.38;Y:=M.Origin.Y-Age*Age*5-J*0.06;
-      Bar(X,Y-0.17,X+0.28,Y,Stone);Line(X,Y,X+0.25,Y,0.04,Edge);end;
+  // 天井の下面は当たり判定と同じ保存座標。段差の縦面も描く。
+  for I:=0 to High(P.Ceilings) do begin
+    Floor:=P.Ceilings[I];A:=Floor.Left;B:=Floor.Right;Y:=Floor.Y;
+    if (B<L-1) or (A>L+VW+1) then Continue;
+    Bar(A,Y,B,Y+0.65,Stone);Line(A,Y,B,Y,0.075,Edge);
+    if (I>0) and (Abs(P.Ceilings[I-1].Right-A)<1E-8) then
+      Line(A,P.Ceilings[I-1].Y,A,Y,0.06,Edge);
+    for J:=Ceil(A/0.9) to System.Math.Floor(B/0.9) do begin
+      X:=J*0.9;Line(X,Y+0.18,Min(X+0.15,B),Y+0.37,0.025,BG);
+    end;
   end;
 end;
 procedure TPainter.Traps;
-var I,J,N:Integer;Q:TTrapObstacle;B:TTrapBox;X,Y,W,H,A,Age:Double;C:TColor;
+var I,J,N:Integer;Q:TTrapObstacle;B:TTrapBox;Y,W,H:Double;C:TColor;
 begin
   for I:=0 to High(P.Obstacles) do begin
-    Q:=P.Obstacles[I];if (T<Q.Reveal) or (T>Q.Finish+0.25) then Continue;
-    B:=Q.BoundsAt(T);if (B.Right<L-2) or (B.Left>L+VW+2) then Continue;
-    X:=(B.Left+B.Right)*0.5;Y:=B.Bottom;W:=B.Right-B.Left;H:=B.Top-B.Bottom;
-    if T<Q.Fire then begin Dot(Q.X,Q.Y+0.1,0.055,Glow);Continue;end;
-    if TrapHarmless(Q.Kind) then begin
-      Age:=Max(0.0,T-Q.Cue);N:=Max(3,Round(Q.W/0.4));
-      for J:=0 to N do begin A:=Q.X-Q.W*0.5+Q.W*J/N;
-        Bar(A,Q.Y-Age*Age*8-0.22,A+0.28,Q.Y-Age*Age*8,Edge);end;
-      Continue;
-    end;
+    Q:=P.Obstacles[I];
+    // 穴と崩れる床はTerrainの実タイルだけで描く。後方への無関係な落下物を作らない。
+    if TrapHarmless(Q.Kind) or (T<Q.Reveal) or (T>Q.Finish) then Continue;
+    B:=Q.BoundsAt(T);if (B.Right<L-1) or (B.Left>L+VW+1) then Continue;
+    Y:=B.Bottom;W:=B.Right-B.Left;H:=B.Top-B.Bottom;
     C:=$005265F5;
     case Q.Kind of
-      tkSpikes,tkHiddenSpikes,tkFalseFloor,tkFlame,tkLava:begin
-        N:=Max(2,Ceil(W/0.22));
-        for J:=0 to N-1 do Quad(TrapPoint(B.Left+W*J/N,Y),TrapPoint(B.Left+W*(J+0.5)/N,Y+H),
-          TrapPoint(B.Left+W*(J+1)/N,Y),TrapPoint(B.Left+W*J/N,Y),C);
-        Line(B.Left,Y,B.Right,Y,0.05,Glow);
+      tkSpikes,tkHiddenSpikes:begin
+        if H>0.001 then begin
+          N:=Max(2,Ceil(W/0.22));
+          for J:=0 to N-1 do Quad(TrapPoint(B.Left+W*J/N,Y),TrapPoint(B.Left+W*(J+0.5)/N,Y+H),
+            TrapPoint(B.Left+W*(J+1)/N,Y),TrapPoint(B.Left+W*J/N,Y),C);
+        end;
+        Line(B.Left,Y+0.02,B.Right,Y+0.02,0.04,Edge);
       end;
-      tkBlade,tkFlyingBlade,tkHunter:begin
-        Dot(X,Y+H*0.5,Min(W,H)*0.5,C);
-        for J:=0 to 7 do begin A:=J*Pi/4+T*8;
-          Line(X,Y+H*0.5,X+Cos(A)*W*0.5,Y+H*0.5+Sin(A)*H*0.5,0.05,Glow);end;
-      end;
-      tkArrow:begin Line(B.Left,Y+H*0.5,B.Right,Y+H*0.5,0.045,Glow);Line(B.Left,Y+H*0.5,B.Left+0.2,Y+H,0.035,C);end;
-      tkLaser:begin Bar(B.Left,Y,B.Right,Y+H,C);Line(B.Left,Y+H*0.5,B.Right,Y+H*0.5,0.025,$00FFFFE8);Dot(B.Right,Y+H*0.5,0.13,Glow);end;
-      tkBoulder:begin Dot(X,Y+H*0.5,W*0.5,Stone);S.Circle((X-L)*K,(Top-Y-H*0.5)*K,W*0.5*K,Edge,False,3);
-        for J:=0 to 4 do begin A:=J*1.26+T*4;Line(X,Y+H*0.5,X+Cos(A)*W*0.4,Y+H*0.5+Sin(A)*H*0.4,0.05,BG);end;end;
-      else begin
-        Bar(B.Left,Y,B.Right,Y+H,Stone);Line(B.Left,Y,B.Right,Y,0.08,C);
-        for J:=0 to Max(1,System.Math.Floor(W/0.4)) do begin A:=B.Left+J*0.4;Line(A,Y+0.04,Min(A+0.23,B.Right),Min(Y+0.27,Y+H),0.065,Glow);end;
-        if Q.Kind=tkBackground then begin Bar(X-0.6,Y+H*0.65,X-0.24,Y+H*0.73,C);Bar(X+0.24,Y+H*0.65,X+0.6,Y+H*0.73,C);end;
+      tkCeiling:begin
+        N:=Max(1,Ceil(W/0.23));
+        for J:=0 to N-1 do Quad(TrapPoint(B.Left+W*J/N,Y+H),
+          TrapPoint(B.Left+W*(J+0.5)/N,Y),TrapPoint(B.Left+W*(J+1)/N,Y+H),
+          TrapPoint(B.Left+W*J/N,Y+H),C);
+        Line(B.Left,Y+H,B.Right,Y+H,0.055,Glow);
+        if (T>=Q.Cue) and (T<Q.Cue+0.10) then
+          Line(Q.X-0.25,Q.Y+0.02,Q.X+0.25,Q.Y+0.02,0.05,Glow);
       end;
     end;
-    Age:=T-Q.Cue;
-    if (Age>=0) and (Age<0.33) then for J:=0 to 7 do begin A:=J*Pi/4;
-      Dot(X+Cos(A)*Age*2,Y+Sin(A)*Age*2,0.028*(1-Age/0.33),Glow);end;
   end;
 end;
 procedure TPainter.Hero;
-var M:TTrapMove;V,Q:TTrapPoint;H,U,Swing,Lean,Age,Angle:Double;I,J:Integer;C:TColor;
+var M,E:TTrapMove;V,Q:TTrapPoint;H,U,Swing,Lean,Age,At,LiftA,LiftB,Face:Double;I,J,N:Integer;C:TColor;
 begin
   I:=P.MoveAt(T);M:=P.Moves[I];V:=P.Position(T);H:=M.HeightAt(T);U:=M.Progress(T);
-  Swing:=Sin(V.X*8)*0.16;Lean:=0.04;
-  if M.Kind in [tmJump,tmDoubleJump,tmWallKick,tmLaunch,tmFall] then begin Swing:=Sin(U*Pi)*0.18;Lean:=0.09;end;
-  if M.Kind in [tmHang,tmClimb,tmStop] then Swing:=0;
-  if M.Kind=tmWallKick then Swing:=-0.2*(1-TrapRange(T,M.Start,M.Cue));
-  if M.Kind=tmLaunch then Lean:=Sin(U*Pi*2)*0.16;
-  if M.Kind in [tmDoubleJump,tmLaunch,tmSkate] then for J:=1 to 5 do begin
-    Q:=M.Position(Max(M.Start,T-J*0.035));Dot(Q.X-0.15,Q.Y+0.14,0.025*(6-J),Glow);
+  Face:=P.Facing(T);Swing:=Sin(M.StepPhase(T))*0.22*Cos((I mod 2)*Pi);Lean:=0.04*Face;
+  LiftA:=M.FootLift(T,I mod 2);LiftB:=M.FootLift(T,(I+1) mod 2);
+  if M.Kind=tmJump then begin
+    Swing:=Sin(U*Pi)*0.13;Lean:=0.07*Face;LiftA:=Sin(U*Pi)*0.13;LiftB:=LiftA;
   end;
-  if T>=P.GoalTime then begin Swing:=0;Lean:=0;end;
+  if (M.Kind=tmStop) or (T>=P.GoalTime) then begin Swing:=0;Lean:=0;LiftA:=0;LiftB:=0;end;
   C:=$00B9E77B;
-  Line(V.X-0.1,V.Y+0.08,V.X-0.13+Swing,V.Y+H*0.37,0.10,$006A8061);
-  Line(V.X+0.13,V.Y+0.08,V.X+0.10-Swing,V.Y+H*0.37,0.10,C);
+  Line(V.X-0.12+Swing,V.Y+0.05+LiftA,V.X-0.08,V.Y+H*0.37,0.10,$006A8061);
+  Line(V.X+0.12-Swing,V.Y+0.05+LiftB,V.X+0.08,V.Y+H*0.37,0.10,C);
   Line(V.X,V.Y+H*0.35,V.X+Lean,V.Y+H*0.74,0.20,C);
-  if (M.Kind in [tmHang,tmClimb]) or (T>=P.GoalTime) then begin
-    Line(V.X,V.Y+H*0.64,V.X-0.25,V.Y+H*0.96,0.08,C);Line(V.X+0.08,V.Y+H*0.64,V.X+0.27,V.Y+H*0.96,0.08,C);
+  if T>=P.GoalTime then begin
+    Line(V.X,V.Y+H*0.64,V.X-0.25,V.Y+H*0.96,0.08,C);
+    Line(V.X+0.08,V.Y+H*0.64,V.X+0.27,V.Y+H*0.96,0.08,C);
   end else begin
-    Line(V.X-0.04,V.Y+H*0.68,V.X-0.23-Swing*0.35,V.Y+H*0.48,0.08,C);
-    Line(V.X+0.10,V.Y+H*0.68,V.X+0.27,V.Y+H*0.48+Swing,0.08,C);
+    Line(V.X-0.04*Face,V.Y+H*0.68,V.X-(0.23+Swing*0.35)*Face,V.Y+H*0.48,0.08,C);
+    Line(V.X+0.10*Face,V.Y+H*0.68,V.X+0.27*Face,V.Y+H*0.48+Swing,0.08,C);
   end;
-  Dot(V.X+Lean,V.Y+H*0.85,Min(0.16,H*0.22),$00DEF9DF);
-  Dot(V.X+Lean+0.075,V.Y+H*0.87,0.028,BG);
-  Line(V.X-0.07,V.Y+H*0.70,V.X-0.40,V.Y+H*0.65+Sin(T*15)*0.05,0.065,$0054B5FF);
-  Age:=T-M.Cue;
-  if M.CueSynced and (Age>=0) and (Age<0.20) then begin
-    Q:=M.Position(M.Cue);
-    for J:=0 to 7 do begin Angle:=J*Pi/4;Dot(Q.X+Cos(Angle)*(0.45+Age),Q.Y+0.55+Sin(Angle)*(0.45+Age),0.022*(1-Age/0.20),Glow);end;
+  Dot(V.X+Lean,V.Y+H*0.85,0.16,$00DEF9DF);
+  Dot(V.X+Lean+0.075*Face,V.Y+H*0.87,0.028,BG);
+  Line(V.X-0.07*Face,V.Y+H*0.70,V.X-0.30*Face,V.Y+H*0.65+Sin(T*15)*0.03,0.065,$0054B5FF);
+  // 音の瞬間の接地・停止を足元に描く。動作途中の無関係な円形点滅は使わない。
+  for N:=Max(0,I-2) to I do begin
+    E:=P.Moves[N];At:=E.Finish;
+    if E.Kind=tmStop then begin
+      if not E.CueSynced then Continue;At:=E.Start;
+    end else if not E.LandSynced then Continue;
+    Age:=T-At;if (Age<0) or (Age>=0.12) then Continue;
+    Q:=E.Position(At);
+    Line(Q.X-0.10-Age,Q.Y+0.015,Q.X+0.10+Age,Q.Y+0.015,0.035,Glow);
+    for J:=0 to 4 do
+      Dot(Q.X+(J-2)*Age*1.7,Q.Y+0.035+Sin(J*0.7)*Age,0.025*(1-Age/0.12),Glow);
   end;
-  if (I>0) and P.Moves[I-1].Landing then begin Age:=T-M.Start;if (Age>=0) and (Age<0.22) then for J:=0 to 4 do
-    Dot(V.X+(J-2)*Age*1.8,V.Y+0.03+Sin(J)*Age,0.033*(1-Age/0.22),Glow);end;
 end;
 procedure TPainter.Finish;
 const Glyph:array[0..4,0..6] of Byte=((15,16,16,16,16,16,15),(16,16,16,16,16,16,31),
   (31,16,16,30,16,16,31),(14,17,17,31,17,17,17),(30,17,17,30,20,18,17));
-var X,Y,A:Double;I,J,B:Integer;
+var X,Y,A,Base:Double;I,J,B:Integer;
 begin
-  X:=P.GoalX+1;Line(X,0,X,3.1,0.12,Edge);Line(X,3.1,X+2,3.1,0.12,Edge);Line(X+2,3.1,X+2,0,0.12,Edge);
-  if T<P.GoalTime then begin Bar(X+0.1,2.2,X+1.9,2.35,Glow);Exit;end;
-  A:=TrapRange(T,P.GoalTime,P.Duration);Y:=3.8;
+  Base:=P.Position(P.GoalTime).Y;
+  X:=P.GoalX+1;Line(X,Base,X,Base+3.1,0.12,Edge);Line(X,Base+3.1,X+2,Base+3.1,0.12,Edge);Line(X+2,Base+3.1,X+2,Base,0.12,Edge);
+  if T<P.GoalTime then begin Bar(X+0.1,Base+2.2,X+1.9,Base+2.35,Glow);Exit;end;
+  A:=TrapRange(T,P.GoalTime,P.Duration);Y:=Base+3.8;
   for I:=0 to 4 do for J:=0 to 6 do for B:=0 to 4 do
     if Glyph[I,J] and (1 shl (4-B))<>0 then Bar(P.GoalX-1.5+I*0.67+B*0.105,Y-J*0.12,
       P.GoalX-1.41+I*0.67+B*0.105,Y+0.09-J*0.12,Glow);
-  for I:=0 to 35 do begin X:=P.GoalX-4+Frac(I*0.618)*9;Y:=4.5-Frac(I*0.382+A*0.9)*4;
+  for I:=0 to 35 do begin X:=P.GoalX-4+Frac(I*0.618)*9;Y:=Base+4.5-Frac(I*0.382+A*0.9)*4;
     Bar(X,Y,X+0.05,Y+0.1,Palettes[TTrapStage(I mod 8),3]);end;
 end;
-procedure TPainter.Paint;
-var V,A,B:TTrapPoint;Zoom,Progress,Weight,Needed:Double;Q:TTrapObstacle;Box:TTrapBox;
+procedure TPainter.Setup;
 begin
-  T:=EnsureRange(F.Time,0.0,P.Duration);V:=P.Position(T);Progress:=T/P.Duration;
-  Zoom:=15+Progress*4+2*Sqr(Sin(Pi*P.Moves[P.MoveAt(T)].Progress(T)));
-  VW:=Max(Zoom,F.Width/F.Height*7.5);
-  for Q in P.Obstacles do begin
-    if TrapHarmless(Q.Kind) or (T<Q.Reveal-0.25) or (T>Q.Finish+0.25) then Continue;
-    Weight:=TrapRange(T,Q.Reveal-0.25,Q.Cue)*(1-TrapRange(T,Q.Cue,Q.Finish+0.25));
-    Box:=Q.BoundsAt(Q.Cue);
-    Needed:=Max((V.X-Box.Left+1)/0.32,(Box.Right-V.X+1)/0.68);
-    Needed:=Max(Needed,Max((V.Y-Box.Bottom+1)/0.26,(Box.Top-V.Y+1)/0.74)*F.Width/F.Height);
-    VW:=Max(VW,Zoom+(Needed-Zoom)*Weight);
-  end;
-  K:=F.Width/VW;
-  A:=P.Position(Max(0.0,T-0.22));B:=P.Position(Min(P.GoalTime,T+0.22));
-  L:=V.X-VW*0.32;Top:=F.Height/K*0.74+(A.Y+V.Y*2+B.Y)*0.25;
+  if (F.Width<=0) or (F.Height<=0) then Exit;
+  T:=EnsureRange(F.Time,0.0,P.Duration);
+  // 倍率と上下の視点は固定。床と天井の段差やジャンプで画角を揺らさない。
+  K:=Min(F.Width/18.0,F.Height/8.0);VW:=F.Width/K;
+  L:=P.ForwardX(T)-VW*0.32;Top:=F.Height/K*0.74;
   BG:=Palettes[P.Theme,0];Stone:=Palettes[P.Theme,1];Edge:=Palettes[P.Theme,2];Glow:=Palettes[P.Theme,3];
-  Backdrop;Terrain;Traps;Finish;if not F.BackgroundOnly then Hero;
+end;
+procedure TPainter.Paint;
+begin
+  if (F.Width<=0) or (F.Height<=0) then Exit;
+  Setup;Backdrop;Terrain;Traps;Finish;if not F.BackgroundOnly then Hero;
 end;
 procedure DrawTrapAction(Surface:TAnimationRenderSurface;Plan:TTrapPlan;const Frame:TAnimationFrame);
 var Painter:TPainter;
 begin Painter.S:=Surface;Painter.P:=Plan;Painter.F:=Frame;Painter.Paint;end;
+procedure DrawTrapBackdrop(Surface:TAnimationRenderSurface;Plan:TTrapPlan;const Frame:TAnimationFrame);
+var Painter:TPainter;
+begin Painter.S:=Surface;Painter.P:=Plan;Painter.F:=Frame;Painter.Setup;Painter.Backdrop;end;
 end.

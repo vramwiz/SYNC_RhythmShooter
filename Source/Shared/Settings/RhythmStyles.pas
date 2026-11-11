@@ -69,7 +69,7 @@ const
     (Id:'parkour';Title:'パルクール（試作）';MiddleTitle:'パルクール（試作）';FixedSmall:'屋上の横スクロール';ProgressText:'音時刻から連続ステップ・壁走り・ワイヤーを準備中';Group:sgAction;Order:6;SmallKind:skFixed;Version:2;Versions:[1,2];Features:[sfPrepared,sfOwnFinale];VariantKind:svNone),
     (Id:'marble-relay';Title:'からくりリレー（試作）';MiddleTitle:'からくりリレー（試作）';FixedSmall:'球を追うコース';ProgressText:'音時刻から球の経路と仕掛けの連鎖を準備中';Group:sgBall;Order:2;SmallKind:skFixed;Version:16;Versions:[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16];Features:[sfPrepared,sfOwnFinale];VariantKind:svNone),
     (Id:'robot-war';Title:'ロボット大戦';MiddleTitle:'ロボット大戦';FixedSmall:'都市の変形・合体戦';ProgressText:'音時刻から変形・合体・都市戦を準備中';Group:sgAction;Order:7;SmallKind:skFixed;Version:1;Versions:[1];Features:[sfPrepared,sfOwnFinale];VariantKind:svNone),
-    (Id:'trap-action';Title:'初見殺しアクション';MiddleTitle:'初見殺しアクション';FixedSmall:'罠を突破する横スクロール';ProgressText:'回避軌道・連動する罠・安全距離を逆算中';Group:sgAction;Order:8;SmallKind:skFixed;Version:1;Versions:[1];Features:[sfPrepared,sfOwnFinale];VariantKind:svTrap)
+    (Id:'trap-action';Title:'初見殺しアクション';MiddleTitle:'初見殺しアクション';FixedSmall:'罠を突破する横スクロール';ProgressText:'段差・天井・16系統の回避を準備中';Group:sgAction;Order:8;SmallKind:skFixed;Version:5;Versions:[5];Features:[sfPrepared,sfOwnFinale];VariantKind:svTrap)
   );
   GroupTitles:array[TRhythmStyleGroup] of string=('シューティング','ボールアクション','アクション','レース','音楽・演出');
 function StyleInfo(Style:TRhythmStyle):TStyleInfo;

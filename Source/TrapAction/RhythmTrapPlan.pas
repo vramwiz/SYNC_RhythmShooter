@@ -11,22 +11,29 @@ type
   TTrapBox = record
     Left, Bottom, Right, Top: Double;
   end;
+  // 保存IDの数値を保持する。現行は左右の歩行・ジャンプ・立ち止まりを採用する。
   TTrapMotion = (tmRun, tmJump, tmDoubleJump, tmSlide, tmStop, tmFall,
     tmWallKick, tmHang, tmClimb, tmRide, tmSkate, tmLaunch);
   TTrapKind = (tkSpikes, tkHiddenSpikes, tkCrumble, tkVanish, tkSink, tkMoving,
     tkFlip, tkFalseFloor, tkPit, tkCeiling, tkWall, tkBlade, tkDoor, tkWallBlock,
     tkTunnelCollapse, tkBoulder, tkRock, tkFlyingBlade, tkArrow, tkHunter,
     tkRain, tkFlame, tkLaser, tkLava, tkIce, tkTilt, tkBridge, tkCollapse, tkBackground);
+  TTrapAvoidance = (taRetreatJump, taWaitPass, taDropStopJump, taBaitDrop,
+    taRunUnderDrops, taBetweenDrops, taLowHop, taLongJump, taStepUp, taStepDown,
+    taGapUp, taGapDown, taCrumbleUp, taVanishDown, taBackHop, taTripleHop, taTravel);
   TTrapMove = record
-    Start, Cue, Finish: Double; // CueとFinishは採用した元の音時刻。
+    Start, Cue, Finish: Double; // Cueは接地ならFinish、停止ならStart。同期時刻は元の音を使う。
     Origin, Target: TTrapPoint;
     Arc: Double;
     Kind: TTrapMotion;
     Section, Pattern: Integer;
     Landing, CueSynced, LandSynced: Boolean;
+    Avoidance: TTrapAvoidance;
     function Position(Time: Double): TTrapPoint;
     function HeightAt(Time: Double): Double;
     function Progress(Time: Double): Double;
+    function FootLift(Time: Double; Side: Integer): Double;
+    function StepPhase(Time: Double): Double;
   end;
   TTrapObstacle = record
     Kind: TTrapKind;
@@ -35,12 +42,13 @@ type
     Move: Integer;
     Synced: Boolean;
     function BoundsAt(Time: Double): TTrapBox;
+    function RetractionStart: Double;
     function Dangerous(Time: Double): Boolean;
   end;
   TTrapPlatform = record
     Left, Right, Y, EndY: Double;
-    Start, Finish: Double; // 固定床はFinishの音時刻から崩壊。移動床はMoveの軌道に従う。
-    Move: Integer; // -1は固定、0以上は乗っている台を同じ軌道で動かす。
+    Start, Finish: Double; // Finishで崩れる床。曲末まで残す床はDurationを指定する。
+    Move: Integer; // 現行は-1（固定床）のみ。旧版のレコード配置は保持する。
     Kind: TTrapKind;
     function TopAt(X: Double): Double;
   end;
@@ -51,9 +59,15 @@ type
     Moves: TArray<TTrapMove>;
     Obstacles: TArray<TTrapObstacle>;
     Platforms: TArray<TTrapPlatform>;
+    Ceilings: TArray<TTrapPlatform>; // Yは天井の下面。床と同じ水平区間で段差を表す。
     function MoveAt(Time: Double): Integer;
     function Position(Time: Double): TTrapPoint;
+    function ForwardX(Time: Double): Double;
+    function Facing(Time: Double): Double;
     function PlayerBounds(Time: Double): TTrapBox;
+    function FloorSupports(Left, Right, Y, Time: Double): Boolean;
+    function CeilingSupports(Left, Right, Y: Double): Boolean;
+    function TerrainClearance(Time: Double): Double;
     function ObstacleAt(Time: Double): Integer;
     function Clearance(const Trap: TTrapObstacle; Time: Double): Double;
   end;
@@ -66,6 +80,7 @@ function TrapHarmless(Kind: TTrapKind): Boolean;
 
 const TrapHalfWidth = 0.32;
       TrapStandingHeight = 1.12;
+      TrapWalkSpeed = 6.8;
 
 implementation
 
@@ -106,21 +121,35 @@ begin
 end;
 
 function TTrapMove.Position(Time: Double): TTrapPoint;
-var U, Travel: Double;
+var U: Double;
 begin
   U := Progress(Time);
-  Travel := TrapEase(U);
-  Result := TrapPoint(Origin.X + (Target.X - Origin.X) * Travel,
-    Origin.Y + (Target.Y - Origin.Y) * Travel + Arc * 4 * U * (1 - U));
+  // 左右移動と停止を同じ絶対時刻で復元する。ジャンプは踏切から着地まで一つの放物線。
+  Result := TrapPoint(Origin.X + (Target.X - Origin.X) * U,
+    Origin.Y + (Target.Y - Origin.Y) * U + Arc * 4 * U * (1 - U));
 end;
 
 function TTrapMove.HeightAt(Time: Double): Double;
-var Weight: Double;
 begin
-  Weight := 0;
-  if Kind = tmSlide then
-    Weight := TrapRange(Time, Start, Cue) * (1 - TrapRange(Time, Cue, Finish));
-  Result := TrapStandingHeight - Weight * 0.73;
+  Result := TrapStandingHeight;
+end;
+
+function TTrapMove.FootLift(Time: Double; Side: Integer): Double;
+var U: Double;
+begin
+  U := Progress(Time);
+  if Kind = tmStop then Exit(0);
+  if (U <= 0) or (U >= 1) then Exit(0);
+  if Kind = tmJump then Exit(Sin(U * Pi) * 0.13);
+  // 音の間にも細かい足運びを入れる。区間終点の接地は必ず元の音に一致させる。
+  Result := Max(0.0, Sin(StepPhase(Time) + Side * Pi)) * 0.18;
+end;
+
+function TTrapMove.StepPhase(Time: Double): Double;
+var Steps: Integer;
+begin
+  Steps := Max(2, Round(Abs(Target.X - Origin.X) / 0.85));
+  Result := Progress(Time) * Steps * Pi;
 end;
 
 function TTrapObstacle.Dangerous(Time: Double): Boolean;
@@ -129,31 +158,26 @@ begin
 end;
 
 function TTrapObstacle.BoundsAt(Time: Double): TTrapBox;
-var U, After, CX, CY, Width, Height: Double;
+var Height, Bottom, U: Double;
 begin
-  U := TrapRange(Time, Fire, Cue);
-  After := TrapRange(Time, Cue, Finish);
-  CX := X; CY := Y; Width := W; Height := H;
-  case Kind of
-    tkSpikes, tkHiddenSpikes, tkFalseFloor, tkFlame:
-      Height := H * U * (1 - After);
-    tkCeiling, tkRock, tkRain, tkBackground:
-      CY := Y + Travel * (1 - U) - Travel * After;
-    tkWall, tkWallBlock:
-      CX := X - Travel * (1 - U) - Travel * After;
-    tkBlade: CY := Y + Sin((Time - Cue) * 4) * Travel;
-    tkBoulder:
-      begin CX := X - Travel * (1 - U); CY := Y - 5 * After; end;
-    tkFlyingBlade, tkArrow, tkHunter:
-      CX := X + Travel * (1 - U) - Travel * After;
-    tkDoor: CY := Y + Travel * (1 - U) + Travel * After;
-    tkLaser: Height := H * U * (1 - After);
-    tkLava: Height := H * U * (1 - After);
+  Height := H; Bottom := Y;
+  if Kind = tkHiddenSpikes then
+    Height := H * TrapRange(Time, Fire, Cue) * (1 - TrapRange(Time, RetractionStart, Finish));
+  if Kind = tkCeiling then begin
+    U := EnsureRange((Time - Fire) / (Cue - Fire), 0.0, 1.0);
+    // 自由落下して音時刻に床へ刺さる。その後は床を突き抜けない。
+    Bottom := Y + Travel * (1 - U * U);
   end;
-  Result.Left := CX - Width * 0.5;
-  Result.Right := CX + Width * 0.5;
-  Result.Bottom := CY;
-  Result.Top := CY + Height;
+  Result.Left := X - W * 0.5;
+  Result.Right := X + W * 0.5;
+  Result.Bottom := Bottom;
+  Result.Top := Bottom + Height;
+end;
+
+function TTrapObstacle.RetractionStart: Double;
+begin
+  // 待機後に通る針は床へ引っ込む。下降区間も描画・衝突検査で同じ時刻を使う。
+  Result := Finish - Min(0.06, (Finish - Cue) * 0.5);
 end;
 
 function TTrapPlatform.TopAt(X: Double): Double;
@@ -178,6 +202,23 @@ begin
   Result := Moves[MoveAt(Time)].Position(Time);
 end;
 
+function TTrapPlan.ForwardX(Time: Double): Double;
+var I, Current: Integer;
+begin
+  // 再生履歴を使わず到達済みの右端を読む。停止・後退中はカメラを動かさない。
+  Result := 0; Current := MoveAt(Time);
+  for I := 0 to Current - 1 do
+    Result := Max(Result, Max(Moves[I].Origin.X, Moves[I].Target.X));
+  Result := Max(Result, Position(Time).X);
+end;
+
+function TTrapPlan.Facing(Time: Double): Double;
+var M: TTrapMove;
+begin
+  M := Moves[MoveAt(Time)];
+  if M.Target.X < M.Origin.X then Result := -1 else Result := 1;
+end;
+
 function TTrapPlan.PlayerBounds(Time: Double): TTrapBox;
 var P: TTrapPoint;
 begin
@@ -196,6 +237,54 @@ begin
   begin
     M := (L + R) div 2;
     if Obstacles[M].Cue <= Time then begin Result := M; L := M + 1; end else R := M - 1;
+  end;
+end;
+
+function TTrapPlan.FloorSupports(Left, Right, Y, Time: Double): Boolean;
+var Tile: TTrapPlatform; Covered, EndX: Double;
+begin
+  // 床は左から順に保存する。隣接タイルをつなぎ、足幅全体の支持を調べる。
+  Covered := Left;
+  for Tile in Platforms do
+  begin
+    if (Tile.Move >= 0) or (Time < Tile.Start) or
+      ((Time >= Tile.Finish) and (Tile.Finish < Duration)) or
+      (Tile.Right < Covered) or (Tile.Left > Covered + 1E-8) then Continue;
+    EndX := Min(Right, Tile.Right);
+    if (Abs(Tile.TopAt(Covered) - Y) > 1E-8) or
+      (Abs(Tile.TopAt(EndX) - Y) > 1E-8) then Continue;
+    Covered := Max(Covered, EndX);
+    if Covered >= Right - 1E-8 then Exit(True);
+  end;
+  Result := False;
+end;
+
+function TTrapPlan.CeilingSupports(Left, Right, Y: Double): Boolean;
+var Tile: TTrapPlatform; Covered: Double;
+begin
+  Covered:=Left;
+  for Tile in Ceilings do if (Tile.Left<=Covered+1E-8) and
+    (Tile.Right>=Covered) and (Abs(Y-Tile.Y)<1E-8) then begin
+    Covered:=Max(Covered,Min(Right,Tile.Right));
+    if Covered>=Right-1E-8 then Exit(True);
+  end;
+  Result := False;
+end;
+
+function TTrapPlan.TerrainClearance(Time: Double): Double;
+var Tile: TTrapPlatform; Box: TTrapBox;
+begin
+  Box := PlayerBounds(Time); Result := 1000;
+  for Tile in Platforms do begin
+    if Tile.Left >= Box.Right then Break;
+    if (Tile.Right <= Box.Left) or (Time < Tile.Start) or
+      ((Time >= Tile.Finish) and (Tile.Finish < Duration)) then Continue;
+    Result := Min(Result, Box.Bottom - Tile.Y);
+  end;
+  for Tile in Ceilings do begin
+    if Tile.Left >= Box.Right then Break;
+    if Tile.Right <= Box.Left then Continue;
+    Result := Min(Result, Tile.Y - Box.Top);
   end;
 end;
 

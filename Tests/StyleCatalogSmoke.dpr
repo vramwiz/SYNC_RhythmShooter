@@ -5,15 +5,15 @@ uses System.SysUtils,System.Classes,System.Hash,System.IOUtils,System.JSON,
   RhythmStyles,RhythmStyleSelection,RhythmSettings,RhythmPlanRef,RhythmStyleOps,RhythmStyleRegistry,
   RhythmAudio,RhythmAnimation,RhythmImageBank;
 const Ids:array[TRhythmStyle] of string=('shooting','ball','jump-adventure','breakout','side-race','bomb-action','fighting-rush','mining','train','rhythm-game','prism-step','mine-cart','crash-cannon','parkour','marble-relay','robot-war','trap-action');
-  Versions:array[TRhythmStyle] of Integer=(1,6,3,10,1,2,1,1,1,4,3,4,1,2,16,1,1);
+  Versions:array[TRhythmStyle] of Integer=(1,6,3,10,1,2,1,1,1,4,3,4,1,2,16,1,5);
   Groups:array[TRhythmStyle] of TRhythmStyleGroup=(sgShooting,sgBall,sgAction,sgBall,sgRace,sgAction,sgAction,sgAction,sgShooting,sgMusic,sgMusic,sgAction,sgAction,sgAction,sgBall,sgAction,sgAction);
   Scenes:array[TRhythmStyle] of string=('TShootingAnimation','TBallAnimation','TJumpAnimation','TBreakoutAnimation','TSideRaceAnimation','TBombActionAnimation','TRushAnimation','TMiningAnimation','TTrainAnimation','TGameAnimation','TStepAnimation','TCartAnimation','TCannonAnimation','TParkourAnimation','TMarbleAnimation','TRobotAnimation','TTrapAnimation');
   GroupCounts:array[TRhythmStyleGroup] of Integer=(2,3,9,1,2);
   Levels:array[0..4] of Integer=(-100,-1,0,50,100);
 var S,Other,ParsedStyle:TRhythmStyle;G:TRhythmStyleGroup;D,I,J,K,V,Expected,Checks,Stage,Combinations:Integer;
-  Sel,Restored:TStyleSelection;Saved,Loaded:TRhythmSettings;Ref:TRhythmPlanRef;Ops:TStyleOperations;
+  Sel,Restored:TStyleSelection;Saved,Loaded,OldTrap:TRhythmSettings;Ref:TRhythmPlanRef;Ops:TStyleOperations;
   Scene:TAnimationScene;Images:TAnimationImageBank;Names:TStringList;Context:TStylePrepareContext;
-  Key,Recipe,Folder:string;ExpectedCompatible,Failed:Boolean;
+  Key,Recipe,Folder:string;ExpectedCompatible,Failed:Boolean;OldVersion:Integer;
 procedure Need(OK:Boolean;const Why:string);
 begin if not OK then raise Exception.Create(Why);Inc(Checks);end;
 function WasCompatible(Style:TRhythmStyle;Version:Integer):Boolean;
@@ -96,6 +96,13 @@ begin Scene:=nil;Images:=nil;Names:=nil;Checks:=0;Combinations:=0;
         Recipe:=Ids[S]+'-v'+IntToStr(Versions[S])+'|'+Key+'|50|'+IntToStr(D);if V<>0 then Recipe:=Recipe+'|variant='+IntToStr(V);
         Need(Ref.Key=THashSHA2.GetHashString(Recipe),'Prepared cache key changed');
         Need(TRhythmSettings.TryJSON(Saved.ToJSON,Loaded) and (Loaded.Style=S) and (Loaded.Direction=D) and (Loaded.Plan.Key=Ref.Key),'Old settings/plan restore');
+        if S=rsTrapAction then for OldVersion:=1 to 4 do begin
+          OldTrap:=Saved;OldTrap.Music:='retained-trap.wav';OldTrap.Plan.Version:=OldVersion;
+          OldTrap.Plan.Key:=THashSHA2.GetHashString('trap-action-v'+IntToStr(OldVersion)+'|'+Key+'|50|'+IntToStr(D)+'|variant='+IntToStr(V));
+          Need(TRhythmSettings.TryJSON(OldTrap.ToJSON,Loaded) and (Loaded.Plan.Key='') and
+            (Loaded.Music=OldTrap.Music) and (Loaded.TrapStage=OldTrap.TrapStage) and
+            (Loaded.Direction=D),'Old trap plan requires preparation while preserving user settings');
+        end;
         Need(not Saved.ToJSON.Contains('category') and not Saved.ToJSON.Contains('subcategory'),'UI grouping leaked into settings');
         Restored:=TStyleSelection.FromSaved(Loaded.Style,Loaded.Direction);Need((Restored.Group=Sel.Group) and (Restored.MiddleIndex=Sel.MiddleIndex) and (Restored.SmallIndex=Sel.SmallIndex),'Restored hierarchy');
         Sel.ChooseGroup(Sel.Group);Sel.ChooseMiddle(Sel.MiddleIndex);Need((Sel.Style=S) and (Sel.Direction=D),'Reselect reset existing direction');
