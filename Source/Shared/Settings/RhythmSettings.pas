@@ -78,7 +78,7 @@ begin
     J.AddPair('bossFrequency',TJSONNumber.Create(EnsureRange(BossFrequency,0,100)));
     J.AddPair('style',StyleId(Style));
     if MarbleBall<>mbSteel then J.AddPair('marbleBall',TJSONNumber.Create(Ord(MarbleBall)));
-    if MarbleStage<>msWoodWorkshop then J.AddPair('marbleStage',TJSONNumber.Create(Ord(MarbleStage)));
+    if MarbleStage<>msWoodWorkshop then J.AddPair('marbleStage',MarbleStageIds[MarbleStage]);
     J.AddPair('audioDensity',TJSONNumber.Create(EnsureRange(GameThreshold,-100,100)));
     J.AddPair('gameThreshold',TJSONNumber.Create(EnsureRange(GameThreshold,-100,100))); // 旧音ゲー版で読むため保持
     if EqualizerMode>=0 then J.AddPair('equalizer',TJSONBool.Create(EqualizerMode>0));
@@ -114,7 +114,11 @@ begin
 end;
 
 class function TRhythmSettings.TryJSON(const Text:string;out Value:TRhythmSettings):Boolean;
+const
+  LegacyMarbleStages:array[0..5] of TMarbleStageStyle=
+    (msWoodWorkshop,msDeskCraft,msSteampunk,msStoneRuins,msClearAcrylic,msNeonArcade);
 var
+  Stage:TMarbleStageStyle;
   J,V:TJSONValue;
   O,Item,PlanObject,Layers,Movie:TJSONObject;
   Assets:TJSONArray;
@@ -147,8 +151,13 @@ begin
       if (V is TJSONNumber) and TryStrToInt(V.Value,I) and InRange(I,Ord(Low(TMarbleBallStyle)),Ord(High(TMarbleBallStyle))) then
         Value.MarbleBall:=TMarbleBallStyle(I);
       V:=O.GetValue('marbleStage');
-      if (V is TJSONNumber) and TryStrToInt(V.Value,I) and InRange(I,Ord(Low(TMarbleStageStyle)),Ord(High(TMarbleStageStyle))) then
-        Value.MarbleStage:=TMarbleStageStyle(I);
+      if V is TJSONString then begin
+        for Stage:=Low(TMarbleStageStyle) to High(TMarbleStageStyle) do
+          if V.Value=MarbleStageIds[Stage] then begin Value.MarbleStage:=Stage;Break;end;
+      end else if (V is TJSONNumber) and TryStrToInt(V.Value,I) and
+        InRange(I,Low(LegacyMarbleStages),High(LegacyMarbleStages)) then
+        // 旧設定の番号は旧メニューの並びに従って復元する。
+        Value.MarbleStage:=LegacyMarbleStages[I];
       Value.HostMusic:=O.GetValue<string>('musicSource','')='host';
       Value.Music:=O.GetValue<string>('music','');
       Value.Direction:=EnsureRange(O.GetValue<Integer>('direction',0),0,1);

@@ -128,6 +128,8 @@
         <DCCReference Include="Source\MarbleRelay\Planning\RhythmMarbleCourse.pas"/>
         <DCCReference Include="Source\MarbleRelay\Planning\RhythmMarbleLayout.pas"/>
         <DCCReference Include="Source\MarbleRelay\Planning\RhythmMarbleLinkage.pas"/>
+        <DCCReference Include="Source\MarbleRelay\RhythmMarbleStage.pas"/>
+        <DCCReference Include="Source\MarbleRelay\RhythmMarbleBackdrop.pas"/>
         <DCCReference Include="Source\MarbleRelay\RhythmMarbleImages.pas"/>
         <DCCReference Include="Source\MarbleRelay\RhythmMarblePlan.pas"/>
         <DCCReference Include="Source\MarbleRelay\RhythmMarbleScene.pas"/>

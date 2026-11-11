@@ -30,28 +30,22 @@ function CreateMarbleImages: TAnimationImageBank;
 
 implementation
 
-uses System.Types, System.SysUtils, System.Math, Vcl.Graphics, Winapi.Windows, RhythmBallGeometry, RhythmMarbleImages;
+uses System.Types, System.SysUtils, System.Math, Vcl.Graphics, RhythmBallGeometry, RhythmMarbleImages, RhythmMarbleStage, RhythmMarbleBackdrop;
 
 type
-  TMarblePalette = record
-    Ink, Timber, TimberEdge, Brass, PaleBrass, Alloy, Aqua, Orange, Pearl: TColor;
-    TopColor, BottomColor, Grid, Pin, PinLight: TColor;
-  end;
-
   TMarblePainter = record
     Surface: TAnimationRenderSurface;
     Plan: TMarblePlan;
     BallStyle: TMarbleBallStyle;
     StageStyle: TMarbleStageStyle;
     Colors: TMarblePalette;
+    Art: TMarbleStagePainter;
     Frame: TAnimationFrame;
     Time, Left, Top, Scale, Width, Height: Double;
     function Screen(X, Y: Double): TPointF;
     procedure Rect(X1, Y1, X2, Y2: Double; Color: TColor);
     procedure Line(X1, Y1, X2, Y2, Stroke: Double; Color: TColor);
     procedure Dot(X, Y, Radius: Double; Color: TColor; Filled: Boolean = True);
-    procedure Backboard;
-    procedure RailFinish(X1, Y1, X2, Y2: Double);
     procedure Rail(const A, B: TBallPoint);
     procedure Plate(X, Y, HalfWidth, Slope: Double; Color: TColor);
     procedure Gate(const Cue: TMarbleCue; Age: Double);
@@ -87,25 +81,11 @@ type
     procedure Device(Index: Integer);
     procedure Sphere(const P: TBallPoint; Radius: Double; Asset: Integer);
     procedure Ball(const P: TBallPoint);
+    procedure NeonTrail;
     procedure Course(const P: TBallPoint);
     function SectionVisible(const Section: TMarbleSection): Boolean;
     procedure Paint;
   end;
-
-const
-  StagePalettes: array[TMarbleStageStyle] of TMarblePalette = (
-    (Ink:$0028231B; Timber:$0049749E; TimberEdge:$0077AAD0; Brass:$0051A9E9; PaleBrass:$0088DDFB; Alloy:$00B4B49E; Aqua:$00BFDB5E; Orange:$004C83FA; Pearl:$00D4F9FF;
-     TopColor:$004A4624; BottomColor:$002D2A15; Grid:$004E6257; Pin:$002B332B; PinLight:$00657566),
-    (Ink:$00633B65; Timber:$00966CB9; TimberEdge:$00CEB8F4; Brass:$00408BD6; PaleBrass:$00A1E5FF; Alloy:$00D8A2B1; Aqua:$007D932C; Orange:$00754FC0; Pearl:$00E1F7FF;
-     TopColor:$00F2DDC1; BottomColor:$00DFCAE7; Grid:$00ECC7DA; Pin:$00D7B6C3; PinLight:$00F8EFF9),
-    (Ink:$001B1520; Timber:$003C6298; TimberEdge:$00549AD5; Brass:$0046AEE9; PaleBrass:$00A3E4FF; Alloy:$007B8994; Aqua:$009BA881; Orange:$004874F0; Pearl:$00BCF0FF;
-     TopColor:$002F353F; BottomColor:$001F191D; Grid:$00374760; Pin:$0024222B; PinLight:$00546278),
-    (Ink:$002E2A1F; Timber:$00747565; TimberEdge:$009CAB9C; Brass:$0063ABC9; PaleBrass:$00A2DBE8; Alloy:$00B5B7A4; Aqua:$00A8C772; Orange:$00558DEC; Pearl:$00CDF7F6;
-     TopColor:$00545645; BottomColor:$00312E22; Grid:$00434132; Pin:$0038382A; PinLight:$00687164),
-    (Ink:$004A2E14; Timber:$00AE8A46; TimberEdge:$00F6E7A6; Brass:$00EABE77; PaleBrass:$00FFF8D6; Alloy:$00D1B68D; Aqua:$00E9E378; Orange:$008BB3FF; Pearl:$00FFFBF6;
-     TopColor:$00835F35; BottomColor:$00502D18; Grid:$0098774F; Pin:$006B4627; PinLight:$00B79E74),
-    (Ink:$00290B10; Timber:$006D2C44; TimberEdge:$00E855B2; Brass:$00F071BD; PaleBrass:$00FEABE9; Alloy:$00B26F81; Aqua:$00F4E84B; Orange:$009C70FF; Pearl:$00FFEFF7;
-     TopColor:$00481323; BottomColor:$002A130A; Grid:$0070344A; Pin:$0050222B; PinLight:$008B5465));
 
 function CreateMarbleImages: TAnimationImageBank;
 begin
@@ -140,152 +120,9 @@ begin
   Surface.Circle(A.X, A.Y, Radius * Scale, Color, Filled, Max(1.0, 0.016 * Scale));
 end;
 
-function BlendColor(A, B: TColor; U: Double): TColor;
-begin
-  Result := RGB(Round(GetRValue(A) + (GetRValue(B) - GetRValue(A)) * U),
-    Round(GetGValue(A) + (GetGValue(B) - GetGValue(A)) * U),
-    Round(GetBValue(A) + (GetBValue(B) - GetBValue(A)) * U));
-end;
-
-procedure TMarblePainter.Backboard;
-var I, J, K: Integer; X, Y, Bottom, StepX, StepY, Angle, RowX: Double; Tint: TColor;
-begin
-  for I := 0 to 13 do
-    Surface.FillRect(0, Frame.Height * I / 14, Frame.Width, Frame.Height * (I + 1) / 14,
-      BlendColor(Colors.TopColor, Colors.BottomColor, I / 13));
-  Bottom := Top - Height;
-  if StageStyle = msWoodWorkshop then
-  begin
-    for I := Floor(Left / 0.60) to Ceil((Left + Width) / 0.60) do
-    begin
-      X := I * 0.60;
-      if I mod 5 = 0 then Line(X, Bottom, X, Top, 0.014, Colors.Grid);
-      for J := Floor(Bottom / 0.60) to Ceil(Top / 0.60) do
-      begin
-        Y := J * 0.60;
-        Dot(X, Y, 0.022, Colors.Pin);
-        Dot(X - 0.008, Y - 0.010, 0.009, Colors.PinLight);
-      end;
-    end;
-    Exit;
-  end;
-
-  // 模様はコース上の位置に固定し、カメラが動いてもちらつかないようにする。
-  StepX := 1.55;
-  StepY := 1.18;
-  case StageStyle of
-    msFairyTale: begin StepX := 2.00; StepY := 1.45; end;
-    msBrassWorks: begin StepX := 2.25; StepY := 1.75; end;
-    msStoneRuins: begin StepX := 0.92; StepY := 0.48; end;
-    msIcePalace: begin StepX := 1.37; StepY := 1.36; end;
-  end;
-  for J := Floor(Bottom / StepY) - 1 to Ceil(Top / StepY) do
-  begin
-    Y := J * StepY;
-    RowX := StepX * 0.5 * Ord(Odd(J));
-    if StageStyle = msStoneRuins then Line(Left, Y, Left + Width, Y, 0.024, Colors.Grid);
-    for I := Floor((Left - RowX) / StepX) - 1 to Ceil((Left + Width - RowX) / StepX) do
-    begin
-      X := I * StepX + RowX;
-      case StageStyle of
-        msFairyTale:
-          begin
-            Tint := BlendColor(Colors.Grid, Colors.PinLight, 0.65);
-            Dot(X - 0.22, Y, 0.18, Tint);
-            Dot(X, Y + 0.065, 0.25, Tint);
-            Dot(X + 0.24, Y, 0.18, Tint);
-            Rect(X - 0.23, Y - 0.15, X + 0.24, Y - 0.018, Tint);
-            Line(X + 0.68, Y + 0.48, X + 0.68, Y + 0.71, 0.020, Colors.PinLight);
-            Line(X + 0.58, Y + 0.595, X + 0.78, Y + 0.595, 0.020, Colors.PinLight);
-            Dot(X + 0.88, Y + 0.32, 0.025, Colors.Grid);
-          end;
-        msBrassWorks:
-          begin
-            Line(X - 0.80, Y - 0.78, X - 0.80, Y + 0.78, 0.027, Colors.Pin);
-            Dot(X, Y, 0.42, Colors.Grid, False);
-            Dot(X, Y, 0.27, Colors.Grid, False);
-            Dot(X, Y, 0.080, Colors.Grid, False);
-            for K := 0 to 11 do
-            begin
-              Angle := K * Pi / 6;
-              Line(X + 0.40 * Cos(Angle), Y + 0.40 * Sin(Angle), X + 0.49 * Cos(Angle),
-                Y + 0.49 * Sin(Angle), 0.052, Colors.Grid);
-            end;
-            Dot(X - 0.80, Y - 0.65, 0.032, Colors.PinLight);
-            Dot(X - 0.80, Y + 0.65, 0.032, Colors.PinLight);
-          end;
-        msStoneRuins:
-          begin
-            Line(X, Y, X, Y + StepY, 0.021, Colors.Grid);
-            Line(X + 0.10, Y - 0.041, X + 0.63, Y - 0.041, 0.014, Colors.PinLight);
-            if (I + J) mod 3 = 0 then
-            begin
-              Line(X + 0.22, Y + 0.17, X + 0.29, Y + 0.21, 0.013, Colors.Pin);
-              Line(X + 0.29, Y + 0.21, X + 0.40, Y + 0.18, 0.013, Colors.Pin);
-            end;
-          end;
-        msIcePalace:
-          begin
-            Tint := BlendColor(Colors.TopColor, Colors.Grid, 0.38);
-            Surface.FillQuad(Screen(X, Y + 0.52), Screen(X + 0.27, Y + 0.10),
-              Screen(X, Y - 0.43), Screen(X - 0.27, Y + 0.10), Tint);
-            Line(X, Y + 0.52, X, Y - 0.43, 0.014, Colors.Grid);
-            Line(X - 0.27, Y + 0.10, X + 0.27, Y + 0.10, 0.015, Colors.Grid);
-            Dot(X + 0.50, Y + 0.49, 0.024, Colors.PinLight);
-          end;
-        msNeonCircuit:
-          begin
-            Line(X - 0.44, Y + 0.29, X, Y + 0.29, 0.017, Colors.Grid);
-            Line(X, Y + 0.29, X + 0.23, Y + 0.065, 0.017, Colors.Grid);
-            Line(X + 0.23, Y + 0.065, X + 0.63, Y + 0.065, 0.017, Colors.Grid);
-            Line(X - 0.29, Y - 0.24, X + 0.18, Y - 0.24, 0.014, Colors.PinLight);
-            Dot(X - 0.44, Y + 0.29, 0.045, Colors.Grid, False);
-            Dot(X + 0.63, Y + 0.065, 0.040, Colors.Grid, False);
-            Dot(X + 0.18, Y - 0.24, 0.027, Colors.PinLight, False);
-          end;
-      end;
-    end;
-  end;
-end;
-
-procedure TMarblePainter.RailFinish(X1, Y1, X2, Y2: Double);
-var I: Integer; X, Y: Double;
-begin
-  case StageStyle of
-    msFairyTale:
-      Line(X1, Y1 - 0.105, X2, Y2 - 0.105, 0.027, Colors.PaleBrass);
-    msBrassWorks:
-      begin
-        Line(X1, Y1 - 0.064, X2, Y2 - 0.064, 0.021, Colors.PaleBrass);
-        Line(X1, Y1 - 0.132, X2, Y2 - 0.132, 0.019, Colors.Ink);
-      end;
-    msStoneRuins, msIcePalace:
-      for I := Ceil((X1 + 0.08) / 0.43) to Floor((X2 - 0.08) / 0.43) do
-      begin
-        X := I * 0.43;
-        Y := Y1 + (Y2 - Y1) * (X - X1) / (X2 - X1);
-        if StageStyle = msStoneRuins then
-        begin
-          Line(X, Y - 0.038, X + 0.025, Y - 0.165, 0.028, Colors.Ink);
-          Line(X + 0.050, Y - 0.07, X + 0.125, Y - 0.088, 0.019, Colors.Alloy);
-        end
-        else
-        begin
-          Line(X, Y - 0.15, X + 0.066, Y - 0.038, 0.029, Colors.PaleBrass);
-          Line(X - 0.032, Y - 0.15, X + 0.040, Y - 0.05, 0.014, Colors.Alloy);
-        end;
-      end;
-    msNeonCircuit:
-      begin
-        Line(X1, Y1 - 0.065, X2, Y2 - 0.065, 0.085, Colors.TimberEdge);
-        Line(X1, Y1 - 0.065, X2, Y2 - 0.065, 0.027, Colors.PaleBrass);
-        Line(X1, Y1 - 0.139, X2, Y2 - 0.139, 0.018, Colors.Aqua);
-      end;
-  end;
-end;
-
 procedure TMarblePainter.Rail(const A, B: TBallPoint);
-var I: Integer; X, Y, X1, X2, Y1, Y2: Double;
+const SupportSpacing: array[TMarbleStageStyle] of Double = (0.84, 0.71, 0.92, 1.03, 0.92, 0.71, 0.98);
+var I: Integer; X, Y, X1, X2, Y1, Y2, Spacing, Depth: Double; Start, Finish: TBallPoint;
 begin
   if A.X > B.X then
   begin
@@ -297,77 +134,61 @@ begin
   if X2 - X1 < 1E-6 then Exit;
   Y1 := A.Y + (B.Y - A.Y) * (X1 - A.X) / (B.X - A.X);
   Y2 := A.Y + (B.Y - A.Y) * (X2 - A.X) / (B.X - A.X);
-  Surface.FillQuad(Screen(X1, Y1), Screen(X2, Y2), Screen(X2, Y2 - 0.18), Screen(X1, Y1 - 0.18), Colors.Timber);
-  Line(X1, Y1 - 0.022, X2, Y2 - 0.022, 0.042, Colors.TimberEdge);
-  Line(X1, Y1 - 0.17, X2, Y2 - 0.17, 0.026, Colors.Ink);
-  RailFinish(X1, Y1, X2, Y2);
-  for I := Ceil((X1 + 0.20) / 0.78) to Floor((X2 - 0.20) / 0.78) do
+  Start := BallPoint(X1, Y1);
+  Finish := BallPoint(X2, Y2);
+  Depth := 0.18;
+  if StageStyle in [msColorToys, msStoneRuins] then Depth := 0.225;
+  Spacing := SupportSpacing[StageStyle];
+  for I := Ceil((X1 + 0.16) / Spacing) to Floor((X2 - 0.16) / Spacing) do
   begin
-    X := I * 0.78;
+    X := I * Spacing;
     Y := Y1 + (Y2 - Y1) * (X - X1) / (X2 - X1);
-    Rect(X - 0.065, Y - 0.47, X + 0.065, Y - 0.17, Colors.Timber);
-    Line(X, Y - 0.45, X + 0.30, Y - 0.22, 0.055, Colors.Timber);
-    Dot(X, Y - 0.105, 0.023, Colors.Ink);
-    case StageStyle of
-      msFairyTale: Dot(X, Y - 0.105, 0.034, Colors.Pearl);
-      msBrassWorks: Dot(X - 0.032, Y - 0.104, 0.019, Colors.Alloy);
-      msIcePalace, msNeonCircuit: Line(X, Y - 0.41, X, Y - 0.23, 0.018, Colors.Aqua);
-    end;
+    Art.Column(X, Y - Depth * 0.56, Y - 0.47, 0.073);
+  end;
+  Art.Beam(Start, Finish, Depth, False);
+  for I := Ceil((X1 + 0.16) / Spacing) to Floor((X2 - 0.16) / Spacing) do
+  begin
+    X := I * Spacing;
+    Y := Y1 + (Y2 - Y1) * (X - X1) / (X2 - X1);
+    Art.Joint(BallPoint(X, Y - Depth * 0.64), 0.045, I * 0.8);
   end;
 end;
 
 procedure TMarblePainter.Plate(X, Y, HalfWidth, Slope: Double; Color: TColor);
-var L, R: Double;
+var A, B: TBallPoint;
 begin
-  L := Y - Slope * HalfWidth;
-  R := Y + Slope * HalfWidth;
-  Surface.FillQuad(Screen(X - HalfWidth, L), Screen(X + HalfWidth, R),
-    Screen(X + HalfWidth, R - 0.09), Screen(X - HalfWidth, L - 0.09), Color);
-  Line(X - HalfWidth, L - 0.015, X + HalfWidth, R - 0.015, 0.026, Colors.Pearl);
+  A := BallPoint(X - HalfWidth, Y - Slope * HalfWidth);
+  B := BallPoint(X + HalfWidth, Y + Slope * HalfWidth);
+  Art.Beam(A, B, 0.108, True);
+  A := BallMix(A, B, 0.20);
+  B := BallMix(A, B, 0.76);
+  A.Y := A.Y - 0.014;
+  B.Y := B.Y - 0.014;
+  Art.Line(A, B, 0.013, Color);
 end;
 
 procedure TMarblePainter.Gate(const Cue: TMarbleCue; Age: Double);
-var X, Y, Swing, ArmX, ArmY, A: Double; I, Dir: Integer;
+var X, Y, Swing: Double; Pivot, Arm, Tail: TBallPoint; Dir: Integer;
 begin
   Dir := Cue.Heading;
   X := Cue.Surface.X + Dir * 0.025;
   Y := Cue.Center.Y + 0.48;
   Swing := 1.57 * (1 - Exp(-Max(0.0, Age) * 34));
-  ArmX := X + Dir * 0.48 * Sin(Swing);
-  ArmY := Y - 0.48 * Cos(Swing);
-  // 軸は背板に固定し、球が進む高さには支柱を置かない。
-  Rect(X + Dir * 0.32, Y - 0.025, X + Dir * 0.51, Y + 0.22, Colors.Timber);
-  Dot(X + Dir * 0.42, Y + 0.155, 0.034, Colors.Ink);
-  Dot(X + Dir * 0.42, Y + 0.155, 0.017, Colors.Alloy);
-  Line(X - Dir * 0.11, Y + 0.04, X + Dir * 0.45, Y + 0.04, 0.073, Colors.TimberEdge);
-  Line(X, Y, ArmX, ArmY, 0.055, Colors.Orange);
-  for I := 0 to 7 do
-  begin
-    A := Dir * Swing + I * Pi / 4;
-    Line(X + 0.071 * Cos(A), Y + 0.071 * Sin(A), X + 0.109 * Cos(A), Y + 0.109 * Sin(A), 0.039, Colors.Brass);
-  end;
-  Dot(X, Y, 0.084, Colors.Ink);
-  Dot(X, Y, 0.062, Colors.Brass);
-  Dot(X, Y, 0.024, Colors.Ink);
-  Dot(ArmX, ArmY, 0.025, Colors.PaleBrass);
+  Pivot := BallPoint(X, Y);
+  Arm := BallPoint(X + Dir * 0.48 * Sin(Swing), Y - 0.48 * Cos(Swing));
+  Tail := BallAdd(Pivot, BallScale(BallSub(Pivot, Arm), 0.22));
+  Art.Column(X + Dir * 0.38, Y + 0.21, Y - 0.035, 0.055);
+  Art.Beam(BallPoint(X - Dir * 0.09, Y + 0.06), BallPoint(X + Dir * 0.41, Y + 0.06), 0.079, False);
+  Art.Lever(Pivot, Arm, Tail, Dir * Swing);
 end;
 
 procedure TMarblePainter.Bell(X, Y, Age: Double);
-var Sway, RimX, KnobX: Double;
+var Swing: Double;
 begin
-  Sway := 0;
-  if Age >= 0 then Sway := 0.10 * Sin(Age * 48) * Exp(-Age * 6);
-  RimX := X + Sway;
-  KnobX := X - Sway * 0.32;
-  Rect(X - 0.22, Y - 0.22, X + 0.22, Y - 0.065, Colors.Timber);
-  Dot(X - 0.16, Y - 0.145, 0.029, Colors.Ink);
-  Dot(X + 0.16, Y - 0.145, 0.029, Colors.Ink);
-  Line(X, Y - 0.07, X, Y - 0.20, 0.052, Colors.Alloy);
-  Surface.FillQuad(Screen(KnobX - 0.083, Y - 0.17), Screen(KnobX + 0.083, Y - 0.17),
-    Screen(RimX + 0.20, Y - 0.43), Screen(RimX - 0.20, Y - 0.43), Colors.Brass);
-  Line(RimX - 0.22, Y - 0.43, RimX + 0.22, Y - 0.43, 0.057, Colors.PaleBrass);
-  Dot(RimX + Sway * 0.34, Y - 0.47, 0.047, Colors.Orange);
+  Swing := 0;
+  if Age >= 0 then Swing := 0.10 * Sin(Age * 48) * Exp(-Age * 6);
   Plate(X, Y, 0.22, 0, Colors.Brass);
+  Art.Chime(BallPoint(X, Y - 0.095), Swing, 0.36, Age);
 end;
 
 procedure TMarblePainter.Spring(X, Y, Age, Slope: Double);
@@ -474,7 +295,7 @@ begin
 end;
 
 procedure TMarblePainter.Carrier(const Leg: TMarbleLeg; DeviceKind: TMarbleDevice; Parked: Double);
-var A, B, P, Q, Previous: TBallPoint; X, Y, Phase, Angle, EntrySide, ExitSide: Double; I: Integer;
+var A, B, P, Q, Previous: TBallPoint; X, Y, Phase, EntrySide, ExitSide: Double; I: Integer;
 begin
   A := Leg.Origin;
   B := Leg.Carriage(Leg.Finish);
@@ -484,21 +305,15 @@ begin
   begin
     EntrySide := A.X - Leg.Heading * 0.34;
     ExitSide := A.X + Leg.Heading * 0.34;
-    Line(EntrySide, A.Y + 0.19, EntrySide, B.Y + 0.22, 0.071, Colors.Timber);
-    Line(ExitSide, A.Y - 0.40, ExitSide, B.Y - 0.19, 0.071, Colors.Timber);
-    Rect(A.X - 0.42, B.Y + 0.16, A.X + 0.42, B.Y + 0.26, Colors.TimberEdge);
-    Line(EntrySide, P.Y - 0.28, EntrySide, B.Y + 0.21, 0.024, Colors.Alloy);
+    Art.Column(EntrySide, B.Y + 0.22, A.Y + 0.19, 0.040);
+    Art.Column(ExitSide, B.Y - 0.19, A.Y - 0.40, 0.040);
+    Art.Beam(BallPoint(A.X - 0.42, B.Y + 0.26), BallPoint(A.X + 0.42, B.Y + 0.26), 0.10, False);
+    Art.LinkRod(BallPoint(EntrySide, P.Y - 0.28), BallPoint(EntrySide, B.Y + 0.21), Time < Leg.Dock);
     X := EntrySide;
     Y := B.Y + 0.21;
     Phase := (P.Y - A.Y) * 5.8;
-    Dot(X, Y, 0.115, Colors.Ink);
-    for I := 0 to 7 do
-    begin
-      Angle := Phase + I * Pi / 4;
-      Line(X + 0.062 * Cos(Angle), Y + 0.062 * Sin(Angle), X + 0.115 * Cos(Angle), Y + 0.115 * Sin(Angle), 0.036, Colors.Brass);
-    end;
-    Dot(X, Y, 0.056, Colors.Alloy);
-    Rect(P.X - 0.34, P.Y - 0.28, P.X + 0.34, P.Y - 0.19, Colors.Aqua);
+    Art.Wheel(BallPoint(X, Y), Leg.Heading, Phase, 0.115);
+    Art.Beam(BallPoint(P.X - 0.34, P.Y - 0.19), BallPoint(P.X + 0.34, P.Y - 0.19), 0.09, True);
   end
   else if Leg.Travel.Y < 0 then
   begin
@@ -533,12 +348,10 @@ begin
   Pivot := Leg.ArcPivot;
   P := Leg.Carriage(Time);
   Counter := BallAdd(Pivot, BallScale(BallSub(Pivot, P), 0.30));
-  Rect(Pivot.X - 0.17, Pivot.Y - 0.13, Pivot.X + 0.17, Pivot.Y + 0.13, Colors.Timber);
-  Line(Counter.X, Counter.Y, P.X, P.Y - MarbleRadius - 0.035, 0.076, Colors.TimberEdge);
-  Dot(Counter.X, Counter.Y, 0.095, Colors.Orange);
-  Dot(Pivot.X, Pivot.Y, 0.10, Colors.Ink);
-  Dot(Pivot.X, Pivot.Y, 0.064, Colors.Brass);
-  Dot(Pivot.X, Pivot.Y, 0.023, Colors.Ink);
+  Art.Beam(BallPoint(Pivot.X - 0.17, Pivot.Y + 0.10), BallPoint(Pivot.X + 0.17, Pivot.Y + 0.10), 0.20, False);
+  Art.LinkRod(Counter, BallPoint(P.X, P.Y - MarbleRadius - 0.035), Time >= Leg.Start);
+  Art.Weight(Counter);
+  Art.Joint(Pivot, 0.10, ArcTan2(P.Y - Pivot.Y, P.X - Pivot.X));
   Cradle(Leg, P, Colors.Brass);
 end;
 
@@ -620,13 +433,11 @@ end;
 
 procedure TMarblePainter.ContactPulse(X, Y, Age, Power: Double);
 begin
-  if Frame.BackgroundOnly or (Age < 0) or (Age >= 0.14) then Exit;
-  Dot(X, Y, 0.035 + 0.30 * Age, Colors.Pearl);
-  Dot(X, Y, 0.076 + Age * (0.48 + 0.35 * Power), Colors.PaleBrass, False);
+  if not Frame.BackgroundOnly then Art.Impact(BallPoint(X, Y), Age, Power);
 end;
 
 procedure TMarblePainter.TiltingTray(const Bridge: TMarbleBridge; const Trigger: TBallPoint);
-var Tip, Hinge, Along, Under, Weight, Guide: TBallPoint; StopX: Double;
+var Tip, Hinge, Along, Weight, Guide: TBallPoint; StopX: Double;
 begin
   Hinge := Bridge.Hinge;
   Tip := Bridge.Tip(Time);
@@ -637,7 +448,6 @@ begin
     Along := BallUnit(BallSub(Hinge, Bridge.Entry));
     StopX := StopX - Sign(Along.X) * 0.075;
   end;
-  Under := BallPoint(Sign(Along.X) * Along.Y * 0.078, -Abs(Along.X) * 0.078);
   Weight := BallAdd(Hinge, BallScale(Along, 0.16));
   if Bridge.Sliding then
   begin
@@ -647,24 +457,16 @@ begin
   end;
   Rect(StopX - 0.075, Bridge.Entry.Y - 0.15, StopX + 0.075, Bridge.Entry.Y - 0.056, Colors.Timber);
   Dot(StopX, Bridge.Entry.Y - 0.105, 0.022, Colors.Ink);
-  Line(Trigger.X, Trigger.Y, Weight.X, Weight.Y, 0.019, Colors.Brass);
-  Line(Hinge.X, Hinge.Y - 0.036, Weight.X, Weight.Y, 0.043, Colors.Alloy);
-  if not Bridge.Sliding or (Abs(Tip.X - Hinge.X) > 1E-6) then
-  begin
-    Surface.FillQuad(Screen(Tip.X, Tip.Y), Screen(Hinge.X, Hinge.Y),
-      Screen(Hinge.X + Under.X, Hinge.Y + Under.Y), Screen(Tip.X + Under.X, Tip.Y + Under.Y), Colors.Aqua);
-    Line(Tip.X + Under.X * 0.17, Tip.Y + Under.Y * 0.17,
-      Hinge.X + Under.X * 0.17, Hinge.Y + Under.Y * 0.17, 0.024, Colors.Pearl);
-  end;
-  Dot(Weight.X, Weight.Y, 0.048, Colors.Orange);
-  Dot(Hinge.X, Hinge.Y - 0.042, 0.053, Colors.Ink);
-  Dot(Hinge.X, Hinge.Y - 0.042, 0.031, Colors.Brass);
+  Art.LinkRod(Trigger, Weight, (Time >= Bridge.Pull) and (Time < Bridge.Ready));
+  Art.LinkRod(BallPoint(Hinge.X, Hinge.Y - 0.036), Weight, Time >= Bridge.Pull);
+  if not Bridge.Sliding or (Abs(Tip.X - Hinge.X) > 1E-6) then Art.Beam(Tip, Hinge, 0.092, True);
+  Art.Joint(Weight, 0.048, Pi / 4);
+  Art.Joint(BallPoint(Hinge.X, Hinge.Y - 0.045), 0.056, ArcTan2(Tip.Y - Hinge.Y, Tip.X - Hinge.X));
 end;
 
 procedure TMarblePainter.AuxiliaryTrack(const A, B: TBallPoint);
 begin
-  Line(A.X, A.Y - 0.055, B.X, B.Y - 0.055, 0.10, Colors.Timber);
-  Line(A.X, A.Y - 0.012, B.X, B.Y - 0.012, 0.025, Colors.PaleBrass);
+  Art.Beam(A, B, 0.112, False);
 end;
 
 procedure TMarblePainter.AuxiliaryBell(const P: TBallPoint; const Beat: TMarbleBeat; Heading: Integer);
@@ -674,14 +476,8 @@ begin
   Y := P.Y + 0.32;
   Age := Time - Beat.Time;
   Swing := Heading * 0.17 * Sin(Max(0.0, Age) * 21) * Exp(-Max(0.0, Age) * 5);
-  Rect(X - 0.13, Y, X + 0.13, Y + 0.08, Colors.Timber);
-  Dot(X, Y + 0.03, 0.032, Colors.Alloy);
-  Line(X, Y, X + Swing * 0.54, Y - 0.14, 0.035, Colors.Alloy);
-  X := X + Swing;
-  Surface.FillQuad(Screen(X - 0.049, Y - 0.13), Screen(X + 0.049, Y - 0.13),
-    Screen(X + 0.105, Y - 0.25), Screen(X - 0.105, Y - 0.25), Colors.Brass);
-  Line(X - 0.11, Y - 0.25, X + 0.11, Y - 0.25, 0.034, Colors.PaleBrass);
-  Dot(X - Heading * 0.043, Y - 0.29, 0.028, Colors.Orange);
+  Art.Beam(BallPoint(X - 0.13, Y + 0.06), BallPoint(X + 0.13, Y + 0.06), 0.065, False);
+  Art.Chime(BallPoint(X, Y), Swing, 0.29, Age);
   ContactPulse(P.X, P.Y, Age, Beat.Power);
 end;
 
@@ -697,9 +493,7 @@ begin
   Sensor := BallAdd(Pivot, Arm);
   Tail := BallSub(Pivot, BallScale(Arm, 0.42));
   TiltingTray(Bridge, Tail);
-  Line(Sensor.X, Sensor.Y, Tail.X, Tail.Y, 0.044, Colors.Orange);
-  Dot(Sensor.X, Sensor.Y, 0.032, Colors.Brass);
-  Dot(Pivot.X, Pivot.Y, 0.041, Colors.Alloy);
+  Art.Lever(Pivot, Sensor, Tail, Angle);
 end;
 
 procedure TMarblePainter.AuxiliaryShutter(const Link: TMarbleLink);
@@ -713,23 +507,21 @@ begin
 end;
 
 procedure TMarblePainter.Shutter(const Link: TMarbleLink; const Arm: TBallPoint; Size, Opening: Double);
-var X, Y, Z, RodX, RodY: Double; Wire: TColor;
+var X, Y, Z, RodX, RodY: Double;
 begin
   X := Link.Receiver.X;
   Y := Link.Receiver.Y;
   Z := Y + 0.28 * Size * Opening;
   RodX := X + Link.Heading * 0.09 * Size;
   RodY := Z + 0.23 * Size;
-  Wire := Colors.Brass;
-  if (Opening > 0) and (Opening < 1) then Wire := Colors.PaleBrass;
-  Line(Arm.X, Arm.Y, RodX, RodY, 0.021, Wire);
-  Rect(X - 0.13 * Size, Y + 0.52 * Size, X + 0.13 * Size, Y + 0.58 * Size, Colors.Timber);
-  Line(X - 0.047 * Size, Y + 0.22 * Size, X - 0.047 * Size, Y + 0.54 * Size, 0.022, Colors.Alloy);
-  Line(X + 0.047 * Size, Y + 0.22 * Size, X + 0.047 * Size, Y + 0.54 * Size, 0.022, Colors.Alloy);
-  Rect(X - 0.035 * Size, Z, X + 0.035 * Size, RodY, Colors.Orange);
-  Line(X, Z + 0.07 * Size, X, Z + 0.21 * Size, 0.021, Colors.PaleBrass);
-  Line(X, RodY, RodX, RodY, 0.028, Colors.Alloy);
-  Dot(RodX, RodY, 0.026 * Size, Colors.Brass);
+  Art.LinkRod(Arm, BallPoint(RodX, RodY), (Opening > 0) and (Opening < 1));
+  Art.Beam(BallPoint(X - 0.13 * Size, Y + 0.58 * Size),
+    BallPoint(X + 0.13 * Size, Y + 0.58 * Size), 0.068 * Size, False);
+  Art.Column(X - 0.056 * Size, Y + 0.54 * Size, Y + 0.24 * Size, 0.020 * Size);
+  Art.Column(X + 0.056 * Size, Y + 0.54 * Size, Y + 0.24 * Size, 0.020 * Size);
+  Art.ShutterBlade(X, Z, 0.23 * Size, 0.053 * Size, Opening);
+  Art.LinkRod(BallPoint(X, RodY), BallPoint(RodX, RodY), Opening > 0);
+  Art.Joint(BallPoint(RodX, RodY), 0.031 * Size, Opening * Pi);
 end;
 
 procedure TMarblePainter.AuxiliaryBridge(const Bridge, Reply: TMarbleBridge; const GateArm: TBallPoint; Opening: Double);
@@ -867,9 +659,7 @@ begin
     Color := Colors.Orange;
     if I = 1 then Color := Colors.Aqua;
     Line(Tail.X, Tail.Y, Pin.X, Pin.Y + 0.03, 0.018, Color);
-    Line(Tip.X, Tip.Y, Tail.X, Tail.Y, 0.047, Color);
-    Dot(Latch.Pivot.X, Latch.Pivot.Y, 0.045, Colors.Alloy);
-    Dot(Tip.X, Tip.Y, 0.026, Colors.PaleBrass);
+    Art.Lever(Latch.Pivot, Tip, Tail, Angle);
     Line(Pin.X, Y + 0.106, Pin.X, Y - 0.04, 0.060, Colors.Alloy);
     Line(Pin.X, Pin.Y - 0.031, Pin.X, Pin.Y + 0.043, 0.045, Color);
     Dot(Pin.X, Pin.Y - 0.025, 0.024, Color);
@@ -905,36 +695,27 @@ begin
     -H * 0.083 * Sin(Angle) - 0.23 * Cos(Angle)));
   Tail := BallAdd(Pivot, BallScale(BallSub(Pivot, Tip), 0.38));
   Shutter(Counter.Gate, Tail, 1.65, Counter.Gate.Opening(Time));
-  Line(Tip.X, Tip.Y, Tail.X, Tail.Y, 0.042, Colors.Orange);
-  Dot(Pivot.X, Pivot.Y, 0.049, Colors.Alloy);
-  Dot(Tip.X, Tip.Y, 0.031, Colors.Brass);
+  Art.Lever(Pivot, Tip, Tail, Angle);
 end;
 
 procedure TMarblePainter.SeesawBoard(const Board: TMarbleBoard);
-var A, B, C, D, PadA, PadB: TBallPoint; X, Y: Double;
+var A, B, PadA, PadB: TBallPoint; X, Y: Double;
 begin
   X := Board.Pivot.X;
   Y := Board.Pivot.Y;
-  Surface.FillQuad(Screen(X - 0.07, Y - 0.08), Screen(X + 0.07, Y - 0.08),
-    Screen(X + 0.25, Y - 0.59), Screen(X - 0.25, Y - 0.59), Colors.Timber);
-  Rect(X - 0.30, Y - 0.64, X + 0.30, Y - 0.58, Colors.TimberEdge);
+  Art.Column(X, Y - 0.053, Y - 0.60, 0.115);
   A := Board.PointAt(Time, Board.Rear, 0);
   B := Board.PointAt(Time, Board.Front, 0);
-  C := Board.PointAt(Time, Board.Front, -0.115);
-  D := Board.PointAt(Time, Board.Rear, -0.115);
-  Surface.FillQuad(Screen(A.X, A.Y), Screen(B.X, B.Y), Screen(C.X, C.Y), Screen(D.X, D.Y), Colors.Timber);
-  Line(A.X, A.Y - 0.02, B.X, B.Y - 0.02, 0.041, Colors.Aqua);
-  PadA := Board.PointAt(Time, Board.LoadPoint - 0.09, 0.026);
-  PadB := Board.PointAt(Time, Board.Front - 0.05, 0.026);
-  Line(PadA.X, PadA.Y, PadB.X, PadB.Y, 0.051, Colors.Orange);
-  Dot(X, Y - 0.055, 0.116, Colors.Ink);
-  Dot(X, Y - 0.055, 0.081, Colors.Brass);
-  Dot(X, Y - 0.055, 0.036, Colors.Alloy);
+  Art.Beam(A, B, 0.126, True);
+  PadA := Board.PointAt(Time, Board.LoadPoint - 0.09, 0.019);
+  PadB := Board.PointAt(Time, Board.Front - 0.05, 0.019);
+  Art.Line(PadA, PadB, 0.034, Colors.Orange);
+  Art.Joint(BallPoint(X, Y - 0.063), 0.118, Board.Heading * Board.AngleAt(Time));
 end;
 
 procedure TMarblePainter.ReceivingTray(const Saw: TMarbleSeesaw);
-var Latch: TMarbleLatch; Arm, Tip, Tail, Socket, Pin, Rear, Nose, Rim, Axle: TBallPoint;
-  Push, Angle, Stop, RimHeight: Double; H: Integer; RodColor: TColor;
+var Latch: TMarbleLatch; Arm, Tip, Tail, Socket, Pin, Rear, Nose, BackRim, FrontRim, Axle: TBallPoint;
+  Push, Angle, Stop, RimHeight: Double; H: Integer;
 begin
   H := Saw.Board.Heading;
   Latch := Saw.TrayRelease.Lever;
@@ -945,42 +726,30 @@ begin
     Arm.X * Sin(Angle) + Arm.Y * Cos(Angle)));
   Tail := BallAdd(Latch.Pivot, BallScale(BallSub(Latch.Pivot, Tip), 0.48));
 
-  // ドック側の留め金を押し下げると、受け皿の軸が回る。
+  // 皿の軸はコース計画に従う。留め具を引く連結部だけを材質別に描く。
   Socket := Saw.TrayPoint(Saw.WeightLift.Dock, MarbleTrayRear, 0);
   Socket := BallAdd(Socket, BallPoint(-H * 0.05, -0.115));
   Pin := BallAdd(Socket, BallPoint(0, 0.115 - 0.090 * Push));
-  RodColor := Colors.Brass;
-  if Push > 0 then RodColor := Colors.Orange;
-  Line(Tail.X, Tail.Y, Pin.X, Pin.Y - 0.03, 0.026, Colors.Ink);
-  Line(Tail.X, Tail.Y, Pin.X, Pin.Y - 0.03, 0.014, RodColor);
-  Line(Socket.X, Socket.Y - 0.085, Socket.X, Socket.Y + 0.045, 0.071, Colors.TimberEdge);
-  Line(Pin.X, Pin.Y - 0.06, Pin.X, Pin.Y, 0.043, RodColor);
-  Line(Pin.X, Pin.Y, Pin.X + H * 0.075, Pin.Y + 0.035, 0.036, RodColor);
-
-  Line(Latch.Pivot.X, Latch.Pivot.Y, Latch.Pivot.X + H * 0.20, Latch.Pivot.Y + 0.12, 0.069, Colors.TimberEdge);
-  Line(Tip.X, Tip.Y, Tail.X, Tail.Y, 0.054, Colors.Orange);
-  Dot(Tip.X, Tip.Y, 0.031, Colors.PaleBrass);
-  Dot(Latch.Pivot.X, Latch.Pivot.Y, 0.055, Colors.Ink);
-  Dot(Latch.Pivot.X, Latch.Pivot.Y, 0.034, Colors.Alloy);
+  Art.LinkRod(Tail, BallAdd(Pin, BallPoint(0, -0.030)), (Push > 0) and (Push < 1));
+  Art.LinkRod(Socket, Pin, Push > 0);
+  Art.Joint(Socket, 0.035, Angle);
+  Art.Beam(Latch.Pivot, BallAdd(Latch.Pivot, BallPoint(H * 0.20, 0.12)), 0.057, False);
+  Art.Lever(Latch.Pivot, Tip, Tail, Angle);
 
   Rear := Saw.TrayPoint(Time, MarbleTrayRear, 0);
   Nose := Saw.TrayPoint(Time, MarbleTrayNose, 0);
   Axle := Saw.TrayPoint(Time, 0, -0.040);
-  Line(Rear.X, Rear.Y - 0.038, Nose.X, Nose.Y - 0.038, 0.086, Colors.TimberEdge);
-  Line(Rear.X, Rear.Y, Nose.X, Nose.Y, 0.039, Colors.Aqua);
-  Rim := Saw.TrayPoint(Time, MarbleTrayRear - 0.025, 0.066);
-  Line(Rear.X, Rear.Y, Rim.X, Rim.Y, 0.043, Colors.Aqua);
+  BackRim := Saw.TrayPoint(Time, MarbleTrayRear - 0.025, 0.066);
   Stop := EnsureRange((Time - Saw.TrayRelease.Start) / 0.10, 0.0, 1.0);
   RimHeight := 0.15 - 0.16 * Stop;
-  Rim := Saw.TrayPoint(Time, MarbleTrayNose + 0.075 * Stop, RimHeight);
-  Line(Nose.X, Nose.Y, Rim.X, Rim.Y, 0.043, Colors.Aqua);
-  Dot(Axle.X, Axle.Y, 0.038, Colors.Ink);
-  Dot(Axle.X, Axle.Y, 0.022, Colors.PaleBrass);
+  FrontRim := Saw.TrayPoint(Time, MarbleTrayNose + 0.075 * Stop, RimHeight);
+  Art.Tray(Rear, Nose, BackRim, FrontRim, Axle);
 end;
 
 procedure TMarblePainter.WeightedLift(const Saw: TMarbleSeesaw);
 var Lift: TMarbleWeightLift; Deck, Pan, MainFloor, SmallFloor: TBallPoint;
-  DeckCable, PanCable, Beam, PanBottom, MainTop, Release, Ramp, U: Double; H: Integer;
+  DeckCable, PanCable, Beam, PanBottom, Release, Ramp, U, Turn, Progress: Double;
+  H: Integer; Moving: Boolean;
 begin
   Lift := Saw.WeightLift;
   H := Saw.Board.Heading;
@@ -993,44 +762,41 @@ begin
   PanCable := SmallFloor.X - H * 0.23;
   Beam := Saw.Landing.Y + 0.25;
   PanBottom := Saw.Landing.Y - Lift.Rise - 0.36;
-  MainTop := Lift.Load.Y + Lift.Rise + 0.10;
+  Moving := (Time >= Lift.Start) and (Time < Lift.Dock);
+  Progress := Lift.Progress(Time);
+  Turn := Lift.Rise * Progress / 0.073;
 
-  // ガイドの中を二つの台が動き、上の滑車で同じロープを引く。
-  Line(PanCable, PanBottom, PanCable, Beam, 0.089, Colors.Timber);
-  Line(DeckCable, Lift.Load.Y - 0.31, DeckCable, Beam, 0.089, Colors.Timber);
-  Line(PanCable, Beam + 0.045, DeckCable, Beam + 0.045, 0.13, Colors.Timber);
-  Line(PanCable, Beam + 0.09, DeckCable, Beam + 0.09, 0.023, Colors.TimberEdge);
-  Line(PanCable, PanBottom, PanCable, Saw.Landing.Y + 0.03, 0.033, Colors.Alloy);
-  Line(DeckCable, Lift.Load.Y - 0.25, DeckCable, MainTop, 0.033, Colors.Alloy);
-  Line(PanCable, SmallFloor.Y - 0.06, PanCable, Beam, 0.023, Colors.PaleBrass);
-  Line(DeckCable, MainFloor.Y - 0.06, DeckCable, Beam, 0.023, Colors.PaleBrass);
-  Line(PanCable, Beam + 0.062, DeckCable, Beam + 0.062, 0.023, Colors.PaleBrass);
-  Dot(PanCable, Beam, 0.081, Colors.Ink);
-  Dot(DeckCable, Beam, 0.081, Colors.Ink);
-  Dot(PanCable, Beam, 0.060, Colors.Brass);
-  Dot(DeckCable, Beam, 0.060, Colors.Brass);
-  Dot(PanCable, Beam, 0.023, Colors.Alloy);
-  Dot(DeckCable, Beam, 0.023, Colors.Alloy);
+  // 昇降台の位置とロープの端点は、小球が沈める受け皿の計画から取る。
+  Art.Column(PanCable, Beam, PanBottom, 0.048);
+  Art.Column(DeckCable, Beam, Lift.Load.Y - 0.31, 0.052);
+  Art.Beam(BallPoint(PanCable, Beam + 0.098), BallPoint(DeckCable, Beam + 0.098), 0.117, False);
+  Art.LinkRod(BallPoint(PanCable, SmallFloor.Y - 0.06), BallPoint(PanCable, Beam), Moving);
+  Art.LinkRod(BallPoint(DeckCable, MainFloor.Y - 0.06), BallPoint(DeckCable, Beam), Moving);
+  Art.LinkRod(BallPoint(PanCable, Beam + 0.053), BallPoint(DeckCable, Beam + 0.053), Moving);
+  Art.Joint(BallPoint(PanCable, Beam), 0.084, Turn);
+  Art.Joint(BallPoint(DeckCable, Beam), 0.084, -Turn);
+  if StageStyle = msSteampunk then
+  begin
+    Art.LinkRod(BallPoint(DeckCable, Beam - 0.28), BallPoint(DeckCable - H * 0.25, Beam - 0.28), Moving);
+    Art.PressureDial(BallPoint(DeckCable - H * 0.25, Beam - 0.17), Progress);
+  end;
 
   Release := EnsureRange((Lift.Dock - Time) / 0.055, 0.0, 1.0);
-  Rect(PanCable - 0.068, SmallFloor.Y - 0.23, PanCable + 0.068, SmallFloor.Y - 0.065, Colors.Brass);
-  Line(PanCable - 0.041, SmallFloor.Y - 0.11, PanCable + 0.041, SmallFloor.Y - 0.11, 0.023, Colors.PaleBrass);
-  Line(MainFloor.X, MainFloor.Y - 0.064, DeckCable, MainFloor.Y - 0.064, 0.081, Colors.TimberEdge);
+  Art.Weight(BallPoint(PanCable, SmallFloor.Y - 0.156));
+  Art.Beam(BallPoint(MainFloor.X, MainFloor.Y - 0.04), BallPoint(DeckCable, MainFloor.Y - 0.04), 0.08, True);
   Plate(MainFloor.X, MainFloor.Y, 0.16, H * MarbleSeesawExitGrade, Colors.Brass);
   if Lift.Ramp > 0 then
   begin
     U := EnsureRange((Time - Lift.Dock + 0.10) / 0.10, 0.0, 1.0);
     Ramp := 0.09 + (Lift.Ramp - 0.09) * Sqr(U) * (3 - 2 * U);
-    Line(MainFloor.X + H * 0.055, MainFloor.Y + MarbleSeesawExitGrade * 0.055 - 0.022,
-      MainFloor.X + H * Ramp, MainFloor.Y + MarbleSeesawExitGrade * Ramp - 0.022, 0.062, Colors.Alloy);
-    Line(MainFloor.X + H * 0.055, MainFloor.Y + MarbleSeesawExitGrade * 0.055,
-      MainFloor.X + H * Ramp, MainFloor.Y + MarbleSeesawExitGrade * Ramp, 0.022, Colors.PaleBrass);
+    Art.Beam(BallPoint(MainFloor.X + H * 0.055, MainFloor.Y + MarbleSeesawExitGrade * 0.055),
+      BallPoint(MainFloor.X + H * Ramp, MainFloor.Y + MarbleSeesawExitGrade * Ramp), 0.064, True);
   end;
   Line(MainFloor.X + H * 0.10, MainFloor.Y - 0.03,
     MainFloor.X + H * (0.19 - 0.036 * Release), MainFloor.Y - 0.058 + 0.15 * Release, 0.038, Colors.Orange);
-  Dot(DeckCable, MainFloor.Y - 0.064, 0.041, Colors.Alloy);
+  Art.Joint(BallPoint(DeckCable, MainFloor.Y - 0.064), 0.046, Turn);
 
-  Line(PanCable, SmallFloor.Y - 0.055, SmallFloor.X, SmallFloor.Y - 0.055, 0.067, Colors.TimberEdge);
+  Art.Beam(BallPoint(PanCable, SmallFloor.Y - 0.034), BallPoint(SmallFloor.X, SmallFloor.Y - 0.034), 0.071, True);
   if Saw.TrayRelease.Active then ReceivingTray(Saw)
   else
   begin
@@ -1058,53 +824,33 @@ begin
     Arm.X * Sin(Angle) + Arm.Y * Cos(Angle)));
   Tail := BallAdd(Latch.Pivot, BallScale(BallSub(Latch.Pivot, LeverTip), 0.43));
 
-  Line(Tail.X, Tail.Y, Pin.X, Pin.Y, 0.032, Colors.Ink);
-  Line(Tail.X, Tail.Y, Pin.X, Pin.Y, 0.020, Colors.Orange);
-  Line(Joint.X, Joint.Y - 0.035, RailTip.X, RailTip.Y - 0.035, 0.10, Colors.Ink);
-  Line(Joint.X, Joint.Y - 0.031, RailTip.X, RailTip.Y - 0.031, 0.069, Colors.Brass);
-  Line(Joint.X, Joint.Y, RailTip.X, RailTip.Y, 0.030, Colors.PaleBrass);
-  Dot(Pin.X, Pin.Y, 0.030, Colors.Alloy);
-  Dot(Joint.X, Joint.Y - 0.036, 0.068, Colors.Ink);
-  Dot(Joint.X, Joint.Y - 0.036, 0.047, Colors.Alloy);
-  Dot(Joint.X, Joint.Y - 0.036, 0.021, Colors.Brass);
-
-  Line(Latch.Pivot.X, Latch.Pivot.Y, Latch.Pivot.X + H * 0.14, Latch.Pivot.Y + 0.10, 0.064, Colors.TimberEdge);
-  Line(LeverTip.X, LeverTip.Y, Tail.X, Tail.Y, 0.043, Colors.Orange);
-  Dot(Latch.Pivot.X, Latch.Pivot.Y, 0.045, Colors.Alloy);
-  Dot(LeverTip.X, LeverTip.Y, 0.027, Colors.PaleBrass);
+  Art.LinkRod(Tail, Pin, (Time >= Latch.Beat.Time) and (Time < Leg.Junction.Ready));
+  Art.Beam(Joint, RailTip, 0.112, True);
+  Art.Joint(Pin, 0.032, Angle);
+  Art.Joint(BallPoint(Joint.X, Joint.Y - 0.049), 0.076, ArcTan2(RailTip.Y - Joint.Y, RailTip.X - Joint.X));
+  Art.Beam(Latch.Pivot, BallAdd(Latch.Pivot, BallPoint(H * 0.14, 0.10)), 0.063, False);
+  Art.Lever(Latch.Pivot, LeverTip, Tail, Angle);
   ContactPulse(Latch.Contact.X, Latch.Contact.Y, Time - Latch.Beat.Time, Latch.Beat.Power);
 end;
 
 procedure TMarblePainter.WheelBell(const P: TBallPoint; const Beat: TMarbleBeat; H: Integer);
-var Pivot, Tip, Paddle, BellPivot, Cam: TBallPoint; Age, U, Turn, Angle, Swing: Double; I: Integer;
+var Pivot, BellPivot, Cam, Clapper: TBallPoint; Age, U, Turn, Swing: Double;
 begin
   Age := Time - Beat.Time;
   U := EnsureRange(Age / 0.28, 0.0, 1.0);
   Turn := 1.76 * (1 - Sqr(1 - U));
   Pivot := BallAdd(P, BallPoint(H * MarbleAuxRadius, 0.18));
   BellPivot := BallAdd(Pivot, BallPoint(H * 0.20, 0.27));
-  Line(Pivot.X, Pivot.Y + 0.21, Pivot.X, Pivot.Y, 0.060, Colors.TimberEdge);
-  Line(Pivot.X - H * 0.11, Pivot.Y + 0.22, BellPivot.X + H * 0.10, Pivot.Y + 0.22, 0.069, Colors.Timber);
-  for I := 0 to 3 do
-  begin
-    Angle := -Pi / 2 + I * Pi / 2 + Turn;
-    Tip := BallAdd(Pivot, BallPoint(H * Cos(Angle) * 0.18, Sin(Angle) * 0.18));
-    Paddle := BallPoint(H * -Sin(Angle) * 0.048, Cos(Angle) * 0.048);
-    Line(Pivot.X, Pivot.Y, Tip.X, Tip.Y, 0.042, Colors.Alloy);
-    Line(Tip.X - Paddle.X, Tip.Y - Paddle.Y, Tip.X + Paddle.X, Tip.Y + Paddle.Y, 0.042, Colors.Aqua);
-  end;
-  Dot(Pivot.X, Pivot.Y, 0.052, Colors.Ink);
-  Dot(Pivot.X, Pivot.Y, 0.029, Colors.Brass);
+  Art.Column(Pivot.X, Pivot.Y + 0.22, Pivot.Y, 0.042);
+  Art.Beam(BallPoint(Pivot.X - H * 0.11, Pivot.Y + 0.25),
+    BallPoint(BellPivot.X + H * 0.10, Pivot.Y + 0.25), 0.061, False);
+  Art.Wheel(Pivot, H, Turn, 0.18);
   Swing := H * 0.074 * Sin(Max(0.0, Age) * 26) * Exp(-Max(0.0, Age) * 5);
   Cam := BallAdd(Pivot, BallPoint(H * 0.052 * Sin(Turn), 0.052 * Cos(Turn)));
-  Line(Cam.X, Cam.Y, BellPivot.X + Swing - H * 0.04, BellPivot.Y - 0.205, 0.022, Colors.Orange);
-  Dot(Cam.X, Cam.Y, 0.024, Colors.PaleBrass);
-  Line(BellPivot.X, BellPivot.Y, BellPivot.X + Swing, BellPivot.Y - 0.10, 0.033, Colors.Alloy);
-  Surface.FillQuad(Screen(BellPivot.X + Swing - 0.035, BellPivot.Y - 0.08),
-    Screen(BellPivot.X + Swing + 0.035, BellPivot.Y - 0.08),
-    Screen(BellPivot.X + Swing + 0.080, BellPivot.Y - 0.19),
-    Screen(BellPivot.X + Swing - 0.080, BellPivot.Y - 0.19), Colors.Brass);
-  Dot(BellPivot.X + Swing, BellPivot.Y - 0.20, 0.028, Colors.Orange);
+  Clapper := BallAdd(BellPivot, BallPoint(Swing - H * 0.040, -0.205));
+  Art.LinkRod(Cam, Clapper, (Age >= 0) and (Age < 0.28));
+  Art.Disc(Cam, 0.024, Colors.PaleBrass);
+  Art.Chime(BellPivot, Swing, 0.215, Age);
   ContactPulse(P.X + H * MarbleAuxRadius, P.Y, Age, Beat.Power);
 end;
 
@@ -1193,14 +939,13 @@ begin
   begin
     Z := Y + 0.47 * U;
     RodY := Z + 0.42;
-    Line(DriverX, DriverY, X + H * 0.13, RodY, 0.022, Colors.Brass);
-    Rect(X - 0.19, Y + 0.89, X + 0.19, Y + 0.97, Colors.Timber);
-    Line(X - 0.068, Y + 0.42, X - 0.068, Y + 0.91, 0.030, Colors.Alloy);
-    Line(X + 0.068, Y + 0.42, X + 0.068, Y + 0.91, 0.030, Colors.Alloy);
-    Rect(X - 0.052, Z - 0.01, X + 0.052, Z + 0.42, Colors.Orange);
-    Line(X, Z + 0.09, X, Z + 0.40, 0.028, Colors.PaleBrass);
-    Dot(X + H * 0.13, RodY, 0.036, Colors.Brass);
-    Line(X, RodY, X + H * 0.13, RodY, 0.035, Colors.Alloy);
+    Art.LinkRod(BallPoint(DriverX, DriverY), BallPoint(X + H * 0.13, RodY), (U > 0) and (U < 1));
+    Art.Beam(BallPoint(X - 0.19, Y + 0.97), BallPoint(X + 0.19, Y + 0.97), 0.082, False);
+    Art.Column(X - 0.076, Y + 0.91, Y + 0.42, 0.024);
+    Art.Column(X + 0.076, Y + 0.91, Y + 0.42, 0.024);
+    Art.ShutterBlade(X, Z - 0.01, 0.43, 0.069, U);
+    Art.LinkRod(BallPoint(X, RodY), BallPoint(X + H * 0.13, RodY), U > 0);
+    Art.Joint(BallPoint(X + H * 0.13, RodY), 0.038, U * Pi);
     Bridge := Plan.Legs[Link.Target + 1].Bridge;
     GateArm := BallPoint(X + H * 0.13, RodY);
     if Bridge.Auxiliary.Active then
@@ -1323,6 +1068,25 @@ begin
         for I := Max(1, Section.First) to Section.Last do Linkage(Plan.Links[I - 1]);
 end;
 
+procedure TMarblePainter.NeonTrail;
+var Leg: TMarbleLeg; A, B: TBallPoint; Start, Slope: Double;
+begin
+  if Length(Plan.Legs) = 0 then Exit;
+  Leg := Plan.Legs[Plan.CueAt(Time) + 1];
+  if Leg.Motion <> mmRail then Exit;
+  Start := Max(Leg.Start, Time - 0.13);
+  Slope := Leg.RailSlope;
+  if Leg.Junction.Active and (Time >= Leg.Junction.Branch.Start) then
+  begin
+    Start := Max(Start, Leg.Junction.Branch.Start);
+    Slope := Leg.Heading * Leg.Junction.Branch.Grade;
+  end;
+  A := MarbleRailSurface(Leg.Position(Start), Slope);
+  B := MarbleRailSurface(Leg.Position(Time), Slope);
+  Art.Line(A, B, 0.107, Colors.Aqua, 0.28);
+  Art.Line(A, B, 0.024, Colors.Pearl, 0.89);
+end;
+
 procedure TMarblePainter.Paint;
 var P, Camera: TBallPoint; CenterX: Double;
 begin
@@ -1336,10 +1100,20 @@ begin
   if Plan.Version >= 2 then CenterX := 0.50;
   Left := Camera.X - Width * CenterX;
   Top := Camera.Y + Height * 0.54;
-  Colors := StagePalettes[StageStyle];
-  Backboard;
+  Colors := MarblePalette(StageStyle);
+  Art.Surface := Surface;
+  Art.Style := StageStyle;
+  Art.Colors := Colors;
+  Art.Left := Left;
+  Art.Top := Top;
+  Art.Scale := Scale;
+  DrawMarbleBackdrop(Art, Width, Height);
   Course(P);
-  if not Frame.BackgroundOnly then Ball(P);
+  if not Frame.BackgroundOnly then
+  begin
+    if StageStyle = msNeonArcade then NeonTrail;
+    Ball(P);
+  end;
 end;
 
 destructor TMarbleAnimation.Destroy;

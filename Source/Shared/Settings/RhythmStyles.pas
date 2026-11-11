@@ -6,7 +6,7 @@ type
   TRhythmStyleGroup=(sgShooting,sgBall,sgAction,sgRace,sgMusic);
   TStyleSmallKind=(skFixed,skScroll);
   TMarbleBallStyle=(mbSteel,mbGlass,mbWood,mbPorcelain);
-  TMarbleStageStyle=(msWoodWorkshop,msFairyTale,msBrassWorks,msStoneRuins,msIcePalace,msNeonCircuit);
+  TMarbleStageStyle=(msWoodWorkshop,msDeskCraft,msSteampunk,msClearAcrylic,msNeonArcade,msColorToys,msStoneRuins);
   TStyleVariantKind=(svNone,svBoss,svRhythm);
   TStyleFeature=(sfBoss,sfPrepared,sfAssets,sfDesigns,sfThreshold,sfTransparent,sfDefaultBoss50,sfOwnFinale);
   TStyleFeatures=set of TStyleFeature;
@@ -42,7 +42,9 @@ const FIREWORKS_DEFAULT_RICHNESS=50;BOSS_DEFAULT_FREQUENCY=50;AUDIO_DEFAULT_DENS
   TYPE_V_TITLE='Type.V';
   TYPE_D_TITLE='Type.D';
   MarbleBallTitles:array[TMarbleBallStyle] of string=('鉄球（銀）','ビー玉（緑）','木球','陶器玉');
-  MarbleStageTitles:array[TMarbleStageStyle] of string=('木の工房','メルヘン','真鍮の機械室','石造りの遺跡','氷の宮殿','ネオン回路');
+  MarbleStageTitles:array[TMarbleStageStyle] of string=('木製からくり','ピタゴラ装置風','スチームパンク',
+    '透明アクリル','ネオンアーケード','カラフル玩具','古代石造遺跡');
+  MarbleStageIds:array[TMarbleStageStyle] of string=('wood','desk','steampunk','acrylic','neon','toys','ruins');
 implementation
 uses System.SysUtils,System.Math;
 const

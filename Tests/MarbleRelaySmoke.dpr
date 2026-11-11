@@ -1,7 +1,7 @@
 ﻿program MarbleRelaySmoke;
 {$APPTYPE CONSOLE}
 // 接触の時刻、重力、レールからの離脱を検証し、指定WAVの試写も出力する。
-uses System.SysUtils, System.Math, System.IOUtils, System.Hash, System.Types, Vcl.Graphics, Vcl.Imaging.pngimage,
+uses System.SysUtils, System.Math, System.IOUtils, System.Hash, System.Types, Winapi.Windows, Vcl.Graphics, Vcl.Imaging.pngimage,
   RhythmAudio, RhythmAudioCache, RhythmPrepare, RhythmStyles, RhythmPlanRef, RhythmBallGeometry,
   RhythmMarblePlan, RhythmScene, RhythmSettings;
 
@@ -1157,10 +1157,16 @@ begin
   Need((State.MarbleBall = mbSteel) and (State.MarbleStage = msWoodWorkshop), 'Marble default appearance');
   Need(TRhythmSettings.TryJSON('{"schema":1,"style":"marble-relay","marbleBall":-8,"marbleStage":"unknown"}', Saved) and
     (Saved.MarbleBall = mbSteel) and (Saved.MarbleStage = msWoodWorkshop), 'Invalid appearance must fall back to defaults');
+  Need(TRhythmSettings.TryJSON('{"schema":1,"style":"marble-relay","marbleStage":3}', Saved) and
+    (Saved.MarbleStage = msStoneRuins), 'Old stone setting must survive the new menu order');
+  Need(TRhythmSettings.TryJSON('{"schema":1,"style":"marble-relay","marbleStage":4}', Saved) and
+    (Saved.MarbleStage = msClearAcrylic), 'Old ice setting must migrate to acrylic');
+  Need(TRhythmSettings.TryJSON('{"schema":1,"style":"marble-relay","marbleStage":5}', Saved) and
+    (Saved.MarbleStage = msNeonArcade), 'Old neon setting must survive the new menu order');
   State.Style := rsMarbleRelay;
   State.Plan := Ref;
   State.MarbleBall := mbPorcelain;
-  State.MarbleStage := msIcePalace;
+  State.MarbleStage := msClearAcrylic;
   Need(TRhythmSettings.TryJSON(State.ToJSON, Saved) and (Saved.MarbleBall = State.MarbleBall) and
     (Saved.MarbleStage = State.MarbleStage) and (Saved.Plan.Key = Ref.Key) and (Saved.Plan.Digest = Ref.Digest),
     'Appearance save changes the plan');
@@ -1183,6 +1189,9 @@ begin
   try
     for Stage := Low(TMarbleStageStyle) to High(TMarbleStageStyle) do
     begin
+      State.MarbleStage := Stage;
+      Need(TRhythmSettings.TryJSON(State.ToJSON, Saved) and (Saved.MarbleStage = Stage) and
+        (Saved.Plan.Key = Ref.Key) and (Saved.Plan.Digest = Ref.Digest), 'Theme restore changes the prepared plan');
       Renderer.ConfigureStyle(rsMarbleRelay, Ref, 0, 0, mbSteel, Stage);
       Renderer.Render(Image, Audio, T, 0);
       StageHashes[Stage] := PixelsHash;
@@ -1231,10 +1240,113 @@ begin
     Renderer.ConfigureStyle(rsMarbleRelay, Ref, 0, 0);
     Renderer.Render(Image, Audio, T, 0);
     Need(PixelsHash = StageHashes[msWoodWorkshop], 'Appearance reset changes the original frame');
-    WriteLn('Marble appearance PASS: four materials, six themes, same prepared plan.');
+    WriteLn('Marble appearance PASS: four materials, seven themes, same prepared plan.');
   finally
     Crop.Free;
     Base.Free;
+  end;
+end;
+
+// 同じ絶対時刻で描画した7種類を横に並べ、球とカメラの動きを比較する。
+procedure RenderThemeComparison(const Folder: string; const Ref: TRhythmPlanRef; Plan: TMarblePlan;
+  Audio: TRhythmAudio; Renderer: TRhythmRenderer; PNG: TPngImage);
+const
+  TileWidth = 464;
+  TileHeight = 261;
+  Gutter = 12;
+  Captions: array[0..3] of string = ('小球が受け皿に着地', '主球のリフトが上昇', '小球が分岐を切り替え', '羽根車の鐘が鳴る');
+var
+  Stage: TMarbleStageStyle;
+  Tile, Sheet: TBitmap;
+  Leg: TMarbleLeg;
+  Saw: TMarbleSeesaw;
+  Found: Boolean;
+  ContactTimes: array[0..3] of Double;
+  FirstFrame, LastFrame, FrameIndex, I, X, Y: Integer;
+  T: Double;
+  Path: string;
+begin
+  Found := False;
+  for Leg in Plan.Legs do
+  begin
+    Saw := Leg.Bridge.Auxiliary.Merge.Pass.Counter.Seesaw;
+    if (Saw.SwitchLever.Beat.Time > 0) and (Saw.ExitBell.Time > 0) then
+    begin
+      Found := True;
+      Break;
+    end;
+  end;
+  Need(Found, 'Comparison requires a tray, lift, junction and bell in the same chain');
+  FirstFrame := Floor(Max(0.0, Saw.Board.Start - 0.5) * FrameRate);
+  LastFrame := Ceil(Min(Plan.Duration, Saw.ExitBell.Time + 0.70) * FrameRate);
+  ContactTimes[0] := Saw.Trigger.Time;
+  ContactTimes[1] := Saw.WeightLift.Start;
+  ContactTimes[2] := Saw.SwitchLever.Beat.Time;
+  ContactTimes[3] := Saw.ExitBell.Time;
+  Path := TPath.Combine(Folder, 'ThemeComparisonFrames');
+  ForceDirectories(Path);
+  Tile := TBitmap.Create;
+  Sheet := TBitmap.Create;
+  try
+    Tile.PixelFormat := pf32bit;
+    Tile.SetSize(TileWidth, TileHeight);
+    Sheet.PixelFormat := pf32bit;
+    Sheet.SetSize(1920, 682);
+    Sheet.Canvas.Font.Name := 'Yu Gothic UI';
+    for FrameIndex := FirstFrame to LastFrame - 1 do
+    begin
+      T := FrameIndex / FrameRate;
+      Sheet.Canvas.Brush.Style := bsSolid;
+      Sheet.Canvas.Brush.Color := RGB(16, 23, 34);
+      Sheet.Canvas.FillRect(Rect(0, 0, Sheet.Width, Sheet.Height));
+      Sheet.Canvas.Font.Color := RGB(235, 241, 249);
+      Sheet.Canvas.Font.Height := -25;
+      Sheet.Canvas.Font.Style := [fsBold];
+      Sheet.Canvas.Brush.Style := bsClear;
+      Sheet.Canvas.TextOut(14, 9, 'からくりリレー   7つのステージ');
+      Sheet.Canvas.Font.Height := -17;
+      Sheet.Canvas.Font.Style := [];
+      Sheet.Canvas.TextOut(555, 16, '同じコース・同じ時刻');
+      for Stage := Low(TMarbleStageStyle) to High(TMarbleStageStyle) do
+      begin
+        X := 14 + (Ord(Stage) mod 4) * (TileWidth + Gutter);
+        Y := 48 + (Ord(Stage) div 4) * 310;
+        Renderer.ConfigureStyle(rsMarbleRelay, Ref, 0, 0, mbSteel, Stage);
+        Renderer.Render(Tile, Audio, T, 0);
+        Sheet.Canvas.Font.Height := -20;
+        Sheet.Canvas.Font.Style := [fsBold];
+        Sheet.Canvas.TextOut(X + 2, Y, MarbleStageTitles[Stage]);
+        Sheet.Canvas.Draw(X, Y + 28, Tile);
+      end;
+
+      X := 14 + 3 * (TileWidth + Gutter);
+      Y := 358;
+      Sheet.Canvas.Font.Height := -20;
+      Sheet.Canvas.Font.Style := [fsBold];
+      Sheet.Canvas.TextOut(X + 2, Y, '仕掛けの進行');
+      Sheet.Canvas.Brush.Style := bsSolid;
+      Sheet.Canvas.Brush.Color := RGB(28, 40, 56);
+      Sheet.Canvas.FillRect(Rect(X, Y + 28, X + TileWidth, Y + 289));
+      Sheet.Canvas.Brush.Style := bsClear;
+      Sheet.Canvas.Font.Style := [];
+      for I := Low(ContactTimes) to High(ContactTimes) do
+      begin
+        Sheet.Canvas.Font.Color := RGB(153, 178, 202);
+        if T >= ContactTimes[I] then Sheet.Canvas.Font.Color := RGB(142, 243, 219);
+        Sheet.Canvas.TextOut(X + 24, Y + 57 + I * 44, Captions[I]);
+      end;
+      Sheet.Canvas.Font.Color := RGB(194, 212, 230);
+      Sheet.Canvas.Font.Height := -16;
+      Sheet.Canvas.TextOut(X + 24, Y + 242, Format('試聴音源  %.2f 秒', [T], TFormatSettings.Invariant));
+      PNG.Assign(Sheet);
+      PNG.SaveToFile(TPath.Combine(Path, Format('frame%.4d.png', [FrameIndex - FirstFrame])));
+    end;
+    WriteLn(Format('Theme comparison: start=%.9f duration=%.9f frames=%d',
+      [FirstFrame / FrameRate, (LastFrame - FirstFrame) / FrameRate, LastFrame - FirstFrame],
+      TFormatSettings.Invariant));
+  finally
+    Sheet.Free;
+    Tile.Free;
   end;
 end;
 
@@ -1250,6 +1362,11 @@ begin
     Image.PixelFormat := pf32bit;
     Image.SetSize(960, 540);
     VerifyAppearance(Folder, Ref, Plan, Audio, Renderer, Image, PNG);
+    if SameText(ParamStr(2), 'themes') then
+    begin
+      RenderThemeComparison(Folder, Ref, Plan, Audio, Renderer, PNG);
+      Exit;
+    end;
     Seen := [];
     for Cue in Plan.Cues do
     begin
@@ -1307,8 +1424,8 @@ begin
     Cold := LoadMarbleAudio(Ref, Source, 0);
     Need(Length(Cold.PCM) = 0, 'Cold audio has PCM');
     Plan := LoadMarblePlan(Ref, Cold, 0);
-    VerifyPhysics(Plan, Audio, SameText(ParamStr(2), 'demo'));
-    VerifyLinks(Plan, Audio, SameText(ParamStr(2), 'demo'));
+    VerifyPhysics(Plan, Audio, SameText(ParamStr(2), 'demo') or SameText(ParamStr(2), 'themes'));
+    VerifyLinks(Plan, Audio, SameText(ParamStr(2), 'demo') or SameText(ParamStr(2), 'themes'));
     VerifyCourseView(Plan);
     if ParamCount = 0 then VerifyLegacy(Audio);
     RenderEvidence(Folder, Ref, Plan, Cold);

@@ -100,7 +100,7 @@ begin
    Form:=TFormRhythmShooterSettings.Create(nil);
    try
     Settings:=TRhythmSettings.Defaults;Settings.Style:=Style;Settings.BossFrequency:=50;Settings.FireworksRichness:=100;
-    Settings.MarbleBall:=mbWood;Settings.MarbleStage:=msIcePalace;Form.ConfigureState(Settings,320,180);
+    Settings.MarbleBall:=mbWood;Settings.MarbleStage:=msClearAcrylic;Form.ConfigureState(Settings,320,180);
     Form.Position:=poDesigned;Form.Left:=-32000;Form.Top:=-32000;Form.Show;ScaleTestForm(Form,DPIs[D]);
     for K:=0 to Form.ComponentCount-1 do if Form.Components[K] is TPanel then if TPanel(Form.Components[K]).Caption<>'' then raise Exception.Create('Internal panel caption visible');
     Combo:=TComboBox(Form.FindComponent('AnimationStyle'));if (Combo.Items.Count<>GroupStyleCount(StyleInfo(Style).Group)) or (Combo.ItemIndex<>GroupStyleIndex(Style)) or (Form.Snapshot.Style<>Style) then raise Exception.Create('Classified style registration/restore');
@@ -116,13 +116,13 @@ begin
     Ball:=TComboBox(Form.FindComponent('MarbleBall'));Stage:=TComboBox(Form.FindComponent('MarbleStage'));
     if (Ball=nil) or (Stage=nil) or (Ball.Parent.Visible<>(Style=rsMarbleRelay)) or
       (Stage.Parent.Visible<>(Style=rsMarbleRelay)) then raise Exception.Create('Marble appearance visibility');
-    if (Ball.Items.Count<>4) or (Stage.Items.Count<>6) or (Ball.ItemIndex<>Ord(mbWood)) or
-      (Stage.ItemIndex<>Ord(msIcePalace)) then raise Exception.Create('Marble appearance restore');
+    if (Ball.Items.Count<>4) or (Stage.Items.Count<>7) or (Ball.ItemIndex<>Ord(mbWood)) or
+      (Stage.ItemIndex<>Ord(msClearAcrylic)) then raise Exception.Create('Marble appearance restore');
     if Style=rsMarbleRelay then begin
       Ball.ItemIndex:=Ord(mbGlass);Ball.OnChange(Ball);
-      Stage.ItemIndex:=Ord(msFairyTale);Stage.OnChange(Stage);
+      Stage.ItemIndex:=Ord(msDeskCraft);Stage.OnChange(Stage);
       Settings:=Form.Snapshot;
-      if (Settings.MarbleBall<>mbGlass) or (Settings.MarbleStage<>msFairyTale) then raise Exception.Create('Marble appearance change');
+      if (Settings.MarbleBall<>mbGlass) or (Settings.MarbleStage<>msDeskCraft) then raise Exception.Create('Marble appearance change');
     end;
     if Form.FindComponent('PreviewPause')<>nil then raise Exception.Create('Separate pause button');
     if TButton(Form.FindComponent('PreviewPlay')).Caption<>'再生' then raise Exception.Create('Idle play toggle');

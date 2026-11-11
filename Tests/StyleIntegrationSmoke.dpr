@@ -138,7 +138,7 @@ begin
    Obj.Time:=100;ModeHash:=PreviewHash;Frame('Advance after source end',False);Need(CapturedHash=ModeHash,'Advanced end time');Inc(OffsetChecks);
    Obj.Time:=32.3;Offset.Value:=0;Frame('Offset reset',False);Need(CapturedHash=SecondHash,'Offset reset or backwards seek drift');Inc(OffsetChecks);
    if Style=rsMarbleRelay then begin
-     Settings.MarbleStage:=msFairyTale;
+     Settings.MarbleStage:=msClearAcrylic;
      JsonText:=Settings.ToJSON;Json.Value:=PWideChar(JsonText);ModeHash:=PreviewHash;
      Frame('Marble stage change',False);Need((CapturedHash=ModeHash) and (ModeHash<>SecondHash),'Stage toggle missing from host');
      FirstHash:=ModeHash;

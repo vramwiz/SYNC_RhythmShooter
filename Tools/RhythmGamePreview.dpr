@@ -34,6 +34,8 @@ uses
   RhythmMarbleCourse in '..\Source\MarbleRelay\Planning\RhythmMarbleCourse.pas',
   RhythmMarbleLayout in '..\Source\MarbleRelay\Planning\RhythmMarbleLayout.pas',
   RhythmMarbleLinkage in '..\Source\MarbleRelay\Planning\RhythmMarbleLinkage.pas',
+  RhythmMarbleStage in '..\Source\MarbleRelay\RhythmMarbleStage.pas',
+  RhythmMarbleBackdrop in '..\Source\MarbleRelay\RhythmMarbleBackdrop.pas',
   RhythmMarbleImages in '..\Source\MarbleRelay\RhythmMarbleImages.pas',
   RhythmMarblePlan in '..\Source\MarbleRelay\RhythmMarblePlan.pas',
   RhythmMarbleScene in '..\Source\MarbleRelay\RhythmMarbleScene.pas',
