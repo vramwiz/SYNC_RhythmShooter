@@ -16,6 +16,8 @@ function MakeAudio:TRhythmAudio;
 var I,J,Start:Integer;Time,Gap,Phase:Double;Samples:PSmallInt;V:SmallInt;
 begin
  Result:=TRhythmAudio.Create;Result.Source:=Source;Result.Key:=THashSHA2.GetHashString('shared-preparation-native-v1');Result.Sensitivity:=50;Result.SourceRevision:=Revision;Result.Duration:=100;
+ // 初見殺しは小数秒の曲で保存後の丸め差も含めて実DLLの復元を検査する。
+ if Style=rsTrapAction then Result.Duration:=100+1523/RHYTHM_RATE;
  SetLength(Result.Envelope,10000);for I:=0 to 9499 do if ((I>2200) and (I<4300)) or ((I>6500) and (I<8500)) then Result.Envelope[I]:=0.85 else Result.Envelope[I]:=0.16;
  if Density<AUDIO_DEFAULT_DENSITY then SetLength(Result.PCM,100*RHYTHM_RATE*4);
  Samples:=PSmallInt(Result.PCM);

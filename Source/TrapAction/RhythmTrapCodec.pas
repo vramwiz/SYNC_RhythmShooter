@@ -55,7 +55,8 @@ begin
     Result:=TTrapPlan.Create;
     try
       Result.Theme:=TTrapStage(Ref.Variant-1);Check(O.GetValue<Integer>('theme',-1)=Ord(Result.Theme));
-      Result.Duration:=ReadPreparedExact(O.GetValue('duration'));Check((Result.Duration>0) and (Result.Duration=Audio.Duration));
+      // 計画はbinary64、共通音声情報はJSONの十進表記。読戻しの丸め差だけを許容する。
+      Result.Duration:=ReadPreparedExact(O.GetValue('duration'));Check((Result.Duration>0) and (Abs(Result.Duration-Audio.Duration)<1E-8));
       Result.GoalTime:=ReadPreparedExact(O.GetValue('goalTime'));Result.GoalX:=ReadPreparedExact(O.GetValue('goalX'));
       Rows('moves',10000);SetLength(Result.Moves,A.Count);
       for I:=0 to A.Count-1 do begin Row(I,14);M:=Default(TTrapMove);

@@ -4,7 +4,7 @@
 uses System.SysUtils,System.Classes,System.Math,System.IOUtils,System.Hash,
   Vcl.Graphics,Vcl.Forms,Vcl.StdCtrls,Vcl.Imaging.pngimage,SYNC_RhythmShooter_SettingsForm,RhythmAudio,RhythmStyles,RhythmTrapPlan,
   RhythmTrapBuild,RhythmTrapCodec,RhythmTrapArt,RhythmAnimation,RhythmRenderSurface,
-  RhythmImageBank,RhythmPlanRef,RhythmSettings;
+  RhythmImageBank,RhythmPlanRef,RhythmSettings,RhythmPrepare;
 const DemoSeconds=180;
   Shots:array[0..7] of TTrapKind=(tkHiddenSpikes,tkCeiling,tkBoulder,tkLaser,tkWall,tkBackground,tkDoor,tkCollapse);
 procedure Need(B:Boolean;const Why:string);
@@ -22,7 +22,8 @@ type TWaveHeader = packed record
 var Header: TWaveHeader; Samples: TArray<SmallInt>; FileStream: TFileStream; Existing: TBytes;
   I, Beat: Integer; T, Note, Kick, Snare, Hat, Level: Double;
 begin
-  SetLength(Samples, DemoSeconds * RHYTHM_RATE);
+  // 整数秒だけでは、JSON音声情報とbinary64計画の丸め差を検出できない。
+  SetLength(Samples, DemoSeconds * RHYTHM_RATE + 1523);
   for I := RHYTHM_RATE div 4 to High(Samples) - RHYTHM_RATE div 4 do
   begin
     Beat := (I - RHYTHM_RATE div 4) div SamplesPerBeat;
@@ -75,6 +76,37 @@ end;
 procedure PNG(Bitmap:TBitmap;const Path:string);
 var Image:TPNGImage;
 begin Image:=TPNGImage.Create;try Image.Assign(Bitmap);Image.SaveToFile(Path);finally Image.Free;end;end;
+procedure VerifySource(const Source:string);
+var Worker:TRhythmPrepareThread;Audio,Cold:TRhythmAudio;Plan:TTrapPlan;
+  Sensitivity,Density:Integer;Rejected:Boolean;
+begin
+  for Sensitivity in TArray<Integer>.Create(50,100) do
+    for Density in TArray<Integer>.Create(-100,20,100) do begin
+      Worker:=TRhythmPrepareThread.Create(Source,Sensitivity,0,rsTrapAction,False,nil,1,1,Density);
+      try
+        Worker.Start;Worker.WaitFor;Need(Worker.Error='','Real source prepare: '+Worker.Error);
+        Audio:=Worker.TakeAudio;
+        try
+          Cold:=LoadTrapAudio(Worker.Plan,Source,0);
+          try
+            Need(Length(Cold.PCM)=0,'Real source cold restore uses PCM');
+            Plan:=LoadTrapPlan(Worker.Plan,Cold,0);
+            try Need((Plan.Duration=Audio.Duration) and (Plan.GoalTime<=Plan.Duration),'Real source duration');
+              Writeln('REAL_SOURCE PASS sensitivity=',Sensitivity,' density=',Density,
+                ' moves=',Length(Plan.Moves),' traps=',Length(Plan.Obstacles));
+            finally Plan.Free;end;
+            if (Sensitivity=50) and (Density=-100) then begin
+              // 丸め差の許容によって、実際に異なる曲長まで受け入れないことを確認する。
+              Cold.Duration:=Audio.Duration+0.01;Rejected:=False;
+              try Plan:=LoadTrapPlan(Worker.Plan,Cold,0);Plan.Free;
+              except on E:EConvertError do Rejected:=True;end;
+              Need(Rejected,'Mismatching duration was accepted');
+            end;
+          finally Cold.Free;end;
+        finally Audio.Free;end;
+      finally Worker.Free;end;
+    end;
+end;
 var Audio,Restored:TRhythmAudio;Plan,Again,RepeatPlan:TTrapPlan;Theme:TTrapStage;Ref:TRhythmPlanRef;
   Settings,Loaded:TRhythmSettings;Surface:TAnimationRenderSurface;Bitmap,Sheet,Montage:TBitmap;Frame:TAnimationFrame;
   Folder,Source,H:string;I,J,K,Count:Integer;T,Minimum:Double;Trap:TTrapObstacle;M:TTrapMove;
@@ -87,8 +119,10 @@ var Audio,Restored:TRhythmAudio;Plan,Again,RepeatPlan:TTrapPlan;Theme:TTrapStage
   begin for Hit in Audio.Hits do if Hit.Time=Time then Exit(True);Result:=False;end;
 begin
   try
+    if ParamCount>0 then begin VerifySource(ParamStr(1));Exit;end;
     Folder:=TPath.Combine(ExtractFileDir(ParamStr(0)),'Evidence');ForceDirectories(Folder);
     Source:=TPath.Combine(Folder,'TrapAction180.wav');WriteDemoWave(Source);Audio:=LoadRhythmAudio(Source,50);
+    Need(Audio.Duration<>Trunc(Audio.Duration),'Regression needs a fractional duration');
     Surface:=TAnimationRenderSurface.Create(TAnimationImageBank.Create(0));Bitmap:=TBitmap.Create;Sheet:=TBitmap.Create;Montage:=TBitmap.Create;
     try
       Bitmap.PixelFormat:=pf32bit;Bitmap.SetSize(960,540);Sheet.SetSize(1920,2160);Montage.SetSize(1920,2160);
