@@ -10,7 +10,7 @@ type TInitPlugin=function(Version:DWORD):Byte;cdecl;
 var Captured:TBytes;CapturedWidth,CapturedHeight:Integer;
 var Root,Source,Revision,Expected,Actual:string;Stamp:TWin32FileAttributeData;Style:TRhythmStyle;
   Audio,Cold:TRhythmAudio;Worker:TRhythmPrepareThread;Ref:TRhythmPlanRef;Renderer:TRhythmRenderer;
-  Image:TBitmap;Settings,Restored:TRhythmSettings;Backend,J,Checks,HostChecks,MusicChecks,OffsetChecks,Density,StylesChecked,BaseHits:Integer;T,Shift:Double;PNG:TPngImage;
+  Image:TBitmap;Settings,Restored:TRhythmSettings;Backend,Meter,J,Checks,HostChecks,MusicChecks,OffsetChecks,Density,StylesChecked,BaseHits:Integer;T,Shift:Double;PNG:TPngImage;
 procedure Need(V:Boolean;const S:string);begin if not V then raise Exception.Create(S);end;
 function MakeAudio:TRhythmAudio;
 var I,J,Start:Integer;Time,Gap,Phase:Double;Samples:PSmallInt;V:SmallInt;
@@ -211,7 +211,10 @@ begin
    Actual:=Restored.ToJSON;Need(TRhythmSettings.TryJSON(Actual,Restored) and Restored.HostMusic,'Host authority JSON roundtrip');
    Cold:=LoadStyleAudio(Style,Ref,Source,0);Need(Cold<>nil,'PCM-free restore fixture');
    Need(Length(Cold.PCM)=0,'PCM-free restore');Renderer:=TRhythmRenderer.Create;Renderer.ConfigureStyle(Style,Ref,100);
-   for Backend:=0 to 1 do begin
+   // 初見殺しはEQを明示ONにして、件数だけの冷復元で二音目以降が止まる退行も検出する。
+   for Meter:=0 to Ord(Style=rsTrapAction) do begin
+    if Meter=0 then Renderer.ConfigureStyle(Style,Ref,100) else Renderer.ConfigureStyle(Style,Ref,100,1);
+    for Backend:=0 to 1 do begin
     Renderer.UseD2D:=Backend=1;
     for J:=0 to 7 do begin
      T:=0.5+((J*19) mod 91);Renderer.Render(Image,Audio,T,0);Expected:=ImageHash;Renderer.Render(Image,Cold,99-T,0);Renderer.Render(Image,Cold,T,0);Actual:=ImageHash;Need(Actual=Expected,'Warm/cold/seek '+StyleId(Style)+' backend '+IntToStr(Backend));Inc(Checks);
@@ -220,7 +223,8 @@ begin
      Renderer.Render(Image,Cold,32.3-Shift,0);Expected:=ImageHash;
      Renderer.Render(Image,Cold,32.3,0,'',1,0,0,Shift);Need(ImageHash=Expected,'Offset renderer source time '+StyleId(Style));Inc(OffsetChecks);
     end;
-    if Backend=1 then Need(Renderer.LastUsedD2D,'D2D backend unavailable '+StyleId(Style));
+     if Backend=1 then Need(Renderer.LastUsedD2D,'D2D backend unavailable '+StyleId(Style));
+    end;
    end;
    VerifyHost;
    Renderer.Render(Image,Cold,32.3,0);PNG:=TPngImage.Create;PNG.Assign(Image);PNG.SaveToFile(TPath.Combine(Root,StyleId(Style)+'.png'));FreeAndNil(PNG);

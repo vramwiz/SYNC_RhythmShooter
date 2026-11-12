@@ -9,7 +9,7 @@ procedure WritePreparedData(Root:TJSONObject;var Ref:TRhythmPlanRef);
 function PreparedExact(Value:Double):TJSONString;
 function ReadPreparedExact(Value:TJSONValue):Double;
 implementation
-uses System.SysUtils,System.Math,System.IOUtils,System.Hash,Winapi.Windows,RhythmPaths;
+uses System.SysUtils,System.Math,System.IOUtils,System.Hash,System.Generics.Collections,Winapi.Windows,RhythmPaths;
 
 function PreparedExact(Value:Double):TJSONString;
 var Bits:UInt64;
@@ -64,7 +64,9 @@ function PreparedAudio(Root:TJSONObject;const Ref:TRhythmPlanRef;const Source:st
 var
   V:TJSONValue;
   Info:TJSONObject;
-  Count:Integer;
+  Hits,Row:TJSONArray;
+  Count,I:Integer;
+  Hit:TRhythmHit;
 begin
   Result:=nil;
   V:=Root.GetValue('audio');
@@ -87,6 +89,24 @@ begin
     if not FileExists(Source) then raise Exception.Create('音楽ファイルがありません: '+Source);
     if not AudioSourceUnchanged(Result) then raise Exception.Create('音楽の更新情報が変わったか復元情報が不足しています。再準備してください。');
     SetLength(Result.Hits,Count);
+    V:=Info.GetValue('hits');
+    Result.HasHitDetails:=V<>nil;
+    // 旧形式は計画照合に必要な件数を維持する。音のない0埋め配列をEQへは渡さない。
+    if V<>nil then begin
+      if not (V is TJSONArray) then raise EConvertError.Create('Invalid prepared audio hits');
+      Hits:=TJSONArray(V);
+      if Hits.Count<>Count then raise EConvertError.Create('Prepared audio hit count mismatch');
+      for I:=0 to Count-1 do begin
+        if not (Hits.Items[I] is TJSONArray) then raise EConvertError.Create('Invalid prepared audio hit');
+        Row:=TJSONArray(Hits.Items[I]);
+        if Row.Count<>4 then raise EConvertError.Create('Invalid prepared audio hit fields');
+        Hit.Time:=ReadPreparedExact(Row.Items[0]);Hit.Strength:=ReadPreparedExact(Row.Items[1]);
+        Hit.Lane:=ReadPreparedExact(Row.Items[2]);Hit.Flight:=ReadPreparedExact(Row.Items[3]);
+        if (Hit.Time<0) or (Hit.Time>Result.Duration+1E-8) or (Hit.Strength<0) or (Hit.Strength>1) or
+          ((I>0) and (Hit.Time<Result.Hits[I-1].Time)) then raise EConvertError.Create('Invalid prepared audio hit timing');
+        Result.Hits[I]:=Hit;
+      end;
+    end;
   except Result.Free;
     Result:=nil;
     raise;
@@ -96,6 +116,8 @@ end;
 procedure AddPreparedAudio(Root:TJSONObject;Audio:TRhythmAudio);
 var
   Info:TJSONObject;
+  Hits,Row:TJSONArray;
+  Hit:TRhythmHit;
 begin
   Info:=TJSONObject.Create;
   Root.AddPair('audio',Info);
@@ -103,6 +125,15 @@ begin
   Info.AddPair('duration',TJSONNumber.Create(Audio.Duration));
   Info.AddPair('soundEnd',TJSONNumber.Create(Audio.SoundEnd));
   Info.AddPair('events',TJSONNumber.Create(Length(Audio.Hits)));
+  // 検出件数だけでは冷復元後のEQが一度だけ光って止まる。選択済みの時刻・強度を完全精度で残す。
+  if Audio.HasHitDetails then begin
+    Hits:=TJSONArray.Create;Info.AddPair('hits',Hits);
+    for Hit in Audio.Hits do begin
+      Row:=TJSONArray.Create;Hits.AddElement(Row);
+      Row.AddElement(PreparedExact(Hit.Time));Row.AddElement(PreparedExact(Hit.Strength));
+      Row.AddElement(PreparedExact(Hit.Lane));Row.AddElement(PreparedExact(Hit.Flight));
+    end;
+  end;
 end;
 
 procedure WritePreparedData(Root:TJSONObject;var Ref:TRhythmPlanRef);

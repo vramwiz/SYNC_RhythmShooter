@@ -17,7 +17,7 @@ function EqualizerActivity(Audio:TRhythmAudio;Time:Double):TEqualizerActivity;
 var L,R,M,I:Integer;NowTick,HitTick:Int64;Delta,Strength:Double;
 begin
   Result:=Default(TEqualizerActivity);
-  if (Audio=nil) or (Length(Audio.Hits)=0) or (Time<0) or (Time>Audio.Duration) then Exit;
+  if (Audio=nil) or not Audio.HasHitDetails or (Length(Audio.Hits)=0) or (Time<0) or (Time>Audio.Duration) then Exit;
   // 古い十進JSON由来の微小差を表示メーターだけ1usに揃える。計画の命中時刻は変更しない。
   NowTick:=Round(Time*1000000);L:=0;R:=Length(Audio.Hits);
   while L<R do begin M:=L+(R-L) div 2;

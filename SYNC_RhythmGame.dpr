@@ -35,6 +35,7 @@ uses
   RhythmCannonStyle in 'Source\CrashCannon\RhythmCannonStyle.pas',
   RhythmTrapPlan in 'Source\TrapAction\RhythmTrapPlan.pas',
   RhythmTrapBuild in 'Source\TrapAction\RhythmTrapBuild.pas',
+  RhythmTrapGimmicks in 'Source\TrapAction\RhythmTrapGimmicks.pas',
   RhythmTrapCodec in 'Source\TrapAction\RhythmTrapCodec.pas',
   RhythmTrapArt in 'Source\TrapAction\RhythmTrapArt.pas',
   RhythmTrapScene in 'Source\TrapAction\RhythmTrapScene.pas',

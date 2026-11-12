@@ -24,6 +24,7 @@ type
     PCM: TBytes;
     Envelope: TArray<Single>;
     Hits: TArray<TRhythmHit>;
+    HasHitDetails:Boolean; // Falseは旧保存の件数だけの配列。音反応へ0埋めの値を渡さない。
     Duration,SoundEnd: Double;
     Sensitivity: Integer;
     CacheReused: Boolean;
@@ -47,6 +48,7 @@ uses System.Math,RhythmMotion,RhythmAudioAnalysis;
 constructor TRhythmAudio.Create;
 begin inherited Create;
   FBossFrequency:=100;
+  HasHitDetails:=True;
 end;
 
 procedure TRhythmAudio.SetBossFrequency(Value:Integer);
