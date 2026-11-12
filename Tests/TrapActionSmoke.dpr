@@ -75,7 +75,7 @@ end;
 procedure PNG(Bitmap:TBitmap;const Path:string);
 var Image:TPNGImage;
 begin Image:=TPNGImage.Create;try Image.Assign(Bitmap);Image.SaveToFile(Path);finally Image.Free;end;end;
-// 同じ位置の地面を通常・落下・フェイントへ変えても、作動前に見分けられないことを画素で照合する。
+// 同じ位置の地面を通常・落下へ変えても、作動前に見分けられないことを画素で照合する。
 procedure VerifyGroundCamouflage;
 const Widths:array[0..3] of Integer=(960,1280,800,720);
       Heights:array[0..3] of Integer=(540,720,800,1280);
@@ -106,10 +106,9 @@ begin
           for Tick:=0 to 2 do begin
             Tile:=Plan.Platforms[1];Tile.Motion:=pmStatic;Tile.Kind:=tkMoving;Plan.Platforms[1]:=Tile;
             Reference:=Picture(Tick*1.4);
-            for Kind:=0 to 2 do begin
+            for Kind:=0 to 1 do begin
               Tile.Motion:=pmDrop;Tile.Kind:=tkCrumble;
               if Kind=1 then Tile.Kind:=tkVanish;
-              if Kind=2 then begin Tile.Motion:=pmFeint;Tile.Kind:=tkFalseFloor;end;
               Plan.Platforms[1]:=Tile;
               Need(Picture(Tick*1.4)=Reference,'Trap floor exposes its type before activation');
               Need(Tile.BoundsAt(Tick*1.4).Bottom<Tile.Y-6,'Trap floor is only one thin row');
@@ -119,9 +118,6 @@ begin
           Tile.Motion:=pmDrop;Tile.Kind:=tkCrumble;Plan.Platforms[1]:=Tile;Changed:=Picture(3.12);
           Need(Changed<>Reference,'Whole ground chunk did not visibly fall');
           Picture(0);Need(Picture(3.12)=Changed,'Collapse appearance depends on playback order');
-          Tile.Motion:=pmFeint;Tile.Kind:=tkFalseFloor;Plan.Platforms[1]:=Tile;
-          Need(Picture(3.25)<>Reference,'Ground feint did not move');
-          Need(Picture(3.5)=Reference,'Recovered feint ground still reveals its type');
           Tile.Motion:=pmStatic;Tile.Kind:=tkMoving;Plan.Platforms[1]:=Tile;Reference:=Picture(2.8);
           Roof:=Plan.Ceilings[0];Roof.Motion:=pmRoofDrop;Roof.Trigger:=3;Roof.Settle:=4.8;
           Roof.Release:=5.2;Roof.Recover:=6.1;Roof.DY:=3.2;Plan.Ceilings[0]:=Roof;
@@ -130,7 +126,7 @@ begin
         end;
       end;
     end;
-    I:=Length(Widths)*Length(GroundY)*2;Writeln('CAMOUFLAGE cases=',I,' normal/drop/vanish/feint, before/after/reverse seek');
+    I:=Length(Widths)*Length(GroundY)*2;Writeln('CAMOUFLAGE cases=',I,' normal/drop/vanish/roof, before/after/reverse seek');
   finally Bitmap.Free;Surface.Free;Plan.Free;end;
 end;
 procedure VerifySync(Plan:TTrapPlan;Audio:TRhythmAudio);
@@ -308,7 +304,7 @@ end;
 var Audio,Restored:TRhythmAudio;Plan,Again,RepeatPlan:TTrapPlan;Theme:TTrapStage;Ref:TRhythmPlanRef;
   Settings,Loaded:TRhythmSettings;Surface:TAnimationRenderSurface;Bitmap,Sheet,Montage:TBitmap;Frame:TAnimationFrame;
   Folder,Source,H,BackgroundHash:string;I,J,K,Count,RightMoves,LeftMoves,Stops,Reasons,Ups,Downs,RoofSteps,Patterns,Cell,WideDrops:Integer;
-  T,Minimum,First,Last,Speed:Double;Trap,SavedTrap:TTrapObstacle;M:TTrapMove;
+  T,Minimum,First,Last,Speed,SupportY:Double;Trap,SavedTrap:TTrapObstacle;M:TTrapMove;
   Tile,OtherTile:TTrapPlatform;Supported,Rejected,Found:Boolean;
   A,B:TTrapPoint;Standing,Body,Obstacle:TTrapBox;Seen:set of TTrapKind;Moves:set of TTrapMotion;
   Variations:set of TTrapAvoidance;SavedRoof:Double;
@@ -351,6 +347,11 @@ begin
           VerifySync(Plan,Audio);
           VerifyDiversity(Plan,True);
           WideDrops:=0;
+          for Tile in Plan.Platforms do begin
+            Need(Tile.Motion<>pmFeint,'Removed sinking-and-returning floor was generated');
+            if Tile.Motion=pmGrate then Need(Abs(Tile.BoundsAt(0).Top-Tile.BoundsAt(0).Bottom-0.10)<1E-8,
+              'Needle-pit walking grate is not thin');
+          end;
           for Tile in Plan.Platforms do if Tile.Motion=pmDrop then begin
             Need(Tile.BoundsAt(0).Bottom<Tile.Y-6,'Crumbling ground is a thin warning tile');
             if Tile.Right-Tile.Left>=2.9 then Inc(WideDrops);
@@ -362,6 +363,7 @@ begin
           RepeatPlan:=BuildTrapPlan(Audio,Theme,nil);
           try Need((Length(Plan.Moves)=Length(RepeatPlan.Moves)) and (Plan.GoalX=RepeatPlan.GoalX),'Deterministic build');finally RepeatPlan.Free;end;
           for M in Plan.Moves do begin
+            if M.Pattern<>18 then Need(TrapPatternEnabled(M.Avoidance),'Removed floor-bobbing pattern was selected');
             Include(Moves,M.Kind);
             if M.Pattern<>18 then Include(Variations,M.Avoidance);
             Need(M.Kind in [tmRun,tmJump,tmStop,tmRide,tmHeadBump,tmVault],'Forbidden player action');
@@ -421,15 +423,20 @@ begin
           for Trap in Plan.Obstacles do begin
             Include(Seen,Trap.Kind);if Trap.Synced then Need(Original(Trap.Cue),'Trap shifted from onset');
             if TrapHarmless(Trap.Kind) then Continue;
+            SupportY:=Trap.Y;if TrapFloorSpikes(Trap.Kind) then SupportY:=SupportY-TrapSpikePitDepth;
             Need((Trap.Kind in [tkSpikes,tkHiddenSpikes,tkCeiling,tkRock,tkBlade,tkWall]) and
               (((Trap.Kind=tkWall) and (Trap.W<=1.5) and (Trap.H<=3)) or
                ((Trap.W<=0.9) and (Trap.H<=TrapStandingHeight))),'Unexpected danger geometry');
             for J:=0 to 100 do begin
               T:=Plan.Duration*J/100;
               Obstacle:=Trap.BoundsAt(T);
-              Need(Obstacle.Bottom>=Trap.Y,'Spike passed through the floor');
+              if TrapFloorSpikes(Trap.Kind) then begin
+                Need(Abs(Obstacle.Bottom-SupportY)<1E-8,'Needle pit is not one block deep');
+                Need(Obstacle.Top-Obstacle.Bottom>=TrapSpikePitDepth-1E-8,'Only the needle tip is visible');
+                if Trap.Kind<>tkHiddenSpikes then Need(Obstacle.Top=Trap.Y+Trap.H,'Needle tip height changed');
+              end else Need(Obstacle.Bottom>=Trap.Y,'Spike passed through the floor');
               if (T<=Trap.Finish) or (Trap.Kind<>tkBlade) then
-                Need(GroundAt(Obstacle.Left,Trap.Y,T) and GroundAt(Obstacle.Right,Trap.Y,T),'Hazard has no supporting floor');
+                Need(GroundAt(Obstacle.Left,SupportY,T) and GroundAt(Obstacle.Right,SupportY,T),'Hazard has no supporting floor');
             end;
             if Trap.Kind in [tkCeiling,tkRock] then begin
               Obstacle:=Trap.BoundsAt(Trap.Fire);
@@ -468,7 +475,7 @@ begin
           if Theme=tsCave then begin
             Cell:=0;
             for I:=0 to Ord(High(TTrapAvoidance)) do begin
-              if TTrapAvoidance(I)=taTravel then Continue;
+              if not TrapPatternEnabled(TTrapAvoidance(I)) then Continue;
               T:=0;Found:=False;
               for Trap in Plan.Obstacles do if (Trap.Kind=tkCeiling) and
                 (Ord(Plan.Moves[Trap.Move].Avoidance)=I) then begin
@@ -487,7 +494,7 @@ begin
                 IntToStr(Cell+1)+' '+TrapPatternTitle(TTrapAvoidance(I)));Inc(Cell);
             end;
             PNG(Montage,TPath.Combine(Folder,'TrapActionTraps.png'));
-            PNG(Montage,TPath.Combine(Folder,'TrapActionGimmicks53.png'));
+            PNG(Montage,TPath.Combine(Folder,'TrapActionGimmicks51.png'));
             for I:=0 to 4 do begin Render(Plan.Duration*I/4);PNG(Bitmap,TPath.Combine(Folder,Format('cave-%d.png',[I])));end;
           end;
           Writeln(TrapStageIds[Theme],': ',Length(Plan.Moves),' motions, ',Length(Plan.Obstacles),
@@ -508,6 +515,7 @@ begin
             Trap:=Default(TTrapObstacle);Trap.Kind:=tkSpikes;Trap.Move:=0;
             Trap.Fire:=M.Start+0.01;Trap.Cue:=(M.Start+M.Finish)*0.5;Trap.Finish:=M.Finish-0.01;
             Trap.X:=M.Position(Trap.Cue).X;Trap.Y:=M.Origin.Y;Trap.W:=0.62;Trap.H:=0.5;
+            Need(Plan.Clearance(Trap,Trap.Cue)<0,'Leftward collision fixture does not actually hit the player');
             Plan.Obstacles[0]:=Trap;Rejected:=False;
             try ValidateTrapPlan(Plan,nil);except on E:EConvertError do Rejected:=True;end;
             Plan.Obstacles[0]:=SavedTrap;Need(Rejected,'Collision during leftward retreat accepted');Break;
@@ -516,7 +524,7 @@ begin
       end;
       PNG(Sheet,TPath.Combine(Folder,'TrapActionThemes.png'));
       I:=0;for K:=0 to Ord(High(TTrapKind)) do if TTrapKind(K) in Seen then Inc(I);
-      Need(Seen=[tkSpikes,tkHiddenSpikes,tkCeiling,tkRock,tkBlade,tkWall,tkPit,tkCrumble,tkVanish,tkFalseFloor],'Trap coverage');
+      Need(Seen=[tkSpikes,tkHiddenSpikes,tkCeiling,tkRock,tkBlade,tkWall,tkPit,tkCrumble,tkVanish],'Trap coverage');
       Patterns:=0;for K:=0 to Ord(High(TTrapAvoidance)) do if (TTrapAvoidance(K)<>taTravel) and
         (TTrapAvoidance(K) in Variations) then Inc(Patterns);
       Need(Patterns=TrapPatternCount,'Missing avoidance patterns');

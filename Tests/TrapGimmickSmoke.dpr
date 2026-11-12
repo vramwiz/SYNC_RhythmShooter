@@ -29,6 +29,10 @@ begin
       for I:=0 to High(Beats) do begin Beats[I]:=(I+1)*Tempo;Audio.Hits[I].Time:=Beats[I];Audio.Hits[I].Strength:=0.7;end;
       Start:=Beats[3];Origin:=TrapPoint(Start*TrapWalkSpeed,Base);
       for Kind:=taFeintFloor to High(TTrapAvoidance) do begin
+        if not TrapPatternEnabled(Kind) then begin
+          Need(not MakeTrapGimmick(Kind,Beats,Start,55,Audio.Duration,Origin,CaseIndex mod 3,G),
+            'Removed floor-bobbing gimmick was generated');Continue;
+        end;
         Need(MakeTrapGimmick(Kind,Beats,Start,55,Audio.Duration,Origin,CaseIndex mod 3,G),'Feasible gimmick did not build');
         Plan:=TTrapPlan.Create;Plan.Duration:=Audio.Duration;Plan.Theme:=tsCave;
         SetLength(Plan.Moves,Length(G.Moves)+2);M:=Default(TTrapMove);M.Start:=0;M.Finish:=Start;M.Cue:=Start;
@@ -104,11 +108,7 @@ begin
             Need(F.BoundsAt(F.Trigger+0.12).Top<F.Y-0.65,'Collapse happens too late');
             Need((F.Right-F.Left>2.9) and (F.BoundsAt(0).Bottom<F.Y-6),'Collapse is a thin, isolated warning tile');
           end;
-          if F.Motion=pmFeint then begin
-            Need((F.Right-F.Left>4.4) and (F.BoundsAt(0).Bottom<F.Y-6),'Feint is a thin, isolated warning tile');
-            Need(F.BoundsAt((F.Trigger+F.Settle)*0.5).Top<F.Y-0.15,'Missing floor feint');
-            Need(Abs(F.BoundsAt(F.Settle).Top-F.Y)<1E-8,'Feint did not recover');
-          end;
+          Need(F.Motion<>pmFeint,'Removed sinking-and-returning floor is still present');
           if (F.Motion=pmReveal) and (F.Reveal>0) then Need(not F.Solid(F.Reveal-0.001,Plan.Duration),'Hidden slab appeared early');
         end;
         for M in Plan.Moves do begin

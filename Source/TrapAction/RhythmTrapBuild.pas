@@ -1,5 +1,5 @@
 ﻿unit RhythmTrapBuild;
-// 53種類の仕掛けを進行度と最近の動作から選び、元音への接地と全方向の安全性を検証する。
+// 51種類の仕掛けを進行度と最近の動作から選び、元音への接地と全方向の安全性を検証する。
 interface
 uses System.SysUtils, RhythmAudio, RhythmStyles, RhythmTrapPlan;
 function BuildTrapPlan(Audio: TRhythmAudio; Theme: TTrapStage; const Cancel: TFunc<Boolean>): TTrapPlan;
@@ -106,7 +106,7 @@ end;
 
 procedure ValidateTrapPlan(Plan: TTrapPlan; const Cancel: TFunc<Boolean>);
 var I,J:Integer;M:TTrapMove;Trap:TTrapObstacle;Tile:TTrapPlatform;
-  Previous,P:TTrapPoint;Time,Edge,SupportLeft,SupportRight:Double;
+  Previous,P:TTrapPoint;Time,Edge,SupportLeft,SupportRight,SupportY:Double;
 begin
   if (Plan=nil) or (Length(Plan.Moves)=0) then raise EArgumentException.Create('空の罠計画');
   Edge:=-1E8;
@@ -115,6 +115,7 @@ begin
       (Abs(Tile.Y)>3.5) or (Tile.EndY<>Tile.Y) or (Tile.Start<>0) or
       (Tile.Finish<=0) or (Tile.Finish>Plan.Duration) then raise EConvertError.Create('段差床の配置が不正です。');
     if Tile.Motion=pmRoofDrop then raise EConvertError.Create('天井の動作が床へ混入しています。');
+    if Tile.Motion=pmFeint then raise EConvertError.Create('沈んで戻る床は現行計画では使用しません。');
     if (Tile.Reveal<0) or (Tile.Reveal>Plan.Duration) or (Tile.Trigger<0) or
       (Abs(Tile.DX)>1.5) or (Abs(Tile.DY)>1.0) or
       ((Tile.Motion in [pmFeint,pmHorizontal,pmVertical]) and (Tile.Settle<=Tile.Trigger)) then
@@ -140,12 +141,13 @@ begin
       (Hypot(M.Origin.X-Previous.X,M.Origin.Y-Previous.Y)>1E-8) or
       ((I>0) and (M.Start<>Plan.Moves[I-1].Finish)) or
       not (M.Kind in [tmRun,tmJump,tmStop,tmRide,tmHeadBump,tmVault]) or not M.Landing or
+      ((M.Pattern<>18) and not TrapPatternEnabled(M.Avoidance)) or
       (Abs(M.Origin.Y)>3.5) or (Abs(M.Target.Y)>3.5) or
       (Abs(M.Target.X-M.Origin.X)>20) or (M.Arc<0) or (M.Arc>2.1) or
       ((M.Kind in [tmRun,tmStop]) and ((M.Arc<>0) or (M.Origin.Y<>M.Target.Y))) or
       ((M.Kind=tmStop) and (M.Target.X<>M.Origin.X)) or
       ((M.Kind in [tmRun,tmJump,tmVault]) and (M.Target.X=M.Origin.X)) or
-      ((M.Kind=tmRide) and (M.Arc>0) and ((M.Origin.X<>M.Target.X) or (M.Origin.Y<>M.Target.Y) or (M.Arc>0.3))) or
+      ((M.Kind=tmRide) and (M.Arc<>0)) or
       ((M.Kind in [tmJump,tmVault]) and (M.Arc<0.45)) then raise EConvertError.Create('歩行・ジャンプの連続軌道が不正です。');
     if ((M.Kind=tmStop) and (M.Cue<>M.Start)) or
       ((M.Kind=tmHeadBump) and ((M.Cue<=M.Start) or (M.Cue>=M.Finish) or
@@ -181,6 +183,7 @@ begin
     if not TrapHarmless(Trap.Kind) then begin
       Edge:=0;if Trap.Kind=tkBlade then Edge:=Trap.Travel;
       SupportLeft:=Trap.X-Trap.W*0.5-Edge;SupportRight:=Trap.X+Trap.W*0.5+Edge;
+      SupportY:=Trap.Y;if TrapFloorSpikes(Trap.Kind) then SupportY:=SupportY-TrapSpikePitDepth;
       if Trap.Kind=tkWall then begin
         SupportLeft:=SupportLeft+Min(0.0,Trap.Power*Trap.Travel);
         SupportRight:=SupportRight+Max(0.0,Trap.Power*Trap.Travel);
@@ -188,7 +191,7 @@ begin
       if ((Trap.Kind<>tkWall) and (Trap.W>0.90)) or (Trap.W>1.5) or
         ((Trap.Kind=tkWall) and (Abs(Trap.Power)<>1)) or
         ((Trap.Kind=tkBlade) and ((Trap.Power<0.4) or (Trap.Power>3) or (Trap.Travel>0.3))) or
-        not Plan.FloorSupports(SupportLeft,SupportRight,Trap.Y,Trap.Finish) then
+        not Plan.FloorSupports(SupportLeft,SupportRight,SupportY,Trap.Finish) then
         raise EConvertError.CreateFmt('罠を支える床がありません。 kind=%d move=%d pattern=%d x=%.3f y=%.3f',
           [Ord(Trap.Kind),Trap.Move,Ord(Plan.Moves[Trap.Move].Avoidance),Trap.X,Trap.Y]);
       if (Trap.Kind in [tkCeiling,tkRock]) and not Plan.CeilingSupports(Trap.X-Trap.W*0.5,
@@ -335,6 +338,33 @@ var
     end;
     Floors.Add(F);
   end;
+  procedure ExcavateSpikePits;
+  var Q:TTrapObstacle;F:TTrapPlatform;A,B:Double;
+    procedure CutGround(AtY:Double);
+    var N:Integer;Tile,Part:TTrapPlatform;
+    begin
+      for N:=Floors.Count-1 downto 0 do begin
+        Tile:=Floors[N];
+        if (Tile.Motion<>pmStatic) or (Abs(Tile.Y-AtY)>1E-8) or
+          (Tile.Right<=A+1E-8) or (Tile.Left>=B-1E-8) then Continue;
+        Floors.Delete(N);
+        if Tile.Left<A-1E-8 then begin Part:=Tile;Part.Right:=A;Floors.Add(Part);end;
+        if Tile.Right>B+1E-8 then begin Part:=Tile;Part.Left:=B;Floors.Add(Part);end;
+      end;
+    end;
+  begin
+    for Q in Traps do if TrapFloorSpikes(Q.Kind) then begin
+      A:=Q.X-Q.W*0.5;B:=Q.X+Q.W*0.5;
+      if Q.Kind=tkBlade then begin A:=A-Q.Travel;B:=B+Q.Travel;end;
+      CutGround(Q.Y);CutGround(Q.Y-TrapSpikePitDepth);
+      F:=Default(TTrapPlatform);F.Left:=A;F.Right:=B;F.Y:=Q.Y-TrapSpikePitDepth;F.EndY:=F.Y;
+      F.Move:=-1;F.Kind:=tkPit;F.Finish:=Duration;Floors.Add(F);
+      // 待機中に歩く収納式の針だけは、透ける薄い格子で従来の足元を支える。
+      if Q.Kind=tkHiddenSpikes then begin
+        F.Y:=Q.Y;F.EndY:=F.Y;F.Kind:=tkBridge;F.Motion:=pmGrate;Floors.Add(F);
+      end;
+    end;
+  end;
   procedure AddRoof(Left,Right,Y:Double);
   var R:TTrapPlatform;Move:TTrapMove;Q:TTrapObstacle;Height:Double;
   begin
@@ -478,7 +508,7 @@ begin
       // 使用回数の少ない仕掛けを優先し、直近と同じ系列・短い間隔の後退を避ける。
       Best:=-1;BestScore:=MaxInt;
       for Chosen:=Low(TTrapAvoidance) to High(TTrapAvoidance) do begin
-        if (Chosen=taTravel) or (TrapPatternTier(Chosen)>Tier) or not ChainFits(Chosen) then Continue;
+        if not TrapPatternEnabled(Chosen) or (TrapPatternTier(Chosen)>Tier) or not ChainFits(Chosen) then Continue;
         if (Tier>=2) and (TrapPatternTier(Chosen)<Tier-1) then Continue;
         if (Cursor>Goal*0.92) and (TrapPatternSteps(Chosen)<3) then Continue;
         if (TrapPatternFamily(Chosen)=5) and (Section-LastRetreat<8) then Continue;
@@ -591,17 +621,8 @@ begin
       Frontier:=M.Target.X;
     end;
     AddFloor(Frontier,Frontier+8,P.Y,tkMoving,Duration);
-    // 揺れる床の下へ通常床を重ねない。接近中は同じ高さの可動タイルが足幅を支える。
-    for F in SpecialFloors do if F.Motion=pmFeint then begin
-      for J:=Floors.Count-1 downto 0 do begin
-        Tile:=Floors[J];
-        if (Tile.Motion<>pmStatic) or (Tile.Y<>F.Y) or (Tile.Right<=F.Left) or (Tile.Left>=F.Right) then Continue;
-        Floors.Delete(J);
-        if Tile.Left<F.Left then begin Cut:=Tile;Cut.Right:=F.Left;Floors.Add(Cut);end;
-        if Tile.Right>F.Right then begin Cut:=Tile;Cut.Left:=F.Right;Floors.Add(Cut);end;
-      end;
-    end;
     Floors.AddRange(SpecialFloors);
+    ExcavateSpikePits;
     Floors.Sort(TComparer<TTrapPlatform>.Construct(function(const A,B:TTrapPlatform):Integer
       begin Result:=CompareValue(A.Left,B.Left);if Result=0 then Result:=CompareValue(A.Y,B.Y);end));
     Result.Platforms:=Floors.ToArray;RoofRight:=-8;

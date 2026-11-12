@@ -35,7 +35,7 @@ begin
 end;
 
 function IsTrapGimmick(Kind:TTrapAvoidance):Boolean;
-begin Result:=Kind>=taFeintFloor;end;
+begin Result:=(Kind>=taFeintFloor) and TrapPatternEnabled(Kind);end;
 
 function Schedule(Kind:TTrapAvoidance;const Beats:TArray<Double>;Start,Goal:Double;Section:Integer;out T:TTimes):Boolean;
 var N,Pre:Integer;Recipe:TRoofRecipe;
@@ -52,6 +52,7 @@ var N,Pre:Integer;Recipe:TRoofRecipe;
   begin Result:=Find(T[Index-1],Gap,Limit,T[Index]);end;
 begin
   T:=Default(TTimes);T[0]:=Start;Result:=False;
+  if not TrapPatternEnabled(Kind) then Exit;
   case Kind of
     taRoofShelters,taRoofNarrow,taRoofLastGap:begin
       Recipe:=RoofRecipe(Kind);Pre:=Section mod 3+1;
@@ -61,10 +62,6 @@ begin
         not Find(T[Pre],Recipe.FallMin,Recipe.FallMax,T[9]) then Exit;
       if not Next(Pre+2,T[9]+Recipe.Hold+Recipe.ReturnTime+0.12-T[Pre+1],5.0) then Exit;
       for N:=Pre+3 to 6 do if not Next(N,0.55,1.10) then Exit;
-    end;
-    taFeintFloor,taFeintDrop:begin
-      if not Next(1,0.35,0.65) or not Next(2,0.40,0.90) then Exit;
-      if (Kind=taFeintDrop) and not Next(3,0.40,0.90) then Exit;
     end;
     taCrushSlot:begin
       if not Next(1,0.40,0.90) or not Next(2,0.62,1.30) or
@@ -118,7 +115,6 @@ var T:TTimes;Moves:TList<TTrapMove>;Floors,Roofs:TList<TTrapPlatform>;Traps:TLis
     F.Move:=-1;F.Finish:=Duration;F.Kind:=tkMoving;F.Motion:=Motion;
     F.Reveal:=Reveal;F.Trigger:=Trigger;F.Settle:=Settle;F.DX:=DX;F.DY:=DY;
     if Motion=pmDrop then F.Kind:=tkCrumble;
-    if Motion=pmFeint then F.Kind:=tkFalseFloor;
     if Motion=pmReveal then F.Kind:=tkBridge;
     Floors.Add(F);
   end;
@@ -174,21 +170,6 @@ begin
     P:=Origin;Cursor:=Start;X:=P.X;Y:=P.Y;
     case Kind of
       taRoofShelters,taRoofNarrow,taRoofLastGap:RoofCascade;
-      taFeintFloor,taFeintDrop:begin
-        // 通常地面と連続する広い塊を揺らす。独立した薄い板で仕掛けを知らせない。
-        Floor(X-3.5,X-3.2,Y);
-        Floor(X-3.2,X+1.25,Y,pmFeint,0,T[0],T[1],0,0.18);
-        Move(T[1],X,Y,tmRide,0.18);
-        Move(T[2],X+2.5,Y,tmJump,0.95);
-        if Kind=taFeintDrop then begin
-          Floor(X+1.25,X+4.2,Y,pmDrop,0,T[2]+0.025);
-          Move(T[3],X+5.0,Y,tmJump,1.05);
-          Floor(X+4.2,P.X+0.65,Y);
-        end else Floor(X+1.25,P.X+0.65,Y);
-        Q:=Default(TTrapObstacle);Q.Kind:=tkFalseFloor;Q.Move:=0;Q.X:=X;Q.Y:=Y;
-        Q.W:=1.2;Q.H:=0.2;Q.Fire:=Max(0.0,Start-0.01);Q.Reveal:=0;
-        Q.Cue:=Start;Q.Finish:=Duration;Q.Synced:=True;Traps.Add(Q);
-      end;
       taCrushSlot,taCrushReverse:begin
         CrushArea;
         if Kind=taCrushSlot then begin

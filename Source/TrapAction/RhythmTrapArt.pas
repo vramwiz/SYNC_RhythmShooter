@@ -90,6 +90,7 @@ var I,J:Integer;Floor:TTrapPlatform;A,B,Y,X,Age,Bottom:Double;Bounds:TTrapBox;
     Result:=False;
     for N:=0 to High(P.Platforms) do begin
       if N=Index then Continue;Tile:=P.Platforms[N];
+      if Tile.Motion=pmGrate then Continue;
       if not Tile.Solid(T,P.Duration) then Continue;Box:=Tile.BoundsAt(T);
       if Abs(Box.Top-Height)>1E-8 then Continue;
       if LeftSide then Result:=(Box.Left<AtX-1E-8) and (Box.Right>=AtX-1E-8)
@@ -139,6 +140,13 @@ begin
   for I:=0 to High(P.Platforms) do begin
     Floor:=P.Platforms[I];Bounds:=Floor.BoundsAt(T);A:=Bounds.Left;B:=Bounds.Right;Y:=Bounds.Top;
     if (B<L-2) or (A>L+VW+2) or (T<Floor.Reveal) or not Floor.Solid(T,P.Duration) then Continue;
+    if Floor.Motion=pmGrate then begin
+      Line(A,Y,B,Y,0.022,$00B5A99D);
+      for J:=Ceil(A/0.16) to System.Math.Floor(B/0.16) do begin
+        X:=J*0.16;Line(X,Y,Min(B,X+0.035),Y-0.09,0.014,$008D8276);
+      end;
+      Continue;
+    end;
     if Floor.Motion=pmHorizontal then
       Line(Floor.Left-Abs(Floor.DX),Floor.Y-0.35,Floor.Right+Abs(Floor.DX),Floor.Y-0.35,0.045,$00546578);
     if Floor.Motion=pmVertical then
@@ -189,8 +197,7 @@ begin
     C:=$005459FA;
     case Q.Kind of
       tkSpikes,tkHiddenSpikes:begin
-        // 作動前後も収納口と金属の先端を残す。無から生えるようには見せない。
-        if Q.Kind=tkHiddenSpikes then H:=Max(H,0.035);
+        // 一段掘った穴の根元から全体を見せる。待機中も約1ブロックの銀の針が存在する。
         if H>0.001 then begin
           N:=Max(2,Ceil(W/0.22));
           for J:=0 to N-1 do begin
@@ -243,7 +250,7 @@ begin
       end;
       tkBlade:begin
         // 旧保存IDは維持。丸い飾りに見える刃を、同じ接触範囲の鋭い金属の針束へ置き換える。
-        Line(Q.X-Q.Travel-W*0.5,Q.Y-0.035,Q.X+Q.Travel+W*0.5,Q.Y-0.035,0.045,$00647386);
+        Line(Q.X-Q.Travel-W*0.5,Y-0.035,Q.X+Q.Travel+W*0.5,Y-0.035,0.045,$00647386);
         Bar(B.Left,Y-0.025,B.Right,Y+0.045,$00283143);
         N:=Max(2,Ceil(W/0.18));
         for J:=0 to N-1 do begin

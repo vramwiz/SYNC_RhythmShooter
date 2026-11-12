@@ -30,7 +30,7 @@ type
     taCrushSlot, taCrushReverse, taHiddenStairs, taHiddenSwitchback,
     taMovingDescentX, taMovingDescentY, taCrushHop, taCrushFeint,
     taRoofShelters, taRoofNarrow, taRoofLastGap);
-  TTrapPlatformMotion = (pmStatic, pmDrop, pmFeint, pmHorizontal, pmVertical, pmReveal, pmRoofDrop);
+  TTrapPlatformMotion = (pmStatic, pmDrop, pmFeint, pmHorizontal, pmVertical, pmReveal, pmRoofDrop, pmGrate);
   TTrapMove = record
     Start, Cue, Finish: Double; // Cueは接地ならFinish、停止ならStart。同期時刻は元の音を使う。
     Origin, Target: TTrapPoint;
@@ -94,6 +94,8 @@ function TrapEase(Value: Double): Double;
 function TrapRange(Time, First, Last: Double): Double;
 function TrapOverlap(const A, B: TTrapBox): Boolean;
 function TrapHarmless(Kind: TTrapKind): Boolean;
+function TrapFloorSpikes(Kind:TTrapKind):Boolean;
+function TrapPatternEnabled(Kind:TTrapAvoidance):Boolean;
 function TrapPatternTier(Kind: TTrapAvoidance): Integer;
 function TrapPatternFamily(Kind: TTrapAvoidance): Integer;
 function TrapPatternSteps(Kind: TTrapAvoidance): Integer;
@@ -103,8 +105,9 @@ const TrapHalfWidth = 0.32;
       TrapStandingHeight = 1.12;
       TrapWalkSpeed = 6.8; // 歩行・ジャンプ・後退に共通の水平速度上限。音の密度で引き上げない。
       TrapBackHopArc = 0.55; // 短い後退で落下針の下降経路へ上半身を入れない。
-      TrapPatternCount = 53;
+      TrapPatternCount = 51;
       TrapPlatformThickness = 0.20;
+      TrapSpikePitDepth = 1.0;
       TrapGroundDepth = 12.0; // 崩落・沈下も通常の地面と同じ地層の塊。薄い板にしない。
 
 implementation
@@ -139,6 +142,12 @@ begin
   Result := Kind in [tkCrumble, tkVanish, tkSink, tkMoving, tkFlip, tkPit,tkFalseFloor,
     tkTunnelCollapse, tkIce, tkTilt, tkBridge, tkCollapse];
 end;
+
+function TrapFloorSpikes(Kind:TTrapKind):Boolean;
+begin Result:=Kind in [tkSpikes,tkHiddenSpikes,tkBlade];end;
+
+function TrapPatternEnabled(Kind:TTrapAvoidance):Boolean;
+begin Result:=not (Kind in [taTravel,taFeintFloor,taFeintDrop]);end;
 
 function TrapPatternTier(Kind: TTrapAvoidance): Integer;
 begin
@@ -273,7 +282,7 @@ begin
 end;
 
 function TTrapObstacle.BoundsAt(Time: Double): TTrapBox;
-var Height, Bottom, U, Center,Hold: Double;
+var Height, Bottom, Top, U, Center,Hold: Double;
 begin
   Height := H; Bottom := Y; Center := X;
   if Kind = tkHiddenSpikes then
@@ -292,10 +301,13 @@ begin
     end;
     Center:=X+Power*Travel*U;
   end;
+  // 先端の高さ・発動時刻は従来通り。根元側を掘った穴へ延ばして全体を見せる。
+  Top:=Bottom+Height;
+  if TrapFloorSpikes(Kind) then Bottom:=Bottom-TrapSpikePitDepth;
   Result.Left := Center - W * 0.5;
   Result.Right := Center + W * 0.5;
   Result.Bottom := Bottom;
-  Result.Top := Bottom + Height;
+  Result.Top := Top;
 end;
 
 function TTrapObstacle.RetractionStart: Double;
@@ -342,6 +354,7 @@ begin
   Result.Top:=Y+D.Y;
   if Motion=pmStatic then Result.Bottom:=-1000
   else if Motion in [pmDrop,pmFeint] then Result.Bottom:=Result.Top-TrapGroundDepth
+  else if Motion=pmGrate then Result.Bottom:=Result.Top-0.10
   else Result.Bottom:=Result.Top-TrapPlatformThickness;
 end;
 
