@@ -1,8 +1,11 @@
 ﻿unit RhythmTrapBuild;
-// 51種類の仕掛けを進行度と最近の動作から選び、元音への接地と全方向の安全性を検証する。
+// 57種類の仕掛けを進行度と最近の動作から選び、元音への接地と全方向の安全性を検証する。
+// 全曲の選択・地形統合を担当し、個々の連動する罠の組立はRhythmTrapGimmicksへ委ねる。
 interface
 uses System.SysUtils, RhythmAudio, RhythmStyles, RhythmTrapPlan;
+// 準備時専用。Audio/Cancelは借用、返した計画は呼出側がFreeする。中止はEAbortで伝える。
 function BuildTrapPlan(Audio: TRhythmAudio; Theme: TTrapStage; const Cancel: TFunc<Boolean>): TTrapPlan;
+// 借用したPlanを変更せず、保存契約・床支持・罠との距離を検査する。不正なら例外を返す。
 procedure ValidateTrapPlan(Plan: TTrapPlan; const Cancel: TFunc<Boolean>);
 implementation
 uses System.Math, System.Generics.Collections,System.Generics.Defaults,RhythmTrapGimmicks;
@@ -18,6 +21,10 @@ begin
   if TrapHarmless(Trap.Kind) then Exit(True);
   Left := Trap.X - Trap.W * 0.5 - TrapHalfWidth - 0.11;
   Right := Trap.X + Trap.W * 0.5 + TrapHalfWidth + 0.11;
+  if Trap.Kind=tkSideSpear then begin
+    Left:=Min(Trap.X,Trap.X+Trap.Power*Trap.W)-TrapHalfWidth-0.11;
+    Right:=Max(Trap.X,Trap.X+Trap.Power*Trap.W)+TrapHalfWidth+0.11;
+  end;
   if Trap.Kind=tkBlade then begin Left:=Left-Trap.Travel;Right:=Right+Trap.Travel;end;
   if Trap.Kind=tkWall then begin Left:=Left-Trap.Travel;Right:=Right+Trap.Travel;end;
   for J := 0 to High(Plan.Moves) do
@@ -26,18 +33,24 @@ begin
     // 後退や再接近も調べる。進行方向に依存せず、身体が近づく全区間を検査する。
     if (Max(M.Target.X, M.Origin.X) < Left) or (Min(M.Origin.X, M.Target.X) > Right) then Continue;
     First := Max(M.Start, Trap.Fire); Last := Min(M.Finish, Trap.Finish);
-    if Trap.Kind in [tkWall,tkBlade] then begin First:=M.Start;Last:=M.Finish;end;
+    if Trap.Kind in [tkWall,tkBlade,tkPress,tkClosingDoor,tkCeilingNeedles,tkSpearMount] then begin First:=M.Start;Last:=M.Finish;end;
     if Last < First then Continue;
     Span := M.Finish - M.Start;
     Speed := (Abs(M.Target.X - M.Origin.X) + Abs(M.Target.Y - M.Origin.Y) + 4 * M.Arc) / Span;
     if M.Kind=tmVault then Speed:=Speed*2;
     if Trap.Kind = tkHiddenSpikes then
-      Speed := Speed + 1.5 * Trap.H / (Trap.Cue - Trap.Fire) +
-        1.5 * Trap.H / (Trap.Finish - Trap.RetractionStart);
+      Speed := Speed + 1.5 * (Trap.H+TrapSpikeTipDrop-TrapSpikeLowering) / (Trap.Cue - Trap.Fire) +
+        1.5 * (Trap.H+TrapSpikeTipDrop-TrapSpikeLowering) / (Trap.Finish - Trap.RetractionStart);
     if Trap.Kind in [tkCeiling,tkRock] then Speed := Speed + 2 * Trap.Travel / (Trap.Cue - Trap.Fire);
     if Trap.Kind=tkBlade then Speed:=Speed+Trap.Travel*2*Pi/Trap.Power;
     if Trap.Kind=tkWall then Speed:=Speed+Trap.Travel/Min(Trap.Cue-Trap.Fire,
       Trap.Finish-Trap.Cue-Min(0.12,(Trap.Finish-Trap.Cue)*0.25));
+    case Trap.Kind of
+      tkSideSpear:Speed:=Speed+1.5*Trap.W/(Trap.Cue-Trap.Fire)+1.5*Trap.W/(Trap.Finish-Trap.RetractionStart);
+      tkPress:Speed:=Speed+2*Trap.Travel/(Trap.Cue-Trap.Fire)+1.5*Trap.Travel/(Trap.Finish-Trap.RetractionStart);
+      tkClosingDoor:Speed:=Speed+1.5*Trap.Travel/(Trap.Cue-Trap.Fire);
+      tkFireJet:Speed:=Speed+1.5*Trap.H/(Trap.Cue-Trap.Fire)+1.5*Trap.H/(Trap.Finish-Trap.RetractionStart);
+    end;
     // 相対速度の上限でサンプル間の移動を0.05以内に抑え、0.10の余白を要求する。
     Count := Max(2, Ceil((Last - First) * Max(120.0, Speed / 0.05)));
     for I := 0 to Count do
@@ -58,6 +71,7 @@ var Tile:TTrapPlatform;I,N:Integer;Span,Speed,TileSpeed,Time,Left,Right:Double;
     if not F.Solid(At,Plan.Duration) then Exit(True);
     P:=M.Position(At);A.Left:=P.X-TrapHalfWidth;A.Right:=P.X+TrapHalfWidth;
     A.Bottom:=P.Y+0.035;A.Top:=P.Y+TrapStandingHeight;B:=F.BoundsAt(At);
+    if F.Motion=pmHinge then Exit(not F.Intersects(A,At));
     Result:=(A.Right<=B.Left+1E-8) or (A.Left>=B.Right-1E-8) or
       (A.Bottom>=B.Top-1E-8) or (A.Top<=B.Bottom+1E-8);
   end;
@@ -82,6 +96,12 @@ begin
       pmDrop:TileSpeed:=40;
       pmFeint:TileSpeed:=Tile.DY*Pi/(Tile.Settle-Tile.Trigger);
       pmHorizontal,pmVertical:TileSpeed:=(Abs(Tile.DX)+Abs(Tile.DY))*Pi*0.5/(Tile.Settle-Tile.Trigger);
+      pmRoofRise:TileSpeed:=Tile.DY*Pi*0.5/(Tile.Settle-Tile.Trigger);
+      pmGoalLift:TileSpeed:=Tile.DY*1.5/(Tile.Settle-Tile.Trigger);
+      pmNeedleLift:TileSpeed:=Max(Tile.DY*Pi*0.5/(Tile.Settle-Tile.Trigger),Tile.DY*Pi*0.5/(Tile.Recover-Tile.Release));
+      pmHinge:TileSpeed:=(Tile.Right-Tile.Left+TrapPlatformThickness)*Pi*0.75/(Tile.Settle-Tile.Trigger);
+      pmLift:TileSpeed:=Max(Tile.DY*Pi*0.5/(Tile.Settle-Tile.Trigger),
+        Max(1.5*Tile.DX/(Tile.Release-Tile.Settle),1.5*(Tile.DY+Tile.DX)/(Tile.Recover-Tile.Release)));
     end;
     N:=Max(8,Ceil(Span*Max(240.0,(Speed+TileSpeed)/0.018)));
     for I:=0 to N do begin
@@ -91,11 +111,12 @@ begin
   end;
   // すべての軌道は端点の高い方+Arcより下。天井には連続時間の上限で余白を確保する。
   for Tile in Plan.Ceilings do if (Tile.Left<Right+0.10) and (Tile.Right>Left-0.10) then begin
-    if Tile.Motion=pmStatic then begin
+    if Tile.Motion in [pmStatic,pmGoalWall] then begin
       if (Tile.Left<Right) and (Tile.Right>Left) and
         (Max(M.Origin.Y,M.Target.Y)+M.Arc+TrapStandingHeight>Tile.Y-0.12) then Exit;
     end else begin
-      TileSpeed:=Max(2*Tile.DY/(Tile.Settle-Tile.Trigger),1.5*Tile.DY/(Tile.Recover-Tile.Release));
+      TileSpeed:=Max(2*Tile.DY/(Tile.Settle-Tile.Trigger),
+        (1.5*Tile.DY+Tile.DX*Pi*0.5)/(Tile.Recover-Tile.Release));
       N:=Max(8,Ceil(Span*Max(240.0,(Speed+TileSpeed)/0.018)));
       for I:=0 to N do if not RoofClearAt(Tile,M.Start+Span*I/N) then Exit;
       if not RoofClearAt(Tile,M.Cue) then Exit;
@@ -105,21 +126,42 @@ begin
 end;
 
 procedure ValidateTrapPlan(Plan: TTrapPlan; const Cancel: TFunc<Boolean>);
-var I,J:Integer;M:TTrapMove;Trap:TTrapObstacle;Tile:TTrapPlatform;
+var I,J:Integer;M:TTrapMove;Trap:TTrapObstacle;Tile,Lift:TTrapPlatform;Body,Box:TTrapBox;
   Previous,P:TTrapPoint;Time,Edge,SupportLeft,SupportRight,SupportY:Double;
 begin
   if (Plan=nil) or (Length(Plan.Moves)=0) then raise EArgumentException.Create('空の罠計画');
   Edge:=-1E8;
   for Tile in Plan.Platforms do begin
     if (Tile.Move<>-1) or (Tile.Left<Edge) or (Tile.Right<=Tile.Left) or
-      (Abs(Tile.Y)>3.5) or (Tile.EndY<>Tile.Y) or (Tile.Start<>0) or
+      (Abs(Tile.Y)>3.5) or (Tile.EndY<>Tile.Y) or (Tile.Start<0) or (Tile.Start>=Tile.Finish) or
+      ((Tile.Motion<>pmNeedleLift) and (Tile.Start<>0)) or
       (Tile.Finish<=0) or (Tile.Finish>Plan.Duration) then raise EConvertError.Create('段差床の配置が不正です。');
-    if Tile.Motion=pmRoofDrop then raise EConvertError.Create('天井の動作が床へ混入しています。');
+    if Tile.Motion in [pmRoofDrop,pmGoalWall] then raise EConvertError.Create('天井の動作が床へ混入しています。');
     if Tile.Motion=pmFeint then raise EConvertError.Create('沈んで戻る床は現行計画では使用しません。');
     if (Tile.Reveal<0) or (Tile.Reveal>Plan.Duration) or (Tile.Trigger<0) or
-      (Abs(Tile.DX)>1.5) or (Abs(Tile.DY)>1.0) or
-      ((Tile.Motion in [pmFeint,pmHorizontal,pmVertical]) and (Tile.Settle<=Tile.Trigger)) then
+      (Abs(Tile.DX)>1.5) or (not (Tile.Motion in [pmLift,pmRoofRise,pmNeedleLift,pmGoalLift]) and (Abs(Tile.DY)>1.0)) or
+      ((Tile.Motion in [pmFeint,pmHorizontal,pmVertical,pmHinge,pmLift,pmRoofRise,pmNeedleLift]) and (Tile.Settle<=Tile.Trigger)) then
       raise EConvertError.Create('可動足場の時刻・移動量が不正です。');
+    if (Tile.Motion=pmGoalLift) and ((Tile.DY<>TrapGoalRise) or (Tile.DX<>0) or
+      (Tile.Y<>Plan.Moves[High(Plan.Moves)].Target.Y) or (Tile.Reveal<>0) or (Tile.Kind<>tkMoving) or
+      (Tile.Left<>Plan.GoalX+TrapGoalAhead-0.90) or (Tile.Right<>Plan.GoalX+TrapGoalAhead+0.90) or
+      (Abs(Tile.Trigger-Plan.GoalTime-TrapGoalAhead/TrapWalkSpeed)>1E-8) or
+      (Abs(Tile.Settle-Tile.Trigger-TrapGoalLaunchSeconds)>1E-8) or
+      (Tile.Release<>Tile.Settle) or (Abs(Tile.Recover-Tile.Settle-TrapGoalCelebration)>1E-8) or
+      (Tile.Finish<>Plan.Duration)) then
+      raise EConvertError.Create('地上へ出るゴール床の軌道が不正です。');
+    if (Tile.Motion=pmNeedleLift) and ((Tile.DY<>TrapNeedleLiftHeight) or ((Tile.DX<>0) and (Tile.DX<>1)) or
+      (Tile.Trigger<Tile.Start) or (Tile.Release<=Tile.Settle) or (Tile.Recover<=Tile.Release) or
+      ((Tile.DX=0) and (Tile.Finish<>Tile.Recover)) or
+      ((Tile.DX=1) and (Tile.Finish<>Plan.Duration)) or (Tile.Recover>Plan.Duration)) then
+      raise EConvertError.Create('天井針に連動する上下床の行程が不正です。');
+    if (Tile.Motion=pmRoofRise) and ((Tile.DX<>0) or (Tile.DY<>TrapRoofBedRise) or
+      (Tile.Settle>Plan.Duration)) then raise EConvertError.Create('天井に連動する床の上昇量が不正です。');
+    if ((Tile.Motion=pmHinge) and ((Tile.Right-Tile.Left>3.5) or (Tile.DX<>0) or (Tile.DY<>0) or
+      (Tile.Settle>Plan.Duration))) or
+      ((Tile.Motion=pmLift) and ((Tile.DY<=0) or (Tile.DX<0) or (Tile.DY+Tile.DX>2.3) or
+      (Tile.Release<=Tile.Settle) or (Tile.Recover<=Tile.Release) or (Tile.Recover>Plan.Duration))) then
+      raise EConvertError.Create('回転床・上昇地面の動作が不正です。');
     Edge:=Tile.Left;
   end;
   Edge:=-1E8;
@@ -127,8 +169,10 @@ begin
     if (Tile.Move<>-1) or (Tile.Left<Edge) or (Tile.Right<=Tile.Left) or
       (Abs(Tile.Y)>7) or (Tile.EndY<>Tile.Y) or (Tile.Start<>0) or
       (Tile.Finish<>Plan.Duration) then raise EConvertError.Create('段差天井の配置が不正です。');
-    if not (Tile.Motion in [pmStatic,pmRoofDrop]) then raise EConvertError.Create('天井の動作が不正です。');
-    if (Tile.Motion=pmRoofDrop) and ((Tile.Reveal<>0) or (Tile.DX<>0) or
+    if not (Tile.Motion in [pmStatic,pmRoofDrop,pmGoalWall]) then raise EConvertError.Create('天井の動作が不正です。');
+    if (Tile.Motion=pmGoalWall) and ((Tile.DY<=Tile.Y) or (Tile.DY>12) or (Tile.DX<>0)) then
+      raise EConvertError.Create('地上へ通じる縦穴の壁が不正です。');
+    if (Tile.Motion=pmRoofDrop) and ((Tile.Reveal<>0) or not InRange(Tile.DX,0.0,TrapRoofBedRise) or
       (Tile.DY<2.0) or (Tile.DY>4.0) or (Tile.Trigger<0) or (Tile.Settle<Tile.Trigger+0.85) or
       (Tile.Release<Tile.Settle+0.10) or (Tile.Recover<=Tile.Release) or (Tile.Recover>Plan.Duration)) then
       raise EConvertError.Create('落ちる天井の時刻・移動量が不正です。');
@@ -176,6 +220,43 @@ begin
   end;
   for Trap in Plan.Obstacles do begin
     if Assigned(Cancel) and Cancel() then Abort;
+    if Trap.Kind in [tkSideSpear,tkPress,tkCeilingNeedles,tkClosingDoor,tkFireJet,tkSpearMount] then begin
+      if (Trap.Move<0) or (Trap.Move>=Length(Plan.Moves)) or (Abs(Trap.Y)>5.0) or
+        (Trap.W<=0) or (Trap.W>3.0) or (Trap.H<=0) or (Trap.H>3.0) or
+        (Trap.Reveal<0) or (Trap.Reveal>Trap.Fire) or (Trap.Fire<0) or (Trap.Fire>=Trap.Cue) or
+        (Trap.Cue>=Trap.Finish) or (Trap.Finish>Plan.Duration) or (Trap.Embed<>0) then
+        raise EConvertError.Create('追加の仕掛けの寸法・時刻が不正です。');
+      if (Trap.Kind=tkSideSpear) and ((Abs(Trap.Power)<>1) or (Trap.H>0.4)) then
+        raise EConvertError.Create('横槍の方向・太さが不正です。');
+      if (Trap.Kind in [tkPress,tkClosingDoor]) and not InRange(Trap.Travel,2.0,3.5) then
+        raise EConvertError.Create('プレス・閉鎖扉の移動量が不正です。');
+      if (Trap.Kind=tkCeilingNeedles) and (Trap.H>1.0) then raise EConvertError.Create('天井針が長すぎます。');
+      if ((Trap.Kind=tkPress) and (Trap.W>1.6)) or ((Trap.Kind=tkClosingDoor) and (Trap.W>1.0)) or
+        ((Trap.Kind=tkFireJet) and (Trap.W>1.5)) or
+        ((Trap.Kind=tkSpearMount) and ((Trap.W>0.6) or (Trap.H>1.2))) or
+        ((Trap.Kind<>tkSideSpear) and (Trap.Power<>0)) or
+        (not (Trap.Kind in [tkPress,tkClosingDoor]) and (Trap.Travel<>0)) or
+        ((Trap.Kind in [tkClosingDoor,tkCeilingNeedles,tkSpearMount]) and (Trap.Finish<>Plan.Duration)) then
+        raise EConvertError.Create('追加の仕掛けの固定部・経路が不正です。');
+      SupportLeft:=Trap.X-Trap.W*0.5;SupportRight:=Trap.X+Trap.W*0.5;SupportY:=Trap.Y;
+      if Trap.Kind=tkSideSpear then begin
+        SupportLeft:=Min(Trap.X,Trap.X+Trap.Power*Trap.W);SupportRight:=Max(Trap.X,Trap.X+Trap.Power*Trap.W);
+        SupportY:=Trap.Y-0.40;
+      end;
+      if Trap.Kind=tkCeilingNeedles then begin
+        if not Plan.CeilingSupports(SupportLeft,SupportRight,Trap.Y+Trap.H) then
+          raise EConvertError.Create('固定天井針を支える天井がありません。');
+      end else begin
+        if not Plan.FloorSupports(SupportLeft,SupportRight,SupportY,Trap.Cue) then
+          raise EConvertError.Create('追加の仕掛けを支える地面がありません。');
+        if (Trap.Kind in [tkPress,tkClosingDoor]) and
+          not Plan.CeilingSupports(SupportLeft,SupportRight,Trap.Y+Trap.Travel+Trap.H) then
+          raise EConvertError.Create('プレス・閉鎖扉の固定部が天井から離れています。');
+      end;
+      if not SafeDuring(Plan,Trap) then raise EConvertError.CreateFmt('追加の仕掛けと軌道が接触します。 kind=%d move=%d cue=%.3f',
+        [Ord(Trap.Kind),Trap.Move,Trap.Cue]);
+      Continue;
+    end;
     if not (Trap.Kind in [tkSpikes,tkHiddenSpikes,tkCeiling,tkRock,tkBlade,tkWall,tkPit,tkCrumble,tkVanish,tkFalseFloor]) or
       (Abs(Trap.Y)>3.5) or ((Trap.Kind<>tkWall) and (Trap.H>TrapStandingHeight)) or
       (Trap.H>3) or (Trap.Travel<0) or (Trap.Travel>6) or not InRange(Trap.Embed,0.0,0.75) then
@@ -200,6 +281,23 @@ begin
         [Ord(Trap.Kind),Trap.Move,Ord(Plan.Moves[Trap.Move].Avoidance),Trap.X,Trap.Y,Trap.Cue]);
     end;
   end;
+  if Plan.GoalLift(Lift) then begin
+    // 長い無音の末尾があっても、乗り込みと急上昇の検査密度を落とさない。
+    for I:=0 to 241 do begin
+      Time:=Plan.GoalTime+(Lift.Recover-Plan.GoalTime)*Min(I,240)/240;
+      if I=241 then Time:=Plan.EndTime;
+      P:=Plan.Position(Time);Body:=Plan.PlayerBounds(Time);
+      if not Plan.FloorSupports(Body.Left,Body.Right,P.Y,Time) then
+        raise EConvertError.Create('ゴールの歩行・急上昇中に床から離れます。');
+      for Tile in Plan.Ceilings do if (Body.Right>Tile.Left-0.10) and (Body.Left<Tile.Right+0.10) then begin
+        Box:=Tile.CeilingBoundsAt(Time);
+        if (Body.Top>Box.Bottom-0.12) and (Body.Bottom<Box.Top) then
+          raise EConvertError.Create('ゴールの縦穴の天井または壁へ接触します。');
+      end;
+      for Trap in Plan.Obstacles do if Plan.Clearance(Trap,Time)<0.10 then
+        raise EConvertError.Create('地上へ向かう途中で最後の罠へ接触します。');
+    end;
+  end;
 end;
 
 function BuildTrapPlan(Audio:TRhythmAudio;Theme:TTrapStage;const Cancel:TFunc<Boolean>):TTrapPlan;
@@ -209,7 +307,7 @@ var
   Tile,F,Cut:TTrapPlatform;Trap,Placed:TTrapObstacle;P:TTrapPoint;V:TTrapAvoidance;G:TTrapGimmick;
   BeatTimes:TArray<Double>;
   I,J,Section,StopIndex,BackIndex,EndIndex,WaitIndex,ClearMove,Role:Integer;
-  Tier,LastRetreat,Candidate,Best,Score,BestScore,Steps,Phase:Integer;
+  Tier,LastRetreat,Candidate,Best,Score,BestScore,Steps,Phase,RoofUses:Integer;
   PatternUses:array[TTrapAvoidance] of Integer; Recent:array[0..2] of Integer;
   Beats:array[0..4] of Integer;Chosen:TTrapAvoidance;
   FinalPlaced,Aligned:Boolean;CeilingIndex:Integer;RoofHeight:Double;
@@ -366,7 +464,7 @@ var
     end;
   end;
   procedure AddRoof(Left,Right,Y:Double);
-  var R:TTrapPlatform;Move:TTrapMove;Q:TTrapObstacle;Height:Double;
+  var R,Platform:TTrapPlatform;Move:TTrapMove;Q:TTrapObstacle;Height:Double;
   begin
     Height:=Y+2.05+(Roofs.Count mod 3)*0.15;
     for Move in Result.Moves do
@@ -378,10 +476,48 @@ var
       Height:=Max(Height,Q.Y+Q.H+2.6+Ord(Q.Kind=tkRock)*0.5);
     for Q in Traps do if (Q.Kind=tkWall) and (Q.X+Q.Travel+Q.W*0.5>Left) and
       (Q.X-Q.Travel-Q.W*0.5<Right) then Height:=Max(Height,Q.Y+Q.H+0.20);
-    // CLEARと門の全体を実際に開いた洞内へ収める。壁の上へ文字を重ねない。
+    for Platform in Result.Platforms do if (Platform.Motion=pmHinge) and
+      (Platform.Right>Left) and (Platform.Left<Right) then
+      Height:=Max(Height,Platform.Y+Platform.Right-Platform.Left+0.20);
+    // 最後の歩行区間にも、縦穴へ向かうための頭上余白を残す。
     if Right>Result.GoalX-4.0 then Height:=Max(Height,5.3);
     R:=Default(TTrapPlatform);R.Left:=Left;R.Right:=Right;R.Y:=Height;R.EndY:=Height;
     R.Move:=-1;R.Kind:=tkCeiling;R.Finish:=Duration;Roofs.Add(R);
+  end;
+  procedure GoalFloor;
+  var N:Integer;F,Part:TTrapPlatform;A,B,Base:Double;
+  begin
+    // 音同期済みのコース終点を動かさず、その先だけを昇降板の穴と支持床へ置き換える。
+    Base:=Result.Moves[High(Result.Moves)].Target.Y;
+    A:=Result.GoalX+TrapGoalAhead-0.90;B:=Result.GoalX+TrapGoalAhead+0.90;
+    for N:=Floors.Count-1 downto 0 do begin
+      F:=Floors[N];if (F.Motion<>pmStatic) or (F.Right<=A) or (F.Left>=B) then Continue;
+      Floors.Delete(N);
+      if F.Left<A then begin Part:=F;Part.Right:=A;Floors.Add(Part);end;
+      if F.Right>B then begin Part:=F;Part.Left:=B;Floors.Add(Part);end;
+    end;
+    F:=Default(TTrapPlatform);F.Left:=A;F.Right:=B;F.Y:=Base-1.20;F.EndY:=F.Y;
+    F.Move:=-1;F.Kind:=tkPit;F.Finish:=Duration;Floors.Add(F);
+    F.Y:=Base;F.EndY:=Base;F.Kind:=tkMoving;F.Motion:=pmGoalLift;F.DY:=TrapGoalRise;
+    F.Trigger:=Result.GoalTime+TrapGoalAhead/TrapWalkSpeed;F.Settle:=F.Trigger+TrapGoalLaunchSeconds;
+    F.Release:=F.Settle;F.Recover:=F.Settle+TrapGoalCelebration;Floors.Add(F);
+  end;
+  procedure GoalShaft;
+  var R,Part:TTrapPlatform;N:Integer;Base,Edge:Double;
+  begin
+    // 絵だけの開口にせず、実天井を切って有限高さの左右壁を保存する。
+    Base:=Result.Moves[High(Result.Moves)].Target.Y;Edge:=Result.GoalX+0.55;
+    Roofs.Clear;Roofs.AddRange(Result.Ceilings);
+    for N:=Roofs.Count-1 downto 0 do begin
+      R:=Roofs[N];if R.Right<=Edge then Continue;Roofs.Delete(N);
+      if R.Left<Edge then begin Part:=R;Part.Right:=Edge;Roofs.Add(Part);end;
+    end;
+    R:=Default(TTrapPlatform);R.Left:=Edge;R.Right:=Result.GoalX+0.80;R.Y:=Base+2.20;R.EndY:=R.Y;
+    R.Move:=-1;R.Kind:=tkCeiling;R.Motion:=pmGoalWall;R.DY:=Base+TrapGoalRise;R.Finish:=Duration;Roofs.Add(R);
+    R.Left:=Result.GoalX+4.00;R.Right:=Result.GoalX+8.00;R.Y:=Base;R.EndY:=R.Y;Roofs.Add(R);
+    Roofs.Sort(TComparer<TTrapPlatform>.Construct(function(const A,B:TTrapPlatform):Integer
+      begin Result:=CompareValue(A.Left,B.Left);end));
+    Result.Ceilings:=Roofs.ToArray;
   end;
   function ChainFits(Kind:TTrapAvoidance):Boolean;
   var N,B,Stage:Integer;At,Limit:Double;
@@ -392,7 +528,7 @@ var
       Stage:=Min(3,Trunc(Anchors[B].Time/Max(0.01,Goal)*4));
       if ((Kind=taRoofShelters) and (Stage>1)) or ((Kind=taRoofNarrow) and (Stage<>2)) or
         ((Kind=taRoofLastGap) and (Stage<>3)) then Exit;
-      Result:=TrapGimmickFits(Kind,BeatTimes,Anchors[B].Time,Goal,Section);Exit;
+      Result:=TrapGimmickFits(Kind,BeatTimes,Anchors[B].Time,Goal,Section,RoofUses);Exit;
     end;
     Limit:=3.0;
     if Kind in [taDropStopJump,taRockStopJump,taRetreatJump,taWaitPass,taBaitDrop,
@@ -498,7 +634,7 @@ begin
     end;
     if Anchors.Count>0 then Goal:=Anchors.Last.Time;
     SetLength(BeatTimes,Anchors.Count);for I:=0 to Anchors.Count-1 do BeatTimes[I]:=Anchors[I].Time;
-    Cursor:=0;P:=TrapPoint(0,0);Section:=0;V:=taTravel;
+    Cursor:=0;P:=TrapPoint(0,0);Section:=0;RoofUses:=0;V:=taTravel;
     FillChar(PatternUses,SizeOf(PatternUses),0);for I:=0 to 2 do Recent[I]:=-1;LastRetreat:=-100;FinalPlaced:=False;
     while Cursor<Goal-0.6 do begin
       if Assigned(Cancel) and Cancel() then Abort;
@@ -524,9 +660,10 @@ begin
       V:=TTrapAvoidance(Best);
       if IsTrapGimmick(V) then begin
         StopIndex:=BeatAfter(Cursor+0.62);StopTime:=Anchors[StopIndex].Time;WalkUntil(StopTime);
-        if not MakeTrapGimmick(V,BeatTimes,StopTime,Goal,Duration,P,Section,G) then begin Inc(Section);Continue;end;
+        if not MakeTrapGimmick(V,BeatTimes,StopTime,Goal,Duration,P,Section,G,RoofUses) then begin Inc(Section);Continue;end;
         ClearMove:=Motions.Count;Motions.AddRange(G.Moves);SpecialFloors.AddRange(G.Floors);
         SpecialRoofs.AddRange(G.Roofs);
+        if Length(G.Roofs)>0 then Inc(RoofUses); // 他の仕掛けの通し番号で避難先が偏らないようにする。
         for Trap in G.Traps do begin Placed:=Trap;Placed.Move:=Trap.Move+ClearMove;Traps.Add(Placed);end;
         M:=Motions.Last;Cursor:=M.Finish;P:=M.Target;Remember;Continue;
       end;
@@ -623,6 +760,7 @@ begin
     AddFloor(Frontier,Frontier+8,P.Y,tkMoving,Duration);
     Floors.AddRange(SpecialFloors);
     ExcavateSpikePits;
+    GoalFloor;
     Floors.Sort(TComparer<TTrapPlatform>.Construct(function(const A,B:TTrapPlatform):Integer
       begin Result:=CompareValue(A.Left,B.Left);if Result=0 then Result:=CompareValue(A.Y,B.Y);end));
     Result.Platforms:=Floors.ToArray;RoofRight:=-8;
@@ -669,6 +807,7 @@ begin
       if Trap.Fire<0 then raise EInvalidOpException.Create('天井の落下準備時間が足りません。');
       Traps[I]:=Trap;
     end;
+    GoalShaft;
     Result.Obstacles:=Traps.ToArray;ValidateTrapPlan(Result,Cancel);
   except
     Result.Free;Anchors.Free;Motions.Free;Floors.Free;Roofs.Free;Traps.Free;SpecialFloors.Free;SpecialRoofs.Free;raise;

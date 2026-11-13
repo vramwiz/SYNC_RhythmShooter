@@ -4,7 +4,7 @@
 uses System.SysUtils,System.Classes,System.Math,System.IOUtils,System.Hash,
   Vcl.Graphics,Vcl.Imaging.pngimage,RhythmAudio,RhythmStyles,RhythmTrapPlan,
   RhythmTrapBuild,RhythmTrapCodec,RhythmTrapArt,RhythmAnimation,RhythmRenderSurface,
-  RhythmImageBank,RhythmPlanRef,RhythmSettings,RhythmPrepare;
+  RhythmImageBank,RhythmPlanRef,RhythmSettings,RhythmPrepare,RhythmFireworksScene;
 const DemoSeconds=180;
 procedure Need(B:Boolean;const Why:string);
 begin if not B then raise Exception.Create(Why);end;
@@ -142,6 +142,8 @@ begin
       StopSeconds:=StopSeconds+M.Finish-M.Start;
       Limit:=0.55;if M.Avoidance in [taCrushSlot,taCrushReverse,taCrushFeint] then Limit:=0.90;
       if M.Avoidance in [taRoofShelters,taRoofNarrow,taRoofLastGap] then Limit:=5.0;
+      if M.Avoidance in [taSideSpears,taAlternatingPresses,taFireChase] then Limit:=2.10;
+      if M.Avoidance=taCeilingLift then Limit:=1.20;
       Need((M.Cue=M.Start) and (M.Finish-M.Start<=Limit+1E-8),'Stop timing or duration');
     end else begin
       if M.Kind=tmHeadBump then Need((M.Cue>M.Start) and (M.Cue<M.Finish),'Head impact timing')
@@ -207,6 +209,51 @@ begin
     Need(Jumps[3]/Max(1,Sections[3])>Jumps[0]/Max(1,Sections[0])+0.50,'Late course does not intensify');
   end else if Plan.Duration>100 then Need(Patterns>=30,'Too few patterns survived the real sound timings');
 end;
+// リフト直前にカメラが逆走せず、足が掛かる前に横の構図が固定されることを確認する。
+procedure VerifyLiftCamera(Plan:TTrapPlan);
+var Lift:TTrapPlatform;View,At,First,Left,Previous,Forward,PreviousForward,StopLeft,Touch:Double;I:Integer;
+begin
+  Need(Plan.GoalLift(Lift),'Camera fixture has no exit lift');
+  First:=Max(0.0,Plan.GoalTime-2.0);
+  Touch:=Plan.GoalTime+(Lift.Left-TrapHalfWidth-Plan.GoalX)/TrapWalkSpeed;
+  for View in TArray<Double>.Create(18,24,32,64) do begin
+    StopLeft:=(Lift.Left+Lift.Right)*0.5-View*0.5;
+    Previous:=Plan.CameraLeft(First,View);PreviousForward:=Plan.ForwardX(First);
+    for I:=1 to 600 do begin
+      At:=First+(Lift.Recover-First)*I/600;Left:=Plan.CameraLeft(At,View);Forward:=Plan.ForwardX(At);
+      Need(Left>=Previous-1E-8,'Lift camera reverses direction');
+      Need(Left-Previous<=Forward-PreviousForward+1E-8,'Lift camera accelerates beyond forward tracking');
+      Previous:=Left;PreviousForward:=Forward;
+    end;
+    for At in TArray<Double>.Create(Touch,Lift.Trigger,Lift.Settle,Lift.Recover) do
+      Need(Abs(Plan.CameraLeft(At,View)-StopLeft)<1E-8,'Horizontal camera moves while boarding or riding');
+    for At in TArray<Double>.Create(Plan.GoalTime,Lift.Trigger,Lift.Settle) do
+      Need(Abs(Plan.CameraLeft(At+1E-6,View)-Plan.CameraLeft(At-1E-6,View))<2E-5,
+        'Lift camera jumps at a phase boundary');
+  end;
+end;
+// 短曲でも乗り込みから花火終了まで切れず、板の上に足幅全体が残ることを調べる。
+procedure VerifySurfaceFinale(Plan:TTrapPlan);
+var Lift,Wall:TTrapPlatform;P,Q:TTrapPoint;Body:TTrapBox;I:Integer;At:Double;
+begin
+  Need(Plan.GoalLift(Lift),'Surface exit lift is missing');
+  VerifyLiftCamera(Plan);
+  Need((Plan.GoalTime=Plan.Moves[High(Plan.Moves)].Finish) and
+    (Plan.GoalX=Plan.Moves[High(Plan.Moves)].Target.X),'Finale changed the sound-synced course endpoint');
+  Need(Plan.EndTime>=Plan.SurfaceTime+GoalFireworksDuration,'Fireworks are cut short');
+  P:=Plan.Position(Plan.GoalTime);Q:=Plan.Position(Lift.Trigger);
+  Need((Abs(P.Y-Q.Y)<1E-8) and (Q.X>P.X) and
+    (Abs((Q.X-P.X)/(Lift.Trigger-Plan.GoalTime)-TrapWalkSpeed)<1E-8),'Boarding is not a level walk');
+  Q:=Plan.Position(Lift.Settle);
+  Need((Q.Y-P.Y>=7.5) and (Lift.Settle-Lift.Trigger<1.0),'Exit does not rise rapidly to the surface');
+  for I:=0 to 600 do begin
+    At:=Plan.GoalTime+(Lift.Recover-Plan.GoalTime)*I/600;
+    P:=Plan.Position(At);Body:=Plan.PlayerBounds(At);
+    Need(Plan.FloorSupports(Body.Left,Body.Right,P.Y,At),'Finale leaves part of the feet unsupported');
+    for Wall in Plan.Ceilings do Need(not TrapOverlap(Body,Wall.CeilingBoundsAt(At)),
+      'Finale crosses a solid shaft wall or roof');
+  end;
+end;
 procedure VerifySource(const Source:string);
 var Worker:TRhythmPrepareThread;Audio,Cold:TRhythmAudio;Plan:TTrapPlan;
   Sensitivity,Density,Stage,LastStage:Integer;Rejected:Boolean;
@@ -226,6 +273,8 @@ begin
             try Need((Plan.Duration=Audio.Duration) and (Plan.GoalTime<=Plan.Duration),'Real source duration');
               VerifySync(Plan,Audio);
               VerifyDiversity(Plan,False);
+              VerifySurfaceFinale(Plan);
+              Need(Worker.PreviewEnd=Plan.EndTime,'Preview cuts off the surface exit');
               Writeln('REAL_SOURCE PASS sensitivity=',Sensitivity,' density=',Density,' stage=',Stage,
                 ' moves=',Length(Plan.Moves),' traps=',Length(Plan.Obstacles));
             finally Plan.Free;end;
@@ -338,7 +387,7 @@ begin
     Need(Audio.Duration<>Trunc(Audio.Duration),'Regression needs a fractional duration');
     Surface:=TAnimationRenderSurface.Create(TAnimationImageBank.Create(0));Bitmap:=TBitmap.Create;Sheet:=TBitmap.Create;Montage:=TBitmap.Create;
     try
-      Bitmap.PixelFormat:=pf32bit;Bitmap.SetSize(960,540);Sheet.SetSize(1920,2160);Montage.SetSize(4800,5940);
+      Bitmap.PixelFormat:=pf32bit;Bitmap.SetSize(960,540);Sheet.SetSize(1920,2160);Montage.SetSize(4800,6480);
       Frame:=Default(TAnimationFrame);Frame.Width:=960;Frame.Height:=540;Minimum:=1000;Seen:=[];Moves:=[];Count:=0;Variations:=[];
       for Theme:=Low(TTrapStage) to High(TTrapStage) do begin
         Plan:=BuildTrapPlan(Audio,Theme,nil);
@@ -346,6 +395,7 @@ begin
           RightMoves:=0;LeftMoves:=0;Stops:=0;Reasons:=0;Ups:=0;Downs:=0;RoofSteps:=0;
           VerifySync(Plan,Audio);
           VerifyDiversity(Plan,True);
+          VerifySurfaceFinale(Plan);
           WideDrops:=0;
           for Tile in Plan.Platforms do begin
             Need(Tile.Motion<>pmFeint,'Removed sinking-and-returning floor was generated');
@@ -380,6 +430,9 @@ begin
               Standing.Left:=M.Origin.X-TrapHalfWidth;Standing.Right:=M.Origin.X+TrapHalfWidth;
               Standing.Bottom:=M.Origin.Y+0.035;Standing.Top:=M.Origin.Y+TrapStandingHeight;
               Found:=M.Avoidance in [taHiddenStairs,taHiddenSwitchback,taCrushReverse];
+              if not Found and (M.Avoidance in [taRoofShelters,taRoofNarrow,taRoofLastGap]) then
+                for Tile in Plan.Ceilings do if (Tile.Motion=pmRoofDrop) and (Tile.Trigger=M.Start) and
+                  TrapOverlap(Standing,Tile.CeilingBoundsAt(Tile.Settle)) then begin Found:=True;Break;end;
               if not Found then for Trap in Plan.Obstacles do if (Trap.Cue=M.Finish) and
                 TrapOverlap(Standing,Trap.BoundsAt(Trap.Cue)) then begin Found:=True;Break;end;
               if Found then Inc(Reasons);
@@ -394,7 +447,8 @@ begin
               Body:=Plan.PlayerBounds(T);
               for Tile in Plan.Platforms do if Tile.Solid(T,Plan.Duration) then begin
                 Obstacle:=Tile.BoundsAt(T);
-                Need((Body.Right<=Obstacle.Left+1E-7) or (Body.Left>=Obstacle.Right-1E-7) or
+                if Tile.Motion=pmHinge then Need(not Tile.Intersects(Body,T),'Player crossed the rotating floor')
+                else Need((Body.Right<=Obstacle.Left+1E-7) or (Body.Left>=Obstacle.Right-1E-7) or
                   (Body.Bottom>=Obstacle.Top-1E-7) or (Body.Top<=Obstacle.Bottom+1E-7),'Player crossed a solid platform');
               end;
               for Tile in Plan.Ceilings do if (Body.Right>Tile.Left+1E-8) and (Body.Left<Tile.Right-1E-8) then
@@ -423,6 +477,7 @@ begin
           for Trap in Plan.Obstacles do begin
             Include(Seen,Trap.Kind);if Trap.Synced then Need(Original(Trap.Cue),'Trap shifted from onset');
             if TrapHarmless(Trap.Kind) then Continue;
+            if Trap.Kind<tkSideSpear then begin
             SupportY:=Trap.Y;if TrapFloorSpikes(Trap.Kind) then SupportY:=SupportY-TrapSpikePitDepth;
             Need((Trap.Kind in [tkSpikes,tkHiddenSpikes,tkCeiling,tkRock,tkBlade,tkWall]) and
               (((Trap.Kind=tkWall) and (Trap.W<=1.5) and (Trap.H<=3)) or
@@ -431,13 +486,17 @@ begin
               T:=Plan.Duration*J/100;
               Obstacle:=Trap.BoundsAt(T);
               if TrapFloorSpikes(Trap.Kind) then begin
-                Need(Abs(Obstacle.Bottom-SupportY)<1E-8,'Needle pit is not one block deep');
-                Need(Obstacle.Top-Obstacle.Bottom>=TrapSpikePitDepth-1E-8,'Only the needle tip is visible');
-                if Trap.Kind<>tkHiddenSpikes then Need(Obstacle.Top=Trap.Y+Trap.H,'Needle tip height changed');
+                Need(Abs(Obstacle.Bottom-SupportY)<1E-8,'Lowered needle has no pit-bottom support');
+                Need(Obstacle.Top-Obstacle.Bottom>=1.0-1E-8,'Only the needle tip is visible');
+                if Trap.Kind<>tkHiddenSpikes then Need(Abs(Obstacle.Top-(Trap.Y-TrapSpikeTipDrop))<1E-8,'Fixed needle tip meets the walking floor')
+                else if (T<=Trap.Fire) or (T>=Trap.Finish) then
+                  Need(Abs(Obstacle.Top-(Trap.Y-TrapSpikeTipDrop))<1E-8,'Retracted needle tip meets the floor');
               end else Need(Obstacle.Bottom>=Trap.Y,'Spike passed through the floor');
               if (T<=Trap.Finish) or (Trap.Kind<>tkBlade) then
                 Need(GroundAt(Obstacle.Left,SupportY,T) and GroundAt(Obstacle.Right,SupportY,T),'Hazard has no supporting floor');
             end;
+            if Trap.Kind=tkHiddenSpikes then
+              Need(Abs(Trap.BoundsAt(Trap.Cue).Top-(Trap.Y+Trap.H-TrapSpikeLowering))<1E-8,'Active needle reach changed');
             if Trap.Kind in [tkCeiling,tkRock] then begin
               Obstacle:=Trap.BoundsAt(Trap.Fire);
               Need(Plan.CeilingSupports(Obstacle.Left,Obstacle.Right,Obstacle.Top-Trap.H*Trap.Embed),'Falling trap did not start inside its ceiling');
@@ -446,12 +505,13 @@ begin
               Need((Trap.BoundsAt(Trap.Cue).Bottom=Trap.Y) and (Trap.BoundsAt(Trap.Finish).Bottom=Trap.Y),'Falling spike does not stop on the floor');
               Need(Abs(Trap.Travel-24*Sqr(Trap.Cue-Trap.Fire))<1E-8,'Falling spike is not accelerated by gravity');
             end;
+            end;
             // 全寿命を独立に照合し、停止・後退中や、後で戻って来る区間も省かない。
             First:=Trap.Fire;Last:=Trap.Finish;
-            if Trap.Kind in [tkWall,tkBlade] then begin First:=0;Last:=Plan.Duration;end;
+            if Trap.Kind in [tkWall,tkBlade,tkPress,tkClosingDoor,tkCeilingNeedles,tkSpearMount] then begin First:=0;Last:=Plan.Duration;end;
             for J:=0 to Ceil((Last-First)*1000) do begin
               T:=Min(Last,First+J/1000);Minimum:=Min(Minimum,Plan.Clearance(Trap,T));
-              Need(not TrapOverlap(Plan.PlayerBounds(T),Trap.BoundsAt(T)),'Actual collision');Inc(Count);end;
+              Need(not Trap.Dangerous(T) or not TrapOverlap(Plan.PlayerBounds(T),Trap.BoundsAt(T)),'Actual collision');Inc(Count);end;
           end;
           Ref:=NewPlanRef(Audio.Key,Audio.Sensitivity,0,rsTrapAction,Ord(Theme)+1);Ref.SourceRevision:=Audio.SourceRevision;
           SaveTrapPlan(Plan,Audio,Ref);Restored:=LoadTrapAudio(Ref,Source,0);
@@ -459,18 +519,24 @@ begin
             try Need(Length(Again.Ceilings)=Length(Plan.Ceilings),'Ceilings were not saved');
               for I:=0 to High(Plan.Ceilings) do Need((Again.Ceilings[I].Y=Plan.Ceilings[I].Y) and
                 (Again.Ceilings[I].Left=Plan.Ceilings[I].Left),'Saved ceiling changed');
-              for I:=0 to 200 do begin T:=I*Plan.Duration/200;A:=Plan.Position(T);B:=Again.Position(T);
+              Need((Again.EndTime=Plan.EndTime) and (Again.SurfaceTime=Plan.SurfaceTime),'Saved finale timing differs');
+              VerifySurfaceFinale(Again);
+              for I:=0 to 200 do begin T:=I*Plan.EndTime/200;A:=Plan.Position(T);B:=Again.Position(T);
               Need((A.X=B.X) and (A.Y=B.Y) and (Plan.ForwardX(T)=Again.ForwardX(T)) and
+                (Plan.CameraLeft(T,18)=Again.CameraLeft(T,18)) and
+                (Plan.CameraLeft(T,32)=Again.CameraLeft(T,32)) and
                 (Plan.Facing(T)=Again.Facing(T)),'Saved trajectory/camera/facing differs');end;
             finally Again.Free;end;
           finally Restored.Free;end;
           Settings:=TRhythmSettings.Defaults;Settings.Style:=rsTrapAction;Settings.TrapStage:=Theme;Settings.Music:=Source;Settings.Plan:=Ref;
           Need(TRhythmSettings.TryJSON(Settings.ToJSON,Loaded) and (Loaded.TrapStage=Theme) and (Loaded.Plan.Key=Ref.Key),'Theme settings round trip');
           RenderBackdrop(0);BackgroundHash:=Hash(Bitmap);
-          for T in TArray<Double>.Create(0.25,3,12.75,84.5,137.125,Plan.Duration) do begin
+          for T in TArray<Double>.Create(0.25,3,12.75,84.5,137.125,Plan.GoalTime-0.001) do begin
             RenderBackdrop(T);Need(Hash(Bitmap)=BackgroundHash,'Background moves or zooms');
           end;
           Render(137.125);H:=Hash(Bitmap);Render(3);Render(137.125);Need(Hash(Bitmap)=H,'Reverse seek changes pixels');
+          Render(Plan.SurfaceTime+0.35);H:=Hash(Bitmap);Render(3);Render(Plan.SurfaceTime+0.35);
+          Need(Hash(Bitmap)=H,'Surface/fireworks reverse seek changes pixels');
           Render(84.5);Sheet.Canvas.Draw((Ord(Theme) mod 2)*960,(Ord(Theme) div 2)*540,Bitmap);
           if Theme=tsCave then begin
             Cell:=0;
@@ -494,7 +560,7 @@ begin
                 IntToStr(Cell+1)+' '+TrapPatternTitle(TTrapAvoidance(I)));Inc(Cell);
             end;
             PNG(Montage,TPath.Combine(Folder,'TrapActionTraps.png'));
-            PNG(Montage,TPath.Combine(Folder,'TrapActionGimmicks51.png'));
+            PNG(Montage,TPath.Combine(Folder,'TrapActionGimmicks57.png'));
             for I:=0 to 4 do begin Render(Plan.Duration*I/4);PNG(Bitmap,TPath.Combine(Folder,Format('cave-%d.png',[I])));end;
           end;
           Writeln(TrapStageIds[Theme],': ',Length(Plan.Moves),' motions, ',Length(Plan.Obstacles),
@@ -512,7 +578,7 @@ begin
           Plan.Obstacles[0]:=SavedTrap;Need(Rejected,'Stationary enemy accepted');
           // 左向きの区間だけで発動する針も拒否する。右進行の矩形判定では見落とす入力。
           for M in Plan.Moves do if (M.Kind=tmRun) and (M.Target.X<M.Origin.X) then begin
-            Trap:=Default(TTrapObstacle);Trap.Kind:=tkSpikes;Trap.Move:=0;
+            Trap:=Default(TTrapObstacle);Trap.Kind:=tkHiddenSpikes;Trap.Move:=0;
             Trap.Fire:=M.Start+0.01;Trap.Cue:=(M.Start+M.Finish)*0.5;Trap.Finish:=M.Finish-0.01;
             Trap.X:=M.Position(Trap.Cue).X;Trap.Y:=M.Origin.Y;Trap.W:=0.62;Trap.H:=0.5;
             Need(Plan.Clearance(Trap,Trap.Cue)<0,'Leftward collision fixture does not actually hit the player');
@@ -524,7 +590,8 @@ begin
       end;
       PNG(Sheet,TPath.Combine(Folder,'TrapActionThemes.png'));
       I:=0;for K:=0 to Ord(High(TTrapKind)) do if TTrapKind(K) in Seen then Inc(I);
-      Need(Seen=[tkSpikes,tkHiddenSpikes,tkCeiling,tkRock,tkBlade,tkWall,tkPit,tkCrumble,tkVanish],'Trap coverage');
+      Need(Seen=[tkSpikes,tkHiddenSpikes,tkCeiling,tkRock,tkBlade,tkWall,tkPit,tkCrumble,tkVanish,
+        tkSideSpear,tkPress,tkCeilingNeedles,tkClosingDoor,tkFireJet,tkSpearMount],'Trap coverage');
       Patterns:=0;for K:=0 to Ord(High(TTrapAvoidance)) do if (TTrapAvoidance(K)<>taTravel) and
         (TTrapAvoidance(K) in Variations) then Inc(Patterns);
       Need(Patterns=TrapPatternCount,'Missing avoidance patterns');
@@ -534,6 +601,7 @@ begin
       for T in TArray<Double>.Create(0.05,1,8,180) do begin
         Audio.Duration:=T;Plan:=BuildTrapPlan(Audio,tsCave,nil);
         try Need(Length(Plan.Obstacles)=0,'Silence generated unrelated hazards');
+          VerifySurfaceFinale(Plan);
           for M in Plan.Moves do Need(M.Kind=tmRun,'Silence generated unnecessary jumps');
           Ref:=NewPlanRef(Audio.Key,Audio.Sensitivity,0,rsTrapAction,1);Ref.SourceRevision:=Audio.SourceRevision;
           SaveTrapPlan(Plan,Audio,Ref);Restored:=LoadTrapAudio(Ref,Source,0);

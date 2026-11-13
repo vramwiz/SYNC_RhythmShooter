@@ -1,9 +1,13 @@
 ﻿unit RhythmTrapCodec;
 // 全曲の動作と罠をbinary64で保持。復元時の再解析・物理積分は行わない。
+// 行形式のI/Oと参照照合を担当し、幾何・速度・支持の検証はRhythmTrapBuildへ委ねる。
 interface
 uses RhythmTrapPlan, RhythmAudio, RhythmPlanRef;
+// Plan/Audioは借用。準備済みファイルを書き、Refの内容SHA等を更新する。計画本体は保持する。
 procedure SaveTrapPlan(Plan:TTrapPlan;Audio:TRhythmAudio;var Ref:TRhythmPlanRef);
+// 版・音声・方向を照合して復元し、不正なら例外。返した計画の所有権は呼出側へ渡す。
 function LoadTrapPlan(const Ref:TRhythmPlanRef;Audio:TRhythmAudio;Direction:Integer):TTrapPlan;
+// PCMを読まず保存済み音声情報を復元する。返したAudioは呼出側がFreeする。
 function LoadTrapAudio(const Ref:TRhythmPlanRef;const Source:string;Direction:Integer):TRhythmAudio;
 implementation
 uses System.SysUtils,System.JSON,System.Math,System.Generics.Collections,RhythmPreparedData,RhythmStyles,RhythmTrapBuild;

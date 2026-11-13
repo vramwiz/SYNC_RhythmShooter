@@ -6,9 +6,10 @@ uses System.SysUtils,System.Math,System.IOUtils,System.Hash,System.Generics.Coll
   RhythmPlanRef,RhythmStyles;
 var Audio,Cold:TRhythmAudio;Plan,Restored:TTrapPlan;G:TTrapGimmick;Kind:TTrapAvoidance;
   Beats:TArray<Double>;Floors:TList<TTrapPlatform>;M:TTrapMove;F:TTrapPlatform;Q:TTrapObstacle;
-  Ref:TRhythmPlanRef;I,J,K,CaseIndex,Checks,SafeSlots,ExpectedSlots:Integer;
-  Tempo,Base,Start,At,EndX,Step,Gap,PreviousFall,FloorY:Double;
+  Ref:TRhythmPlanRef;I,J,K,CaseIndex,Checks,SafeSlots,ExpectedSlots,RoofRouteIndex,SafeIndex,RetreatEntries,WaitingEntries:Integer;
+  Tempo,Base,Start,At,EndX,Step,Gap,PreviousFall,FloorY,HighestLow,ExitY:Double;
   Origin,A,B:TTrapPoint;Wall,Before,After,Body:TTrapBox;Folder,Source:string;
+  UsedSlots:set of 0..2;Threatened:Boolean;Corners:TTrapCorners;Machines,Backsteps:Integer;
 procedure Need(Valid:Boolean;const Why:string);
 begin if not Valid then raise Exception.Create(Why);Inc(Checks);end;
 procedure SameBox(const A,B:TTrapBox);
@@ -25,15 +26,19 @@ begin
       Tempo:=0.4;if Odd(CaseIndex) then Tempo:=0.5;Base:=0;
       if CaseIndex in [2,3] then Base:=0.7 else if CaseIndex>=4 then Base:=-0.55;
       SetLength(Beats,Floor(60/Tempo));SetLength(Audio.Hits,Length(Beats));
-      PreviousFall:=1E6;
       for I:=0 to High(Beats) do begin Beats[I]:=(I+1)*Tempo;Audio.Hits[I].Time:=Beats[I];Audio.Hits[I].Strength:=0.7;end;
       Start:=Beats[3];Origin:=TrapPoint(Start*TrapWalkSpeed,Base);
+      UsedSlots:=[];RetreatEntries:=0;WaitingEntries:=0;
+      for RoofRouteIndex:=0 to 7 do begin
+      PreviousFall:=1E6;
       for Kind:=taFeintFloor to High(TTrapAvoidance) do begin
+        if (RoofRouteIndex>0) and not (Kind in [taRoofShelters,taRoofNarrow,taRoofLastGap]) then Continue;
         if not TrapPatternEnabled(Kind) then begin
           Need(not MakeTrapGimmick(Kind,Beats,Start,55,Audio.Duration,Origin,CaseIndex mod 3,G),
             'Removed floor-bobbing gimmick was generated');Continue;
         end;
-        Need(MakeTrapGimmick(Kind,Beats,Start,55,Audio.Duration,Origin,CaseIndex mod 3,G),'Feasible gimmick did not build');
+        Need(TrapGimmickFits(Kind,Beats,Start,55,CaseIndex mod 3,RoofRouteIndex),'Feasible gimmick schedule did not fit');
+        Need(MakeTrapGimmick(Kind,Beats,Start,55,Audio.Duration,Origin,CaseIndex mod 3,G,RoofRouteIndex),'Feasible gimmick did not build');
         Plan:=TTrapPlan.Create;Plan.Duration:=Audio.Duration;Plan.Theme:=tsCave;
         SetLength(Plan.Moves,Length(G.Moves)+2);M:=Default(TTrapMove);M.Start:=0;M.Finish:=Start;M.Cue:=Start;
         M.Origin:=TrapPoint(0,Base);M.Target:=Origin;M.Kind:=tmRun;M.Landing:=True;M.LandSynced:=True;M.CueSynced:=True;M.Pattern:=18;
@@ -57,13 +62,116 @@ begin
         Plan.Ceilings:=Floors.ToArray;
         Plan.Obstacles:=Copy(G.Traps);for I:=0 to High(Plan.Obstacles) do Inc(Plan.Obstacles[I].Move);
         ValidateTrapPlan(Plan,nil);
+        case Kind of
+          taSideSpears:begin
+            Machines:=0;
+            for Q in G.Traps do if Q.Kind=tkSideSpear then begin
+              Inc(Machines);Before:=Q.BoundsAt(Q.Fire);After:=Q.BoundsAt(Q.Finish);
+              Need((Before.Left=Before.Right) and (After.Left=After.Right),'Spear does not retract into its wall');
+              Wall:=Q.BoundsAt(Q.Cue);Need(Abs(Wall.Right-Wall.Left-Q.W)<1E-8,'Spear does not reach its full length');
+              Need(((Machines=1) and (Q.Power=1)) or ((Machines=2) and (Q.Power=-1)),'Spears do not alternate from opposite walls');
+            end;
+            Need(Machines=2,'Missing paired side spears');
+          end;
+          taAlternatingPresses:begin
+            Machines:=0;At:=-1;
+            for Q in G.Traps do if Q.Kind=tkPress then begin
+              Inc(Machines);Need(Q.Cue>At,'Presses do not strike in sequence');At:=Q.Cue;
+              Need(Abs(Q.BoundsAt(Q.Cue).Bottom-Base)<1E-8,'Press fails to strike the floor');
+              Need(Q.BoundsAt(0).Bottom>Base+TrapStandingHeight+0.1,'Raised press blocks the passage');
+              SameBox(Q.BoundsAt(0),Q.BoundsAt(Q.Finish));
+            end;
+            Need(Machines=3,'Missing large alternating presses');
+          end;
+          taFlipPit:begin
+            Machines:=0;
+            for F in G.Floors do if F.Motion=pmHinge then begin
+              Inc(Machines);Corners:=F.CornersAt(F.Settle);
+              Need((Abs(Corners[1].X-Corners[0].X)<1E-8) and (Corners[1].Y-Corners[0].Y>2.9),'Floor does not rotate into a wall');
+              Need(F.Solid(F.Settle,Audio.Duration),'Flipped wall vanishes');
+              Need(G.Moves[1].Start<F.Trigger,'Floor flips before the escape jump starts');
+            end;
+            Need((Machines=1) and (Length(G.Traps)>=4),'Rotating floor has no spike pit');
+          end;
+          taCeilingLift:begin
+            Machines:=0;Backsteps:=0;ExitY:=-1000;At:=-1;
+            for F in G.Floors do begin
+              if F.Motion=pmNeedleLift then begin
+                Inc(Machines);Need(F.Right-F.Left>9.0,'Needle lift floor is too narrow');
+                Need(F.Start>=At,'Lift stage lifetimes overlap');At:=F.Finish;
+                if F.DX=0 then Need(Abs(F.BoundsAt(F.Recover).Top-Base)<1E-8,'Lift does not descend between shelters')
+                else Need(Abs(F.BoundsAt(F.Recover).Top-Base-TrapNeedleLiftHeight)<1E-8,'Final lift does not hold the exit height');
+                for Q in G.Traps do if Q.Kind=tkCeilingNeedles then
+                  Need(F.BoundsAt(F.Settle).Top+TrapStandingHeight>Q.Y,'Standing outside a ceiling gap is harmless');
+              end;
+              if Abs(F.Left-Origin.X-10.5)<1E-8 then ExitY:=F.Y;
+            end;
+            Need((Machines=4) and (ExitY-Base>2.1),'Exit does not require riding the floor');
+            Need(Length(G.Traps)=4,'Ceiling needles are not divided by shelter gaps');
+            for F in G.Roofs do if F.Y>Base+4.0 then Inc(Backsteps);
+            Need(Backsteps=4,'Three ceiling refuges and the clear final section are missing');
+            for M in G.Moves do begin
+              if M.Kind=tmRide then for J:=0 to 40 do begin
+                At:=M.Start+(M.Finish-M.Start)*J/40;A:=M.Position(At);
+                Need(Plan.FloorSupports(A.X-TrapHalfWidth,A.X+TrapHalfWidth,A.Y,At),'Player slips through the oscillating ground');
+                for Q in G.Traps do Need(Plan.Clearance(Q,At)>=0.10-1E-8,'Lift carries player into ceiling needles');
+              end;
+              if M.Kind=tmStop then Need(M.Origin.X<Origin.X+10.5,'Player idles after reaching the exit');
+            end;
+            M:=G.Moves[High(G.Moves)-1];Need((M.Kind=tmJump) and (M.Origin.Y>Base+1.5),'Exit jump does not start on the raised floor');
+            Body:=Plan.PlayerBounds(M.Start);
+            for Q in G.Traps do Need((Q.X+Q.W*0.5<Body.Left) or (Q.X-Q.W*0.5>Body.Right),'Exit jump starts beneath a ceiling needle');
+          end;
+          taClosingDoors:begin
+            Machines:=0;At:=-1;
+            for Q in G.Traps do if Q.Kind=tkClosingDoor then begin
+              Inc(Machines);Need(Q.Cue>At,'Doors do not close in sequence');At:=Q.Cue;
+              Need(Abs(Q.BoundsAt(Q.Cue).Bottom-Base)<1E-8,'Door does not reach the floor');
+              SameBox(Q.BoundsAt(Q.Cue),Q.BoundsAt(Audio.Duration));
+              A:=Plan.Position(Q.Cue);Need(A.X-TrapHalfWidth>Q.X+Q.W*0.5,'Door closes before the player passes');
+            end;
+            Need(Machines=3,'Missing closing doors');
+          end;
+          taFireChase:begin
+            Machines:=0;Backsteps:=0;
+            for Q in G.Traps do if Q.Kind=tkFireJet then begin
+              Inc(Machines);Need(not Q.Dangerous(Q.Finish),'Extinguished fire is still dangerous');
+              Need(Q.BoundsAt(Q.Cue).Top>Base+2.0,'Fire does not rise into a column');
+            end;
+            for M in G.Moves do if M.Target.X<M.Origin.X then begin
+              Inc(Backsteps);Need(M.Finish=G.Traps[High(G.Traps)].Cue,'Retreat is not timed to the last fire column');
+            end;
+            Need((Machines=3) and (Backsteps=1),'Fire chase lacks its final retreat');
+          end;
+        end;
         if Kind in [taRoofShelters,taRoofNarrow,taRoofLastGap] then begin
+          HighestLow:=-1000;ExitY:=-1000;Machines:=0;
+          for F in G.Floors do begin
+            if F.Motion=pmRoofRise then begin
+              Inc(Machines);HighestLow:=Max(HighestLow,F.BoundsAt(0).Top);
+              Need(Abs(F.BoundsAt(F.Settle).Top-F.Y-TrapRoofBedRise)<1E-8,'Basin floor does not rise after sheltering');
+              Need(F.Trigger=G.Roofs[0].Release,'Floor starts rising before the roof opens');
+            end;
+            if Abs(F.Left-Origin.X-10.35)<1E-8 then ExitY:=F.Y;
+          end;
+          Need((Machines=6) and (ExitY-HighestLow>2.1+0.20),'Player can bypass the shelter through the right exit');
+          Need(Abs(G.Moves[High(G.Moves)].Target.Y-Base)<1E-8,'Basin leaves the following course raised');
+          for M in G.Moves do begin
+            if M.Finish<=G.Roofs[0].Recover then
+              Need(Max(M.Origin.X,M.Target.X)+TrapHalfWidth<Origin.X+10.35,'Player escapes before sheltering and rising');
+            if M.Kind=tmRide then for J:=0 to 30 do begin
+              At:=M.Start+(M.Finish-M.Start)*J/30;A:=M.Position(At);
+              Need(Plan.FloorSupports(A.X-TrapHalfWidth,A.X+TrapHalfWidth,A.Y,At),'Sheltering player does not rise with the floor');
+            end;
+          end;
           ExpectedSlots:=3-Ord(Kind)+Ord(taRoofShelters);SafeSlots:=0;
           Need(G.Roofs[0].Settle-G.Roofs[0].Trigger<PreviousFall,'Late roof does not descend faster');
           PreviousFall:=G.Roofs[0].Settle-G.Roofs[0].Trigger;
           for I:=0 to High(G.Roofs) do begin
             F:=G.Roofs[I];Need((F.Reveal=0) and F.Solid(0,Audio.Duration),'Roof does not exist before activation');
-            SameBox(F.CeilingBoundsAt(0),F.CeilingBoundsAt(F.Recover+0.1));
+            Before:=F.CeilingBoundsAt(0);After:=F.CeilingBoundsAt(F.Recover+0.1);
+            Need((Before.Left=After.Left) and (Before.Right=After.Right) and
+              (Abs(After.Bottom-Before.Bottom-TrapRoofBedRise)<1E-8),'Roof recovery does not clear the raised ground');
             Wall:=F.CeilingBoundsAt(F.Settle);FloorY:=-1000;
             for K:=0 to High(G.Floors) do if (G.Floors[K].Left<=(Wall.Left+Wall.Right)*0.5) and
               (G.Floors[K].Right>=(Wall.Left+Wall.Right)*0.5) then FloorY:=G.Floors[K].Y;
@@ -75,6 +183,18 @@ begin
           end;
           Need(SafeSlots=ExpectedSlots,'Wrong number of surviving refuges');
           Body:=Plan.PlayerBounds(G.Roofs[0].Settle);
+          SafeIndex:=Round(((Body.Left+Body.Right)*0.5-Origin.X-3.15)/3.2);
+          Need(InRange(SafeIndex,0,2),'Player did not enter a refuge');Include(UsedSlots,SafeIndex);
+          for M in G.Moves do if M.Start=G.Roofs[0].Trigger then begin
+            if M.Target.X<M.Origin.X then begin
+              Inc(RetreatEntries);Threatened:=False;
+              Before.Left:=M.Origin.X-TrapHalfWidth;Before.Right:=M.Origin.X+TrapHalfWidth;
+              Before.Bottom:=M.Origin.Y+0.035;Before.Top:=M.Origin.Y+TrapStandingHeight;
+              for F in G.Roofs do if TrapOverlap(Before,F.CeilingBoundsAt(F.Settle)) then Threatened:=True;
+              Need(Threatened,'Retreat starts outside the approaching roof instead of escaping it');
+            end;
+            if M.Kind=tmStop then Inc(WaitingEntries);
+          end;
           for F in G.Roofs do begin
             Wall:=F.CeilingBoundsAt(F.Settle);
             Need(not TrapOverlap(Body,Wall),'Player is crushed in the designated refuge');
@@ -121,7 +241,7 @@ begin
             Need(Abs(B.X-A.X)/Step<=TrapWalkSpeed+1E-7,'Instantaneous horizontal speed exceeds normal walking');
           end;
         end;
-        Audio.Key:=THashSHA2.GetHashString('gimmick-'+IntToStr(CaseIndex)+'-'+IntToStr(Ord(Kind)));
+        Audio.Key:=THashSHA2.GetHashString('gimmick-'+IntToStr(CaseIndex)+'-'+IntToStr(Ord(Kind))+'-'+IntToStr(RoofRouteIndex));
         Ref:=NewPlanRef(Audio.Key,50,0,rsTrapAction,1);Ref.SourceRevision:=Audio.SourceRevision;
         SaveTrapPlan(Plan,Audio,Ref);Cold:=LoadTrapAudio(Ref,Source,0);Restored:=LoadTrapPlan(Ref,Cold,0);
         Need(Length(Cold.PCM)=0,'Gimmick restore used PCM');
@@ -131,9 +251,12 @@ begin
           for I:=0 to High(Plan.Platforms) do SameBox(Plan.Platforms[I].BoundsAt(At),Restored.Platforms[I].BoundsAt(At));
           for I:=0 to High(Plan.Ceilings) do SameBox(Plan.Ceilings[I].CeilingBoundsAt(At),Restored.Ceilings[I].CeilingBoundsAt(At));
         end;
-        Writeln('GIMMICK PASS case=',CaseIndex,' kind=',Ord(Kind),' moves=',Length(G.Moves));
+        Writeln('GIMMICK PASS case=',CaseIndex,' kind=',Ord(Kind),' route=',RoofRouteIndex,' moves=',Length(G.Moves));
         FreeAndNil(Restored);FreeAndNil(Cold);FreeAndNil(Plan);
       end;
+      end;
+      Need(UsedSlots=[0,1,2],'Roof refuges are biased toward one side');
+      Need((RetreatEntries>0) and (WaitingEntries>0),'Roof lacks backward or stationary avoidance');
     end;
     Writeln('GIMMICKS PASS checks=',Checks,' no GUI, no audio playback');
   except on E:Exception do begin Writeln(E.ClassName,': ',E.Message);ExitCode:=1;end;end;

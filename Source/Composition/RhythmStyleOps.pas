@@ -32,6 +32,7 @@ type
     MarbleAppearance:TStyleMarbleAppearance;
     DirectAlphaFromVersion:Integer; // 0は従来の描画経路。指定版からは最初から背景を透過して描く。
     Activity:TStyleActivity;
+    EqualizerPreservesBrightness:Boolean; // 元の明るさを保ち、EQの光だけを背景へ加える。
   end;
 function EmptyStyleImages:TAnimationImageBank;
 implementation

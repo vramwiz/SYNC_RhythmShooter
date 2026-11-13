@@ -14,10 +14,11 @@ type
     destructor Destroy;override;
     procedure Resize(W,H:Integer;Image,Backdrop:Boolean);
     procedure BeginBase(Target:Vcl.Graphics.TBitmap;const Activity:TEqualizerActivity;Equalizer,UseD2D:Boolean);
-    procedure ImageOver(Target:Vcl.Graphics.TBitmap);
+    // Image/Backdrop/借用Targetは同寸法32bit。出力Alphaは255で、PreserveBrightness=Trueは元色を減光しない。
+    procedure ImageOver(Target:Vcl.Graphics.TBitmap;PreserveBrightness:Boolean=False);
     procedure Transform(Target:Vcl.Graphics.TBitmap;Zoom,X,Y:Double);
     property LastUsedD2D:Boolean read GetLastD2D;
-    property Image:Vcl.Graphics.TBitmap read FImage;
+    property Image:Vcl.Graphics.TBitmap read FImage; // バッファは本クラスが所有する。呼出側は描画だけを行う。
     property Backdrop:Vcl.Graphics.TBitmap read FBackdrop;
   end;
 implementation
@@ -43,15 +44,21 @@ begin
   if Equalizer then DrawEqualizer(FSurface,Target.Width,Target.Height,Activity,True);
   if not FSurface.EndFrame then begin FSurface.UseD2D:=False;BeginBase(Target,Activity,Equalizer,False);end;
 end;
-procedure TRhythmLayerBlend.ImageOver(Target:Vcl.Graphics.TBitmap);
-var X,Y,C,D,A:Integer;OutRow,MovieRow,BackRow:PByte;
+procedure TRhythmLayerBlend.ImageOver(Target:Vcl.Graphics.TBitmap;PreserveBrightness:Boolean);
+var X,Y,C,D,A,V:Integer;OutRow,MovieRow,BackRow:PByte;
 begin
   for Y:=0 to Target.Height-1 do begin OutRow:=Target.ScanLine[Y];MovieRow:=FImage.ScanLine[Y];BackRow:=FBackdrop.ScanLine[Y];
     for X:=0 to Target.Width-1 do begin
       D:=Max(Abs(Integer(MovieRow[0])-BackRow[0]),Max(Abs(Integer(MovieRow[1])-BackRow[1]),Abs(Integer(MovieRow[2])-BackRow[2])));
-      // 同じ背景だけを約60%にし、差のある主役のコアは不透明。単純な全画面半透明ではない。
+      // 背景との差でEQの重なりを減らす。差12以上の主役のコアは変更しない。
       A:=153+Min(102,D*102 div 12);
-      for C:=0 to 2 do OutRow[C]:=(Integer(MovieRow[C])*A+Integer(OutRow[C])*(255-A)+127) div 255;
+      for C:=0 to 2 do begin
+        if PreserveBrightness then begin
+          // スクリーン合成。EQが黒なら元の色を保ち、主役のコアへは光を足さない。
+          V:=MovieRow[C];
+          OutRow[C]:=V+((255-V)*Integer(OutRow[C])*(255-A)+32512) div 65025;
+        end else OutRow[C]:=(Integer(MovieRow[C])*A+Integer(OutRow[C])*(255-A)+127) div 255;
+      end;
       OutRow[3]:=255;Inc(OutRow,4);Inc(MovieRow,4);Inc(BackRow,4);
     end;
   end;

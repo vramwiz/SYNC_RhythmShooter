@@ -3,7 +3,7 @@
 {$POINTERMATH ON}
 uses Winapi.Windows,System.SysUtils,System.Math,System.Classes,System.Hash,System.IOUtils,System.JSON,
   Vcl.Graphics,Vcl.Imaging.pngimage,AviUtl2FilterTypes,RhythmAudio,RhythmStyles,RhythmProduct,RhythmPlanRef,RhythmSettings,
-  RhythmPrepare,RhythmScene,RhythmStyleRegistry,RhythmPaths,RhythmMotion;
+  RhythmPrepare,RhythmScene,RhythmStyleRegistry,RhythmPaths,RhythmMotion,RhythmTrapPlan,RhythmTrapCodec;
 type TInitPlugin=function(Version:DWORD):Byte;cdecl;
  TDonePlugin=procedure;cdecl;
  TGetPlugin=function:PFILTER_PLUGIN_TABLE;cdecl;
@@ -187,6 +187,33 @@ begin
  finally FreeLibrary(Lib);end;
 end;
 
+// EQ切替で全画面が減光しないことと、地上の空が昼の明るさを保つことを検査する。
+procedure VerifyTrapBrightness;
+var Plan:TTrapPlan;Before:TBitmap;Mode,X,Y,C:Integer;At:Double;A,B:PByte;
+begin
+  if Style<>rsTrapAction then Exit;
+  Plan:=LoadTrapPlan(Ref,Cold,0);Before:=TBitmap.Create;
+  try
+    Before.PixelFormat:=pf32bit;
+    for Mode:=0 to 1 do begin
+      Renderer.UseD2D:=Mode=1;
+      for At in TArray<Double>.Create(3.5,Plan.SurfaceTime+1.65) do begin
+        Renderer.ConfigureStyle(Style,Ref,100,0);Renderer.Render(Image,Cold,At,0);Before.Assign(Image);
+        Renderer.ConfigureStyle(Style,Ref,100,1);Renderer.Render(Image,Cold,At,0);
+        for Y:=0 to Image.Height-1 do begin A:=Before.ScanLine[Y];B:=Image.ScanLine[Y];
+          for X:=0 to Image.Width-1 do for C:=0 to 2 do
+            Need(B[X*4+C]>=A[X*4+C],'EQ darkens the trap scene');
+        end;
+        if At>Plan.SurfaceTime then begin
+          B:=Image.ScanLine[Image.Height-1-Image.Height div 20];Inc(B,(Image.Width div 20)*4);
+          Need((B[0]>=240) and (B[1]>=200) and (B[2]>=150),'Surface sky is too dark');
+        end;
+      end;
+    end;
+  finally Before.Free;Plan.Free;end;
+  Renderer.ConfigureStyle(Style,Ref,100);
+end;
+
 begin
  Audio:=nil;Cold:=nil;Worker:=nil;Renderer:=nil;Image:=nil;PNG:=nil;Checks:=0;HostChecks:=0;MusicChecks:=0;OffsetChecks:=0;StylesChecked:=0;
  try
@@ -226,7 +253,7 @@ begin
      if Backend=1 then Need(Renderer.LastUsedD2D,'D2D backend unavailable '+StyleId(Style));
     end;
    end;
-   VerifyHost;
+   VerifyTrapBrightness;VerifyHost;
    Renderer.Render(Image,Cold,32.3,0);PNG:=TPngImage.Create;PNG.Assign(Image);PNG.SaveToFile(TPath.Combine(Root,StyleId(Style)+'.png'));FreeAndNil(PNG);
    FreeAndNil(Renderer);FreeAndNil(Cold);FreeAndNil(Audio);
   end;

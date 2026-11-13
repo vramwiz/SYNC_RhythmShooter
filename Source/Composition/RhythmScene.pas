@@ -137,7 +137,7 @@ begin
   FRenderer.BackgroundOnly:=True;
   try FRenderer.Render(FLayers.Backdrop,Time,Direction);finally FRenderer.BackgroundOnly:=False;end;
   FCompositeD2D:=FCompositeD2D and FRenderer.LastUsedD2D;
-  FLayers.ImageOver(Target);FLayers.Transform(Target,Zoom,OffsetX,OffsetY);
+  FLayers.ImageOver(Target,FOps.EqualizerPreservesBrightness);FLayers.Transform(Target,Zoom,OffsetX,OffsetY);
 end;
 function PlayerAt(Time:Double):TRhythmPoint;
 begin Result:=RhythmShootingScene.PlayerAt(Time);end;

@@ -1,16 +1,18 @@
 ﻿unit RhythmTrapScene;
 // 保存計画の所有窓口。借用音声と参照を照合し、描画中に解析や計画生成を行わない。
+// 描画と保存形式の詳細をArt/Codecへ分け、参照が変わったときだけ復元を試みる。
 interface
 uses RhythmAnimation,RhythmAudio,RhythmPlanRef,RhythmTrapPlan,RhythmRenderSurface;
 type TTrapAnimation=class(TAnimationScene)
-  private FPlan:TTrapPlan;FReference:TRhythmPlanRef;FAttempt,FError:string;
-  public Audio:TRhythmAudio;
+  private FPlan:TTrapPlan;FReference:TRhythmPlanRef;FAttempt,FError:string; // FPlanを所有し、破棄時に解放する。
+  public Audio:TRhythmAudio; // Rendererからの借用。Sceneは解放しない。
     destructor Destroy;override;
     procedure SetReference(const Ref:TRhythmPlanRef);
+    // 失敗も参照キーと一緒に保持し、同じ不正ファイルを毎フレーム読み直さない。
     procedure Prepare(const Frame:TAnimationFrame);override;
     procedure Draw(Surface:TAnimationRenderSurface;const Frame:TAnimationFrame);override;
     function Notice:string;override;
-    function GoalTime:Double;override;
+    function GoalTime:Double;override; // 0で共通花火を抑止する。地上の花火はArtが同じ共通描画を呼ぶ。
   end;
 implementation
 uses System.SysUtils,RhythmTrapCodec,RhythmTrapArt;
