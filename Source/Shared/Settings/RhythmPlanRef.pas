@@ -49,7 +49,7 @@ begin
     (Direction=ADirection) and (Style=AStyle) and CompatiblePlanVersion(AStyle,Version) and
     (Variant=AVariant) and ((AudioDensity=0) or ((AudioDensity>=1) and (AudioDensity<=201) and
       (AudioDensityKey(AStyle,AudioDensity-101)=AudioDensity))) and
-    ((Generation='') or ((AStyle=rsJumpAdventure) and ValidDigest(Generation))) and
+    ((Generation='') or ((AStyle in [rsJumpAdventure,rsTypeG]) and ValidDigest(Generation))) and
     (Key=PlanKeyForVersion(AudioKey,ASensitivity,ADirection,AStyle,AVariant,Version,AudioDensity,Generation));
 end;
 end.

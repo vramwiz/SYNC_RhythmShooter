@@ -13,6 +13,7 @@ type
   public
     Audio:TRhythmAudio;
     Plan:TRhythmPlanRef;
+    ResumePlan:TRhythmPlanRef; // Type.Gの保存済み編集構成。条件一致時だけ復元する。
     Error,Summary:string;
     RequestId:Cardinal;
     Cancelled:Boolean;
@@ -61,6 +62,8 @@ begin
   if FDensity<>0 then Audio.SetSelectedHits(SelectAnimationHits(Audio,FDensity-101,Context.Cancel));
   if StyleHas(Style,sfBoss) then begin Audio.SetBossFrequency(BossFrequencyFromVariant(Variant));Audio.BossCount;end;
   Prepared:=NewPlanRef(Audio.Key,FSensitivity,FDirection,Style,Variant,FDensity);Prepared.SourceRevision:=Audio.SourceRevision;
+  if (Style=rsTypeG) and not FForce and (ResumePlan.AudioDensity=FDensity) and
+    ResumePlan.Matches(Audio.Key,FSensitivity,FDirection,Style,Variant) and ValidDigest(ResumePlan.Digest) then Prepared:=ResumePlan;
   Ops:=StyleOperations(Style);Ops.Prepare(Context,Prepared,PreparedEnd,PreparedSummary);Context.CheckCancel;
 end;
 procedure TRhythmPrepareThread.Execute;

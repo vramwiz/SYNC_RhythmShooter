@@ -1,4 +1,4 @@
-﻿<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
     <PropertyGroup>
         <ProjectGuid>{1D477616-CF7A-4FCD-8EA2-E6CC88634A59}</ProjectGuid>
         <ProjectVersion>20.4</ProjectVersion>
@@ -42,7 +42,7 @@
         <GenDll>true</GenDll>
         <DCC_DcuOutput>.\$(Platform)\RhythmGame\$(Config)\DCU</DCC_DcuOutput>
         <DCC_ExeOutput>.\$(Platform)\RhythmGame\$(Config)</DCC_ExeOutput>
-        <DCC_UnitSearchPath>Source\MineCart;Source\CrashCannon;Source\TrapAction;Source\Parkour;Source\RobotWar;Source\MarbleRelay;Source\MarbleRelay\Planning;Source\SideRace;Source\FightingRush;Source\JumpAdventure;Source\RhythmGame;Source\RhythmGame\Orbit;Source\RhythmGame\Orbit\Render;Source\RhythmGame\Legacy;Source\RhythmGame\Step;Source\Mining;Source\Train;Source\BombAction;Source\Breakout;Source\Breakout\Score;Source\Shared\Audio;Source\Shared\Render;Source\Shared\Settings;Source\Shared\Common;Source\Shared\UI;Source\Shared\Host;Source\Composition;Source\Composition\Presentation;Source\Shooting;Source\Shooting\Assets;Source\Ball;Source\Fireworks;Source\Lib;Source\Shared\Audio\MP3Decoder;Source\Shared\Audio\MP3Decoder\Core;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
+        <DCC_UnitSearchPath>Source\MineCart;Source\CrashCannon;Source\TrapAction;Source\TypeG;Source\MelodyBall;Source\Parkour;Source\RobotWar;Source\MarbleRelay;Source\MarbleRelay\Planning;Source\SideRace;Source\FightingRush;Source\JumpAdventure;Source\RhythmGame;Source\RhythmGame\Orbit;Source\RhythmGame\Orbit\Render;Source\RhythmGame\Legacy;Source\RhythmGame\Step;Source\Mining;Source\Train;Source\BombAction;Source\Breakout;Source\Breakout\Score;Source\Shared\Audio;Source\Shared\Render;Source\Shared\Settings;Source\Shared\Common;Source\Shared\UI;Source\Shared\Host;Source\Composition;Source\Composition\Presentation;Source\Shooting;Source\Shooting\Assets;Source\Ball;Source\Fireworks;Source\Lib;Source\Shared\Audio\MP3Decoder;Source\Shared\Audio\MP3Decoder\Core;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
         <DCC_Namespace>System;Xml;Data;Datasnap;Web;Soap;Winapi;Vcl;$(DCC_Namespace)</DCC_Namespace>
         <SanitizedProjectName>SYNC_RhythmGame</SanitizedProjectName>
     </PropertyGroup>
@@ -122,6 +122,28 @@
         <DCCReference Include="Source\CrashCannon\RhythmCannonArt.pas"/>
         <DCCReference Include="Source\CrashCannon\RhythmCannonScene.pas"/>
         <DCCReference Include="Source\CrashCannon\RhythmCannonStyle.pas"/>
+        <DCCReference Include="Source\MelodyBall\RhythmMelodyPlan.pas"/>
+        <DCCReference Include="Source\MelodyBall\RhythmMelodyBuild.pas"/>
+        <DCCReference Include="Source\MelodyBall\RhythmMelodyCamera.pas"/>
+        <DCCReference Include="Source\MelodyBall\RhythmMelodyCodec.pas"/>
+        <DCCReference Include="Source\MelodyBall\RhythmMelodyDraw.pas"/>
+        <DCCReference Include="Source\MelodyBall\RhythmMelodyDevices.pas"/>
+        <DCCReference Include="Source\MelodyBall\RhythmMelodyArt.pas"/>
+        <DCCReference Include="Source\MelodyBall\RhythmMelodyScene.pas"/>
+        <DCCReference Include="Source\MelodyBall\RhythmMelodyStyle.pas"/>
+        <DCCReference Include="Source\TypeG\RhythmGAnimals.pas"/>
+        <DCCReference Include="Source\TypeG\RhythmGTimeline.pas"/>
+        <DCCReference Include="Source\TypeG\RhythmGWave.pas"/>
+        <DCCReference Include="Source\TypeG\RhythmGArt.pas"/>
+        <DCCReference Include="Source\TypeG\RhythmGCodec.pas"/>
+        <DCCReference Include="Source\TypeG\RhythmGDaily.pas"/>
+        <DCCReference Include="Source\TypeG\RhythmGDraw.pas"/>
+        <DCCReference Include="Source\TypeG\RhythmGImages.pas"/>
+        <DCCReference Include="Source\TypeG\RhythmGPlan.pas"/>
+        <DCCReference Include="Source\TypeG\RhythmGScene.pas"/>
+        <DCCReference Include="Source\TypeG\RhythmGSports.pas"/>
+        <DCCReference Include="Source\TypeG\RhythmGStyle.pas"/>
+        <DCCReference Include="Source\TypeG\RhythmGWhimsy.pas"/>
         <DCCReference Include="Source\TrapAction\RhythmTrapPlan.pas"/>
         <DCCReference Include="Source\TrapAction\RhythmTrapBuild.pas"/>
         <DCCReference Include="Source\TrapAction\RhythmTrapCodec.pas"/>

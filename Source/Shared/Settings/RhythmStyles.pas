@@ -1,7 +1,7 @@
 ﻿unit RhythmStyles;
 // 保存ID/計画版の契約と、設定画面だけの分類・機能カタログ。分類値はJSONやホストへ保存しない。
 interface
-type TRhythmStyle=(rsShooting,rsBall,rsJumpAdventure,rsBreakout,rsSideRace,rsBombAction,rsFightingRush,rsMining,rsTrain,rsRhythmGame,rsStepGame,rsMineCart,rsCrashCannon,rsParkour,rsMarbleRelay,rsRobotWar,rsTrapAction);
+type TRhythmStyle=(rsShooting,rsBall,rsJumpAdventure,rsBreakout,rsSideRace,rsBombAction,rsFightingRush,rsMining,rsTrain,rsRhythmGame,rsStepGame,rsMineCart,rsCrashCannon,rsParkour,rsMarbleRelay,rsRobotWar,rsTrapAction,rsTypeG,rsMelodyBall);
 type
   TRhythmStyleGroup=(sgShooting,sgBall,sgAction,sgRace,sgMusic);
   TStyleSmallKind=(skFixed,skScroll);
@@ -69,7 +69,9 @@ const
     (Id:'parkour';Title:'パルクール（試作）';MiddleTitle:'パルクール（試作）';FixedSmall:'屋上の横スクロール';ProgressText:'音時刻から連続ステップ・壁走り・ワイヤーを準備中';Group:sgAction;Order:6;SmallKind:skFixed;Version:2;Versions:[1,2];Features:[sfPrepared,sfOwnFinale];VariantKind:svNone),
     (Id:'marble-relay';Title:'からくりリレー（試作）';MiddleTitle:'からくりリレー（試作）';FixedSmall:'球を追うコース';ProgressText:'音時刻から球の経路と仕掛けの連鎖を準備中';Group:sgBall;Order:2;SmallKind:skFixed;Version:16;Versions:[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16];Features:[sfPrepared,sfOwnFinale];VariantKind:svNone),
     (Id:'robot-war';Title:'ロボット大戦';MiddleTitle:'ロボット大戦';FixedSmall:'都市の変形・合体戦';ProgressText:'音時刻から変形・合体・都市戦を準備中';Group:sgAction;Order:7;SmallKind:skFixed;Version:1;Versions:[1];Features:[sfPrepared,sfOwnFinale];VariantKind:svNone),
-    (Id:'trap-action';Title:'初見殺しアクション';MiddleTitle:'初見殺しアクション';FixedSmall:'罠を突破する横スクロール';ProgressText:'洞窟・57種類の仕掛け・連動する罠を準備中';Group:sgAction;Order:8;SmallKind:skFixed;Version:19;Versions:[19];Features:[sfPrepared,sfOwnFinale];VariantKind:svTrap)
+    (Id:'trap-action';Title:'初見殺しアクション';MiddleTitle:'初見殺しアクション';FixedSmall:'罠を突破する横スクロール';ProgressText:'洞窟・57種類の仕掛け・連動する罠を準備中';Group:sgAction;Order:8;SmallKind:skFixed;Version:19;Versions:[19];Features:[sfPrepared,sfOwnFinale];VariantKind:svTrap),
+    (Id:'type-g';Title:'Type.G';MiddleTitle:'Type.G';FixedSmall:'32種のリズム・ミニゲーム';ProgressText:'テンポ・4小節グリッド・32種のミニゲームを準備中';Group:sgMusic;Order:2;SmallKind:skFixed;Version:1;Versions:[1];Features:[sfPrepared,sfOwnFinale];VariantKind:svNone),
+    (Id:'melody-ball';Title:'メロディボール';MiddleTitle:'メロディボール';FixedSmall:'鉄琴を奏でるコースター';ProgressText:'小節と演出の反復を確認中';Group:sgBall;Order:3;SmallKind:skFixed;Version:7;Versions:[7];Features:[sfPrepared,sfOwnFinale];VariantKind:svNone)
   );
   GroupTitles:array[TRhythmStyleGroup] of string=('シューティング','ボールアクション','アクション','レース','音楽・演出');
 function StyleInfo(Style:TRhythmStyle):TStyleInfo;

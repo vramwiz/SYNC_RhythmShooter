@@ -205,8 +205,9 @@ begin
             Need(B[X*4+C]>=A[X*4+C],'EQ darkens the trap scene');
         end;
         if At>Plan.SurfaceTime then begin
-          B:=Image.ScanLine[Image.Height-1-Image.Height div 20];Inc(B,(Image.Width div 20)*4);
-          Need((B[0]>=240) and (B[1]>=200) and (B[2]>=150),'Surface sky is too dark');
+          // Canvasの論理座標で空を読む。ScanLineに行反転を重ねると下側の岩を検査してしまう。
+          C:=ColorToRGB(Image.Canvas.Pixels[Image.Width div 20,Image.Height div 20]);
+          Need((GetBValue(C)>=240) and (GetGValue(C)>=200) and (GetRValue(C)>=150),'Surface sky is too dark');
         end;
       end;
     end;

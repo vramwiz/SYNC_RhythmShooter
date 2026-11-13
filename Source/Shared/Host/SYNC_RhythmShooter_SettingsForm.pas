@@ -2,7 +2,7 @@
 // 設定と単体Previewの準備UI。ホスト音源は読取専用とし、描画側では解析しない。
 interface
 uses System.Classes, System.SysUtils, Winapi.Messages, Vcl.Controls, Vcl.ExtCtrls, Vcl.Forms,
-Vcl.Graphics, Vcl.StdCtrls, Vcl.ComCtrls, Vcl.Dialogs, RhythmAudio, RhythmPlayback, RhythmScene, RhythmWaveView, RhythmSettings,RhythmOverlay,RhythmControls,RhythmStyles,RhythmStyleSelection,RhythmPlanRef,RhythmPrepare;
+Vcl.Graphics, Vcl.StdCtrls, Vcl.ComCtrls, Vcl.Dialogs, RhythmAudio, RhythmPlayback, RhythmScene, RhythmWaveView, RhythmSettings,RhythmOverlay,RhythmControls,RhythmStyles,RhythmStyleSelection,RhythmPlanRef,RhythmPrepare,RhythmGTimeline;
 type
   TFormRhythmShooterSettings = class(TForm)
   private
@@ -27,6 +27,7 @@ type
     FBrowse,FAnalyze,FStop:TButton;
     FStatus,FClock,FLevel,FDirectionLabel:TLabel;
     FApply,FPlay:TButton;
+    FGTimeline:TGTimeline;
     FLastPreparationError:string;
     FPrepareStarted:UInt64;
     FPreview:TRhythmPreviewSurface;
@@ -56,6 +57,9 @@ type
     procedure SetStatus(const Text:string;Persist:Boolean=False);
     procedure BrowseClick(Sender:TObject);
     procedure LoadClick(Sender:TObject);
+    procedure GTimelineChange(Sender:TObject);
+    procedure GTimelineBeginEdit(Sender:TObject);
+    procedure GTimelineSeek(Sender:TObject;Time:Double);
     procedure PlayClick(Sender:TObject);
     procedure UpdatePlayCaption;
     procedure RefreshTransport;
@@ -319,6 +323,9 @@ begin
   FWave.Align:=alTop;
   FWave.Height:=S(42);
   FWave.OnMouseDown:=WaveMouseDown;
+  FGTimeline:=TGTimeline.Create(Self); FGTimeline.Parent:=Transport;
+  FGTimeline.Name:='TypeGTimeline'; FGTimeline.Align:=alTop; FGTimeline.Top:=0; FGTimeline.Visible:=False;
+  FGTimeline.OnChanged:=GTimelineChange; FGTimeline.OnBeginEdit:=GTimelineBeginEdit; FGTimeline.OnSeek:=GTimelineSeek;
   FSeek:=TRhythmTrackBar.Create(Self);
   FSeek.Parent:=Transport;
   FSeek.Name:='Timeline';
@@ -568,11 +575,13 @@ begin
         Place(FClock,0,H,W,H);
         FTransportButtons.Height:=2*H;
       end;
+      FWave.Visible:=not FGTimeline.Visible;
       FWave.Height:=S(42);
       FSeek.Height:=S(32);
       FWave.Top:=S(4);
-      FSeek.Top:=FWave.Top+FWave.Height;
-      FTransport.Height:=Max(S(128),FWave.Height+FSeek.Height+FTransportButtons.Height+S(8));
+      if FGTimeline.Visible then begin FGTimeline.Top:=S(4); FSeek.Top:=FGTimeline.Top+FGTimeline.Height; end
+      else FSeek.Top:=FWave.Top+FWave.Height;
+      FTransport.Height:=Max(S(128),FSeek.Top+FSeek.Height+FTransportButtons.Height+S(8));
       FAnimationBody.Height:=Max(FAnimationScroll.ClientHeight,FOptionsHeader.Height+FTransport.Height+S(100));
       FAnimationScroll.Realign;
       if FMusicRow.ClientWidth=MusicRowWidth then Break;
@@ -789,6 +798,9 @@ begin
   FDirectionPanel.Visible:=True;
   UpdatePlayCaption;
   IsReady:=Ready;
+  FGTimeline.Visible:=SelectedStyle=rsTypeG;
+  if FGTimeline.Visible and IsReady then FGTimeline.Bind(FAudio,FState.Plan)
+  else FGTimeline.Bind(nil,Default(TRhythmPlanRef));
   if FApply<>nil then begin
     FApply.Enabled:=not FPreparing;
     if IsReady or (MusicFile='') then FApply.Caption:='適用して閉じる' else FApply.Caption:='設定のみ保存して閉じる';
@@ -828,8 +840,10 @@ end;
 procedure TFormRhythmShooterSettings.BeginLoad(Force:Boolean);
 var
   Existing:TRhythmAudio;
+  Resume:TRhythmPlanRef;
 begin
   if FWorker<>nil then Exit;
+  Resume:=FState.Plan;
   FReloadAt:=0;
   FState.Plan:=Default(TRhythmPlanRef);
   Inc(FRequestSerial);
@@ -854,6 +868,7 @@ begin
   try
     FWorker:=TRhythmPrepareThread.Create(MusicFile,DetectionSensitivity,ScrollDirection,SelectedStyle,Force,Existing,FRequestSerial,SelectedVariant,FGameThreshold.Position);
     SetStatus('準備開始: '+MusicFile,True);
+    if SelectedStyle=rsTypeG then FWorker.ResumePlan:=Resume;
     FWorker.Start;
   except
     on E:Exception do begin
@@ -883,8 +898,22 @@ begin
 end;
 
 procedure TFormRhythmShooterSettings.LoadClick(Sender:TObject);
-begin BeginLoad(not StyleHas(SelectedStyle,sfPrepared));
+begin
+  if SelectedStyle=rsTypeG then FState.Plan:=Default(TRhythmPlanRef);
+  BeginLoad(not StyleHas(SelectedStyle,sfPrepared));
 end;
+
+procedure TFormRhythmShooterSettings.GTimelineChange(Sender:TObject);
+begin
+  FState.Plan:=FGTimeline.Reference;
+  try SaveSettings; SetStatus('Type.Gの波形上のシーン構成を保存しました。',True);
+  except on E:Exception do SetStatus('シーン構成の設定保存: '+E.Message,True); end;
+  FPreview.Invalidate;
+end;
+procedure TFormRhythmShooterSettings.GTimelineBeginEdit(Sender:TObject);
+begin FPlayer.Pause; UpdatePlayCaption; end;
+procedure TFormRhythmShooterSettings.GTimelineSeek(Sender:TObject;Time:Double);
+begin SeekTo(Time); end;
 
 procedure TFormRhythmShooterSettings.UpdatePlayCaption;
 var
@@ -1110,6 +1139,7 @@ begin
         SetStatus(Format('準備完了: %s / %.3f 秒 / %s / PCM再利用 %s',[StyleTitle(SelectedStyle),FAudio.Duration,Summary,BoolToStr(FAudio.CacheReused,True)]),True);
       end;
     end;
+    if FGTimeline.Visible then FGTimeline.SetTime(FTime);
     if Ready then RefreshTransport
     else begin FClock.Caption:='動作計画が未準備';
       UpdatePlayCaption;
