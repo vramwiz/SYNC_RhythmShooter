@@ -54,7 +54,7 @@ const
   // カタログはenum順。プロジェクトと準備済み計画は文字列IDで識別する。
   Catalog:array[TRhythmStyle] of TStyleInfo=(
     (Id:'shooting';Title:'シューティング';MiddleTitle:'宇宙シューティング';FixedSmall:'';ProgressText:'敵・弾・命中を準備中';Group:sgShooting;Order:0;SmallKind:skScroll;Version:1;Versions:[1];Features:[sfBoss];VariantKind:svBoss),
-    (Id:'ball';Title:'ボール（ピンボール）';MiddleTitle:'ピンボール';FixedSmall:'';ProgressText:'障害物と軌道を準備中';Group:sgBall;Order:0;SmallKind:skScroll;Version:6;Versions:[4,5,6];Features:[sfPrepared];VariantKind:svNone),
+    (Id:'ball';Title:'ボール（ピンボール）';MiddleTitle:'ピンボール';FixedSmall:'固定台';ProgressText:'固定台で強音と接触時刻を準備中';Group:sgBall;Order:0;SmallKind:skFixed;Version:7;Versions:[4,5,6,7];Features:[sfPrepared];VariantKind:svNone),
     (Id:'jump-adventure';Title:'ジャンプアドベンチャー';MiddleTitle:'ジャンプアドベンチャー';FixedSmall:'横・縦の自動切替';ProgressText:'音時刻から足場・踏みつけ・ボス戦を逆算中';Group:sgAction;Order:0;SmallKind:skFixed;Version:3;Versions:[1,2,3];Features:[sfPrepared,sfBoss,sfDefaultBoss50];VariantKind:svBoss),
     (Id:'breakout';Title:'ブロック崩し';MiddleTitle:'ブロック崩し';FixedSmall:'固定盤面';ProgressText:'破壊時刻から逆算・配置・前向き検証中';Group:sgBall;Order:1;SmallKind:skFixed;Version:11;Versions:[1,2,3,4,5,6,7,8,9,10,11];Features:[sfPrepared,sfBoss];VariantKind:svBoss),
     (Id:'side-race';Title:'2Dハイウェイ';MiddleTitle:'2Dハイウェイ';FixedSmall:'横スクロール';ProgressText:'高速道路・ジャンプ・前後の衝突を音時刻から逆算中';Group:sgRace;Order:0;SmallKind:skFixed;Version:1;Versions:[1];Features:[sfPrepared,sfBoss,sfDefaultBoss50];VariantKind:svBoss),
@@ -67,7 +67,7 @@ const
     (Id:'mine-cart';Title:'トロッコアクション';MiddleTitle:'トロッコアクション';FixedSmall:'鉱山の横スクロール';ProgressText:'コインの接触・線路・回避を逆算中';Group:sgAction;Order:4;SmallKind:skFixed;Version:4;Versions:[1,2,3,4];Features:[sfPrepared,sfBoss,sfDefaultBoss50];VariantKind:svBoss),
     (Id:'crash-cannon';Title:'クラッシュキャノン';MiddleTitle:'クラッシュキャノン';FixedSmall:'横からの視点';ProgressText:'音時刻から着弾・反撃・連鎖崩壊を逆算中';Group:sgAction;Order:5;SmallKind:skFixed;Version:1;Versions:[1];Features:[sfPrepared,sfOwnFinale];VariantKind:svNone),
     (Id:'parkour';Title:'パルクール（試作）';MiddleTitle:'パルクール（試作）';FixedSmall:'屋上の横スクロール';ProgressText:'音時刻から連続ステップ・壁走り・ワイヤーを準備中';Group:sgAction;Order:6;SmallKind:skFixed;Version:2;Versions:[1,2];Features:[sfPrepared,sfOwnFinale];VariantKind:svNone),
-    (Id:'marble-relay';Title:'からくりリレー（試作）';MiddleTitle:'からくりリレー（試作）';FixedSmall:'球を追うコース';ProgressText:'音時刻から球の経路と仕掛けの連鎖を準備中';Group:sgBall;Order:2;SmallKind:skFixed;Version:16;Versions:[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16];Features:[sfPrepared,sfOwnFinale];VariantKind:svNone),
+    (Id:'marble-relay';Title:'からくりリレー';MiddleTitle:'からくりリレー';FixedSmall:'球を追うコース';ProgressText:'音時刻から球の経路と仕掛けの連鎖を準備中';Group:sgBall;Order:2;SmallKind:skFixed;Version:16;Versions:[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16];Features:[sfPrepared,sfOwnFinale];VariantKind:svNone),
     (Id:'trap-action';Title:'初見殺しアクション';MiddleTitle:'初見殺しアクション';FixedSmall:'罠を突破する横スクロール';ProgressText:'洞窟・57種類の仕掛け・連動する罠を準備中';Group:sgAction;Order:7;SmallKind:skFixed;Version:19;Versions:[19];Features:[sfPrepared,sfOwnFinale];VariantKind:svTrap),
     (Id:'type-g';Title:'Type.G';MiddleTitle:'Type.G';FixedSmall:'32種のリズム・ミニゲーム';ProgressText:'テンポ・4小節グリッド・32種のミニゲームを準備中';Group:sgMusic;Order:2;SmallKind:skFixed;Version:1;Versions:[1];Features:[sfPrepared,sfOwnFinale];VariantKind:svNone),
     (Id:'melody-ball';Title:'メロディボール';MiddleTitle:'メロディボール';FixedSmall:'鉄琴を奏でるコースター';ProgressText:'小節と演出の反復を確認中';Group:sgBall;Order:3;SmallKind:skFixed;Version:7;Versions:[7];Features:[sfPrepared,sfOwnFinale];VariantKind:svNone)

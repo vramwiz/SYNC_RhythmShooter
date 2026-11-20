@@ -13,7 +13,7 @@ video.height=1080
 video.rate=30
 video.scale=1
 audio.rate=44100
-cursor.frame=640
+cursor.frame=706
 cursor.layer=1
 preview.frame=0
 display.frame=0
@@ -44,7 +44,7 @@ X=0
 Y=0
 音楽ファイル=C:\Users\vramw\Music\magnific_fury-blossom_5jnh5TdKxe.mp3
 設定=
-設定JSON={"schema":1,"presentationVersion":3,"music":"C:\\Users\\vramw\\Music\\magnific_fury-blossom_5jnh5TdKxe.mp3","direction":0,"sensitivity":100,"zoom":100.0,"offsetSeconds":0.0,"x":0.0,"y":0.0,"musicSource":"host","bossFrequency":43,"style":"breakout","marbleBall":1,"marbleStage":"desk","trapStage":"cave","audioDensity":-66,"gameThreshold":-66,"equalizer":true,"fireworksRichness":50,"plan":{"key":"97acb4bb8cdc1e7c663670b5bba306cd77958e3ab18ccb43ff2ff39073b5570b","source":"4e5a18477edcb564058fdade652a02b759635a6040e1df490643bdd3accbce30","digest":"62704c38c3d3e5b73a374aa02fb4075a94a9cb2155b9cf7e00edb6c5e7fbdc7f","sourceStamp":"0000000000479D20-01DD70A588653656","style":"breakout","version":11,"sensitivity":100,"direction":0,"variant":44,"density":35}}
+設定JSON={"schema":1,"presentationVersion":3,"music":"C:\\Users\\vramw\\Music\\magnific_fury-blossom_5jnh5TdKxe.mp3","direction":0,"sensitivity":100,"zoom":100.0,"offsetSeconds":0.0,"x":0.0,"y":0.0,"musicSource":"host","bossFrequency":43,"style":"marble-relay","marbleBall":1,"marbleStage":"desk","trapStage":"cave","audioDensity":-66,"gameThreshold":-66,"equalizer":true,"fireworksRichness":50,"plan":{"key":"1a2b39b3b348c84e6ed55d4255f7c2b4754d2b9e05572747691c95a56b37e125","source":"4e5a18477edcb564058fdade652a02b759635a6040e1df490643bdd3accbce30","digest":"82006381765feb3b182ac6365f32ca36920de463cdb798e3cf7e4bce14ba6f2c","sourceStamp":"0000000000479D20-01DD70A588653656","style":"marble-relay","version":16,"sensitivity":100,"direction":0,"variant":0,"density":35}}
 オフセット=0.00
 [plugin.0]
 plugin.name=Syncroh2_Extension2

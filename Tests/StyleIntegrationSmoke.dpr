@@ -3,7 +3,7 @@
 {$POINTERMATH ON}
 uses Winapi.Windows,System.SysUtils,System.Math,System.Classes,System.Hash,System.IOUtils,System.JSON,
   Vcl.Graphics,Vcl.Imaging.pngimage,AviUtl2FilterTypes,RhythmAudio,RhythmStyles,RhythmProduct,RhythmPlanRef,RhythmSettings,
-  RhythmPrepare,RhythmScene,RhythmStyleRegistry,RhythmPaths,RhythmMotion,RhythmTrapPlan,RhythmTrapCodec;
+  RhythmPrepare,RhythmScene,RhythmStyleOps,RhythmStyleRegistry,RhythmPaths,RhythmMotion,RhythmTrapPlan,RhythmTrapCodec;
 type TInitPlugin=function(Version:DWORD):Byte;cdecl;
  TDonePlugin=procedure;cdecl;
  TGetPlugin=function:PFILTER_PLUGIN_TABLE;cdecl;
@@ -187,24 +187,32 @@ begin
  finally FreeLibrary(Lib);end;
 end;
 
-// EQ切替で全画面が減光しないことと、地上の空が昼の明るさを保つことを検査する。
-procedure VerifyTrapBrightness;
-var Plan:TTrapPlan;Before:TBitmap;Mode,X,Y,C:Integer;At:Double;A,B:PByte;
+// 共通EQ経路の全種類で減光を検査し、初見殺しでは地上の空の明るさも確認する。
+procedure VerifySceneBrightness;
+var Plan:TTrapPlan;Before:TBitmap;Mode,X,Y,C:Integer;At:Double;A,B:PByte;Times:TArray<Double>;
+  Ops:TStyleOperations;
 begin
-  if Style<>rsTrapAction then Exit;
-  Plan:=LoadTrapPlan(Ref,Cold,0);Before:=TBitmap.Create;
+  if StyleHas(Style,sfTransparent) then Exit;
+  Ops:=StyleOperations(Style);
+  if (Ops.DirectAlphaFromVersion>0) and (Ref.Version>=Ops.DirectAlphaFromVersion) then Exit;
+  Plan:=nil;Before:=TBitmap.Create;
   try
     Before.PixelFormat:=pf32bit;
+    Times:=TArray<Double>.Create(3.5,32.3);
+    if Style=rsTrapAction then begin
+      Plan:=LoadTrapPlan(Ref,Cold,0);
+      Times[1]:=Plan.SurfaceTime+1.65;
+    end;
     for Mode:=0 to 1 do begin
       Renderer.UseD2D:=Mode=1;
-      for At in TArray<Double>.Create(3.5,Plan.SurfaceTime+1.65) do begin
+      for At in Times do begin
         Renderer.ConfigureStyle(Style,Ref,100,0);Renderer.Render(Image,Cold,At,0);Before.Assign(Image);
         Renderer.ConfigureStyle(Style,Ref,100,1);Renderer.Render(Image,Cold,At,0);
         for Y:=0 to Image.Height-1 do begin A:=Before.ScanLine[Y];B:=Image.ScanLine[Y];
           for X:=0 to Image.Width-1 do for C:=0 to 2 do
-            Need(B[X*4+C]>=A[X*4+C],'EQ darkens the trap scene');
+            Need(B[X*4+C]>=A[X*4+C],'EQ darkens the scene');
         end;
-        if At>Plan.SurfaceTime then begin
+        if (Plan<>nil) and (At>Plan.SurfaceTime) then begin
           // Canvasの論理座標で空を読む。ScanLineに行反転を重ねると下側の岩を検査してしまう。
           C:=ColorToRGB(Image.Canvas.Pixels[Image.Width div 20,Image.Height div 20]);
           Need((GetBValue(C)>=240) and (GetGValue(C)>=200) and (GetRValue(C)>=150),'Surface sky is too dark');
@@ -254,7 +262,7 @@ begin
      if Backend=1 then Need(Renderer.LastUsedD2D,'D2D backend unavailable '+StyleId(Style));
     end;
    end;
-   VerifyTrapBrightness;VerifyHost;
+   VerifySceneBrightness;VerifyHost;
    Renderer.Render(Image,Cold,32.3,0);PNG:=TPngImage.Create;PNG.Assign(Image);PNG.SaveToFile(TPath.Combine(Root,StyleId(Style)+'.png'));FreeAndNil(PNG);
    FreeAndNil(Renderer);FreeAndNil(Cold);FreeAndNil(Audio);
   end;

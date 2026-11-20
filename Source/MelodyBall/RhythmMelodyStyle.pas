@@ -37,6 +37,5 @@ begin
   Result:=Default(TStyleOperations); Result.UnitName:='RhythmMelodyStyle';
   Result.CreateScene:=CreateScene; Result.SetReference:=SetReference; Result.SetAudio:=SetAudio;
   Result.Prepare:=Prepare; Result.LoadAudio:=LoadMelodyAudio; Result.CreateImages:=EmptyStyleImages;
-  Result.EqualizerPreservesBrightness:=True;
 end;
 end.

@@ -21,14 +21,17 @@ begin
       Ball:=TRhythmBallPlan.Build(Context.Audio,Context.Cancel);
       try
         Context.SetStage(3);
-        Ball.Save(Prepared,Context.Cancel);
+        Ball.Save(Prepared,Context.Cancel,Context.Audio);
         Context.CheckCancel;
         Context.SetStage(4);
         RestoredAudio:=TRhythmBallPlan.LoadAudioMetadata(Prepared,Context.Audio.Source,Context.Direction);
         try Verified:=TRhythmBallPlan.Load(Prepared,RestoredAudio,Context.Direction);
         finally RestoredAudio.Free;
         end;
-        try PreparedSummary:=Format('%d音イベント → %d衝突＋%d共鳴 / 終端外%d',[Verified.PulseCount,Verified.ObstacleCount,Verified.PulseCount-Verified.ObstacleCount,Verified.ExcludedCount]);
+        try
+          PreparedEnd:=Verified.EndTime;
+          PreparedSummary:=Format('固定盤面 / 強音%d候補中%d接触同期 / フリッパー%d・バンパー%d',
+            [Verified.Pinball.StrongCandidates,Verified.Pinball.Synced,Verified.Pinball.SyncedFlippers,Verified.Pinball.SyncedBumpers]);
         finally Verified.Free;
         end;
       finally Ball.Free;

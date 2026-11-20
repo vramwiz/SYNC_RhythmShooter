@@ -80,7 +80,7 @@ begin
   try
     ConfigureRhythmProduct('SYNC_RhythmBreakout','リズムブロック崩し',rsBreakout);
     Need((StyleId(rsBreakout)='breakout') and (StylePlanVersion(rsShooting)=1) and
-      (StylePlanVersion(rsBall)=6) and CompatiblePlanVersion(rsBall,4),'Old style contract changed');
+      (StylePlanVersion(rsBall)=7) and CompatiblePlanVersion(rsBall,4),'Old style contract changed');
     Need((StylePlanVersion(rsBreakout)=11) and CompatiblePlanVersion(rsBreakout,1) and CompatiblePlanVersion(rsBreakout,2) and CompatiblePlanVersion(rsBreakout,3) and CompatiblePlanVersion(rsBreakout,4) and CompatiblePlanVersion(rsBreakout,5) and CompatiblePlanVersion(rsBreakout,6) and CompatiblePlanVersion(rsBreakout,7) and CompatiblePlanVersion(rsBreakout,8) and CompatiblePlanVersion(rsBreakout,9),'Breakout legacy compatibility');
     Need(TRhythmSettings.Defaults.Style=rsBreakout,'New product default');
     Need(TRhythmSettings.TryJSON('{"schema":1,"music":"old.wav"}',Settings) and (Settings.Style=rsShooting),'Old JSON default');

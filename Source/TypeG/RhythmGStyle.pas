@@ -35,6 +35,5 @@ begin
   Result:=Default(TStyleOperations); Result.UnitName:='RhythmGStyle';
   Result.CreateScene:=CreateScene; Result.SetReference:=SetReference; Result.SetAudio:=SetAudio;
   Result.Prepare:=Prepare; Result.LoadAudio:=LoadGAudio; Result.CreateImages:=CreateGImages;
-  Result.EqualizerPreservesBrightness:=True;
 end;
 end.

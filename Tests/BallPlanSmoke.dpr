@@ -110,7 +110,7 @@ begin
   try
     ConfigureRhythmProduct('SYNC_RhythmBall','リズムボール',rsBall);
     Require(TRhythmSettings.Defaults.Style=rsBall,'Ball default missing');
-    Require(StylePlanVersion(rsBall)=6,'Pinball plan version missing');Require(StylePlanVersion(rsShooting)=1,'Shooting plan was invalidated');
+    Require(StylePlanVersion(rsBall)=7,'Pinball plan version missing');Require(StylePlanVersion(rsShooting)=1,'Shooting plan was invalidated');
     Require(TRhythmSettings.TryJSON('{"schema":1,"music":"old.wav","direction":1,"sensitivity":72}',State) and (State.Style=rsShooting),'Old JSON no longer resolves to shooting');
     for CaseIndex:=0 to 3 do begin
       case CaseIndex of 0,3:Gap:=0.18;1:Gap:=0.5;else Gap:=3.5;end;MakeAudio(Gap);

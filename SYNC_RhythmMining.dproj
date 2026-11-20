@@ -185,6 +185,8 @@
         <DCCReference Include="Source\Breakout\Score\RhythmBreakoutScoreGeometry.pas"/>
         <DCCReference Include="Source\Ball\RhythmBallCircuitPlan.pas"/>
         <DCCReference Include="Source\Ball\RhythmBallCircuitScene.pas"/>
+        <DCCReference Include="Source\Ball\RhythmPinballPlan.pas"/>
+        <DCCReference Include="Source\Ball\RhythmPinballScene.pas"/>
         <DCCReference Include="Source\Breakout\RhythmBreakoutAction.pas"/>
         <DCCReference Include="Source\Mining\RhythmMiningPlan.pas"/>
         <DCCReference Include="Source\Mining\RhythmMiningScene.pas"/>

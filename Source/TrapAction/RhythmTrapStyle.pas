@@ -32,6 +32,5 @@ function TrapOperations:TStyleOperations;
 begin Result:=Default(TStyleOperations);Result.UnitName:='RhythmTrapStyle';Result.CreateScene:=CreateScene;
   Result.SetReference:=SetReference;Result.SetAudio:=SetAudio;Result.Prepare:=Prepare;
   Result.LoadAudio:=LoadTrapAudio;Result.CreateImages:=EmptyStyleImages;
-  Result.EqualizerPreservesBrightness:=True;
 end;
 end.

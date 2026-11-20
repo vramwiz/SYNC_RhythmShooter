@@ -103,6 +103,8 @@ uses
   RhythmBreakoutScoreGeometry in 'Source\Breakout\Score\RhythmBreakoutScoreGeometry.pas',
   RhythmBallCircuitPlan in 'Source\Ball\RhythmBallCircuitPlan.pas',
 RhythmBallCircuitScene in 'Source\Ball\RhythmBallCircuitScene.pas',
+RhythmPinballPlan in 'Source\Ball\RhythmPinballPlan.pas',
+RhythmPinballScene in 'Source\Ball\RhythmPinballScene.pas',
 RhythmBreakoutAction in 'Source\Breakout\RhythmBreakoutAction.pas',
 RhythmMiningPlan in 'Source\Mining\RhythmMiningPlan.pas',
 RhythmMiningScene in 'Source\Mining\RhythmMiningScene.pas',

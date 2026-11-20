@@ -1,7 +1,7 @@
 ﻿unit RhythmBallPlan;
 // このスタイルの全曲事前計画と保存互換を担当し、描画からの再解析を行わない。
 interface
-uses System.SysUtils,RhythmAudio,RhythmPlanRef,RhythmBallGeometry,RhythmBallCircuitPlan;
+uses System.SysUtils,RhythmAudio,RhythmPlanRef,RhythmBallGeometry,RhythmBallCircuitPlan,RhythmPinballPlan;
 type
   TBallContactKind=(bcStart,bcBumper,bcBreakable);
   TBallContact=record
@@ -16,6 +16,7 @@ type
   TRhythmBallPlan=class
   private
     FCircuit:TBallCircuitPlan;
+    FPinball:TPinballPlan;
     FContacts:TArray<TBallContact>;
     FObstacles:TArray<TBallObstacle>;
     FPulses:TArray<TBallPulse>;
@@ -23,6 +24,7 @@ type
     FTail:TBallFlight;
     FEndTime,FAudioDuration,FSoundEnd:Double;
     FAudioEvents:Integer;
+    procedure UsePinball(Plan:TPinballPlan;Audio:TRhythmAudio);
     function GetCount:Integer;
     function GetObstacleCount:Integer;
     function GetPulseCount:Integer;
@@ -33,9 +35,10 @@ type
   public
     destructor Destroy; override;
     property Circuit:TBallCircuitPlan read FCircuit;
+    property Pinball:TPinballPlan read FPinball;
     class function BuildLegacy(Audio:TRhythmAudio;const Cancel:TFunc<Boolean> = nil):TRhythmBallPlan; static;
     class function Build(Audio:TRhythmAudio;const Cancel:TFunc<Boolean> = nil):TRhythmBallPlan; static;
-    procedure Save(var Ref:TRhythmPlanRef;const Cancel:TFunc<Boolean> = nil);
+    procedure Save(var Ref:TRhythmPlanRef;const Cancel:TFunc<Boolean> = nil;Audio:TRhythmAudio=nil);
     class function Load(const Ref:TRhythmPlanRef;Audio:TRhythmAudio;Direction:Integer):TRhythmBallPlan; static;
     // Restore the prepared plan identity without PCM or running analysis.
     // Old v4 files use read-only event metadata when no embedded header exists.
@@ -59,22 +62,39 @@ type
   end;
 implementation
 uses System.Math,System.Classes,System.Generics.Collections,System.JSON,System.IOUtils,System.Hash,
-Winapi.Windows,RhythmStyles,RhythmPaths;
+Winapi.Windows,RhythmStyles,RhythmPaths,RhythmPreparedData;
 
 destructor TRhythmBallPlan.Destroy;
 begin FCircuit.Free;
+  FPinball.Free;
   inherited;
+end;
+
+procedure TRhythmBallPlan.UsePinball(Plan:TPinballPlan;Audio:TRhythmAudio);
+var I,N,Source:Integer;
+begin
+  FPinball:=Plan;
+  FEndTime:=Plan.EndTime;
+  FAudioDuration:=Audio.Duration;
+  FSoundEnd:=Audio.SoundEnd;
+  FAudioEvents:=Length(Audio.Hits);
+  FExcludedCount:=FAudioEvents-Plan.Synced;
+  SetLength(FPulses,Plan.Synced);
+  N:=0;
+  for I:=0 to Plan.Count-1 do begin
+    Source:=Plan.Contact[I].Source;
+    if Source<0 then Continue;
+    FPulses[N].Time:=Audio.Hits[Source].Time;
+    FPulses[N].Strength:=Audio.Hits[Source].Strength;
+    FPulses[N].ContactIndex:=I;
+    Inc(N);
+  end;
 end;
 
 class function TRhythmBallPlan.Build(Audio:TRhythmAudio;const Cancel:TFunc<Boolean>):TRhythmBallPlan;
 begin
   Result:=TRhythmBallPlan.Create;
-  try Result.FCircuit:=TBallCircuitPlan.Build(Audio,Cancel);
-    Result.FEndTime:=Result.FCircuit.EndTime;
-    Result.FExcludedCount:=Result.FCircuit.ExcludedCount;
-    Result.FAudioDuration:=Audio.Duration;
-    Result.FSoundEnd:=Audio.SoundEnd;
-    Result.FAudioEvents:=Length(Audio.Hits);
+  try Result.UsePinball(TPinballPlan.Build(Audio,Cancel),Audio);
   except Result.Free;
     raise;
   end;
@@ -409,12 +429,14 @@ begin
 end;
 
 function TRhythmBallPlan.GetCount:Integer;
-begin if FCircuit<>nil then Exit(FCircuit.NodeCount);
+begin if FPinball<>nil then Exit(FPinball.Count);
+  if FCircuit<>nil then Exit(FCircuit.NodeCount);
   Result:=Length(FContacts);
 end;
 
 function TRhythmBallPlan.GetObstacleCount:Integer;
-begin if FCircuit<>nil then Exit(FCircuit.ObjectCount);
+begin if FPinball<>nil then Exit(PIN_BUMPERS+3);
+  if FCircuit<>nil then Exit(FCircuit.ObjectCount);
   Result:=Length(FObstacles);
 end;
 
@@ -453,7 +475,8 @@ end;
 function TRhythmBallPlan.ContactBefore(Time:Double):Integer;
 var
   A,B,M:Integer;
-begin if FCircuit<>nil then Exit(FCircuit.NodeBefore(Time));
+begin if FPinball<>nil then Exit(FPinball.Before(Time));
+  if FCircuit<>nil then Exit(FCircuit.NodeBefore(Time));
   A:=0;
   B:=Length(FContacts);
   while A<B do begin M:=(A+B) div 2;
@@ -466,6 +489,7 @@ function TRhythmBallPlan.PositionAt(Time:Double):TBallPoint;
 var
   I:Integer;
 begin
+  if FPinball<>nil then Exit(FPinball.PositionAt(Time));
   if FCircuit<>nil then Exit(FCircuit.PositionAt(Time));
   Time:=EnsureRange(Time,0.0,FEndTime);
   I:=ContactBefore(Time);
@@ -513,7 +537,7 @@ function Finite(Value:Double):Boolean;
 begin Result:=not IsNan(Value) and not IsInfinite(Value);
 end;
 
-procedure TRhythmBallPlan.Save(var Ref:TRhythmPlanRef;const Cancel:TFunc<Boolean>);
+procedure TRhythmBallPlan.Save(var Ref:TRhythmPlanRef;const Cancel:TFunc<Boolean>;Audio:TRhythmAudio);
 var
   Root,Item:TJSONObject;
   Items:TJSONArray;
@@ -523,6 +547,12 @@ var
   Path,Temp:string;
   Id:TGUID;
 begin
+  if FPinball<>nil then begin
+    CheckCancel(Cancel);
+    if Audio=nil then raise EArgumentNilException.Create('Pinball audio');
+    FPinball.Save(Ref,Audio);
+    Exit;
+  end;
   if FCircuit<>nil then begin CheckCancel(Cancel);
     FCircuit.Save(Ref);
     Exit;
@@ -616,7 +646,12 @@ var
   Path,Failure:string;
   EventCount:Integer;
 begin
-  if Ref.Version>=6 then Exit(TBallCircuitPlan.LoadAudioMetadata(Ref,Source,Direction));
+  if Ref.Version=7 then begin
+    Root:=ReadPreparedData(Ref,rsBall,Direction);
+    try Result:=PreparedAudio(Root,Ref,Source);finally Root.Free;end;
+    Exit;
+  end;
+  if Ref.Version=6 then Exit(TBallCircuitPlan.LoadAudioMetadata(Ref,Source,Direction));
   Result:=nil;
   Root:=nil;
   if not Ref.Matches(Ref.SourceKey,Ref.Sensitivity,Direction,rsBall) or
@@ -696,7 +731,14 @@ var
 begin
   Result:=nil;
   Root:=nil;
-  if Ref.Version>=6 then begin Result:=TRhythmBallPlan.Create;
+  if Ref.Version=7 then begin
+    if Audio=nil then raise EArgumentNilException.Create('Pinball audio');
+    Result:=TRhythmBallPlan.Create;
+    try Result.UsePinball(TPinballPlan.Load(Ref,Audio,Direction),Audio);
+    except Result.Free;raise;end;
+    Exit;
+  end;
+  if Ref.Version=6 then begin Result:=TRhythmBallPlan.Create;
     try Result.FCircuit:=TBallCircuitPlan.Load(Ref,Audio,Direction);
       Result.FEndTime:=Result.FCircuit.EndTime;
       Result.FExcludedCount:=Result.FCircuit.ExcludedCount;

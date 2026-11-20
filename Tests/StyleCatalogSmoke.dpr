@@ -5,7 +5,7 @@ uses System.SysUtils,System.Classes,System.Hash,System.IOUtils,System.JSON,
   RhythmStyles,RhythmStyleSelection,RhythmSettings,RhythmPlanRef,RhythmStyleOps,RhythmStyleRegistry,
   RhythmAudio,RhythmAnimation,RhythmImageBank;
 const Ids:array[TRhythmStyle] of string=('shooting','ball','jump-adventure','breakout','side-race','bomb-action','fighting-rush','mining','train','rhythm-game','prism-step','mine-cart','crash-cannon','parkour','marble-relay','trap-action','type-g','melody-ball');
-  Versions:array[TRhythmStyle] of Integer=(1,6,3,11,1,2,1,1,1,4,3,4,1,2,16,19,1,7);
+  Versions:array[TRhythmStyle] of Integer=(1,7,3,11,1,2,1,1,1,4,3,4,1,2,16,19,1,7);
   Groups:array[TRhythmStyle] of TRhythmStyleGroup=(sgShooting,sgBall,sgAction,sgBall,sgRace,sgAction,sgAction,sgAction,sgShooting,sgMusic,sgMusic,sgAction,sgAction,sgAction,sgBall,sgAction,sgMusic,sgBall);
   Scenes:array[TRhythmStyle] of string=('TShootingAnimation','TBallAnimation','TJumpAnimation','TBreakoutAnimation','TSideRaceAnimation','TBombActionAnimation','TRushAnimation','TMiningAnimation','TTrainAnimation','TGameAnimation','TStepAnimation','TCartAnimation','TCannonAnimation','TParkourAnimation','TMarbleAnimation','TTrapAnimation','TGAnimation','TMelodyAnimation');
   GroupCounts:array[TRhythmStyleGroup] of Integer=(2,4,8,1,3);
@@ -18,7 +18,7 @@ procedure Need(OK:Boolean;const Why:string);
 begin if not OK then raise Exception.Create(Why);Inc(Checks);end;
 function WasCompatible(Style:TRhythmStyle;Version:Integer):Boolean;
 begin Result:=Version=Versions[Style];case Style of
-  rsBall:Result:=Version in [4,5,6];
+  rsBall:Result:=Version in [4,5,6,7];
   rsBreakout:Result:=Version in [1,2,3,4,5,6,7,8,9,10,11];
   rsBombAction,rsParkour:Result:=Version in [1,2];rsMarbleRelay:Result:=Version in [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16];rsRhythmGame,rsMineCart:Result:=Version in [1,2,3,4];rsStepGame,rsJumpAdventure:Result:=Version in [1,2,3];
 end;end;
@@ -42,6 +42,7 @@ begin Scene:=nil;Images:=nil;Names:=nil;Checks:=0;Combinations:=0;
     Need(TRhythmSettings.TryJSON('{"schema":1,"style":"rhythm-game","layers":'+
       '{"style":"fighting","movie":true,"foreground":false,"plan":{"style":"fighting"}}}',Loaded) and
       (Loaded.Style=rsFightingRush) and (Loaded.Plan.Key=''),'Retired fighting layer migration');
+    Need(StyleSmallTitle(rsBall,0)='固定台','Pinball fixed table label');
     Need(GroupStyleCount(sgBall)=4,'Ball family count');Need(StyleInfo(rsBall).Group=StyleInfo(rsBreakout).Group,'Pinball and breakout separated');
     Need((StyleInfo(rsRhythmGame).MiddleTitle='Type.V') and (StyleTitle(rsRhythmGame)='Type.V'),'Type.V label');
     Need((StyleInfo(rsStepGame).MiddleTitle='Type.D') and (StyleTitle(rsStepGame)='Type.D') and
@@ -81,7 +82,7 @@ begin Scene:=nil;Images:=nil;Names:=nil;Checks:=0;Combinations:=0;
     for S:=Low(TRhythmStyle) to High(TRhythmStyle) do begin
       Need(StyleId(S)=Ids[S],'Saved style ID changed');Need(StylePlanVersion(S)=Versions[S],'Plan version changed');
       Need(TryStyle(Ids[S],ParsedStyle) and (ParsedStyle=S),'Style ID roundtrip');Need(StyleInfo(S).Group=Groups[S],'Classification');
-      Need(StyleSmallCount(S)=1+Ord(S in [rsShooting,rsBall]),'Small mode count');
+      Need(StyleSmallCount(S)=1+Ord(S=rsShooting),'Small mode count');
       for V:=0 to 19 do begin ExpectedCompatible:=WasCompatible(S,V);Need(CompatiblePlanVersion(S,V)=ExpectedCompatible,'Old plan compatibility changed');end;
       Need(not CompatiblePlanVersion(S,-1) and not CompatiblePlanVersion(S,256),'Invalid version accepted');
       for I:=0 to High(Levels) do for J:=0 to High(Levels) do for K:=0 to High(Levels) do begin
@@ -124,7 +125,7 @@ begin Scene:=nil;Images:=nil;Names:=nil;Checks:=0;Combinations:=0;
     Need(not TryStyle('unknown',ParsedStyle) and (ParsedStyle=rsShooting),'Unknown ID handling');
     Stage:=0;Context.Progress:=procedure(Value:Integer) begin Stage:=Value;end;Context.SetStage(4);Need(Stage=4,'Progress callback');
     Context.Cancel:=function:Boolean begin Result:=True;end;Failed:=False;try Context.CheckCancel;except on E:EAbort do Failed:=True;end;Need(Failed,'Cancellation callback');
-    TFile.WriteAllText(TPath.Combine(Folder,'result.json'),Format('{"checks":%d,"groups":5,"styles":18,"smallChoices":20,"selectionTransitions":%d,"adapters":18,"gui":false}',[Checks,Combinations]),TEncoding.UTF8);
+    TFile.WriteAllText(TPath.Combine(Folder,'result.json'),Format('{"checks":%d,"groups":5,"styles":18,"smallChoices":19,"selectionTransitions":%d,"adapters":18,"gui":false}',[Checks,Combinations]),TEncoding.UTF8);
     WriteLn('Style catalog PASS checks=',Checks,' groups=5 styles=18 transitions=',Combinations,' no GUI');
   except on E:Exception do begin WriteLn(E.ClassName,': ',E.Message);ExitCode:=1;end;end;
   Scene.Free;Images.Free;Names.Free;
