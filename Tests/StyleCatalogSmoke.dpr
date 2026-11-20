@@ -5,10 +5,10 @@ uses System.SysUtils,System.Classes,System.Hash,System.IOUtils,System.JSON,
   RhythmStyles,RhythmStyleSelection,RhythmSettings,RhythmPlanRef,RhythmStyleOps,RhythmStyleRegistry,
   RhythmAudio,RhythmAnimation,RhythmImageBank;
 const Ids:array[TRhythmStyle] of string=('shooting','ball','jump-adventure','breakout','side-race','bomb-action','fighting-rush','mining','train','rhythm-game','prism-step','mine-cart','crash-cannon','parkour','marble-relay','trap-action','type-g','melody-ball');
-  Versions:array[TRhythmStyle] of Integer=(1,7,3,11,1,2,1,1,1,4,3,4,1,2,16,19,1,7);
-  Groups:array[TRhythmStyle] of TRhythmStyleGroup=(sgShooting,sgBall,sgAction,sgBall,sgRace,sgAction,sgAction,sgAction,sgShooting,sgMusic,sgMusic,sgAction,sgAction,sgAction,sgBall,sgAction,sgMusic,sgBall);
+  Versions:array[TRhythmStyle] of Integer=(1,7,3,11,1,2,1,1,5,4,3,4,1,2,16,19,1,7);
+  Groups:array[TRhythmStyle] of TRhythmStyleGroup=(sgShooting,sgBall,sgAction,sgBall,sgRace,sgAction,sgAction,sgAction,sgAction,sgMusic,sgMusic,sgAction,sgAction,sgAction,sgBall,sgAction,sgMusic,sgBall);
   Scenes:array[TRhythmStyle] of string=('TShootingAnimation','TBallAnimation','TJumpAnimation','TBreakoutAnimation','TSideRaceAnimation','TBombActionAnimation','TRushAnimation','TMiningAnimation','TTrainAnimation','TGameAnimation','TStepAnimation','TCartAnimation','TCannonAnimation','TParkourAnimation','TMarbleAnimation','TTrapAnimation','TGAnimation','TMelodyAnimation');
-  GroupCounts:array[TRhythmStyleGroup] of Integer=(2,4,8,1,3);
+  GroupCounts:array[TRhythmStyleGroup] of Integer=(1,4,9,1,3);
   Levels:array[0..4] of Integer=(-100,-1,0,50,100);
 var S,Other,ParsedStyle:TRhythmStyle;G:TRhythmStyleGroup;D,I,J,K,V,Expected,Checks,Stage,Combinations:Integer;
   Sel,Restored:TStyleSelection;Saved,Loaded,OldTrap:TRhythmSettings;Ref:TRhythmPlanRef;Ops:TStyleOperations;
@@ -42,6 +42,12 @@ begin Scene:=nil;Images:=nil;Names:=nil;Checks:=0;Combinations:=0;
     Need(TRhythmSettings.TryJSON('{"schema":1,"style":"rhythm-game","layers":'+
       '{"style":"fighting","movie":true,"foreground":false,"plan":{"style":"fighting"}}}',Loaded) and
       (Loaded.Style=rsFightingRush) and (Loaded.Plan.Key=''),'Retired fighting layer migration');
+    Need(TRhythmSettings.TryJSON('{"schema":1,"style":"train","music":"old-train.wav","sensitivity":71,'+
+      '"direction":1,"offsetSeconds":0.22,"plan":{"style":"train","version":1,"key":"'+Key+'",'+
+      '"source":"'+Key+'","digest":"'+Key+'","sensitivity":71,"direction":1,"variant":51}}',Loaded) and
+      (Loaded.Style=rsTrain) and (Loaded.Plan.Key='') and (Loaded.Music='old-train.wav') and
+      (Loaded.Sensitivity=71) and (Loaded.Direction=1) and (Abs(Loaded.OffsetSeconds-0.22)<1E-9),
+      'Armored train settings migration');
     Need(StyleSmallTitle(rsBall,0)='固定台','Pinball fixed table label');
     Need(GroupStyleCount(sgBall)=4,'Ball family count');Need(StyleInfo(rsBall).Group=StyleInfo(rsBreakout).Group,'Pinball and breakout separated');
     Need((StyleInfo(rsRhythmGame).MiddleTitle='Type.V') and (StyleTitle(rsRhythmGame)='Type.V'),'Type.V label');
@@ -89,7 +95,7 @@ begin Scene:=nil;Images:=nil;Names:=nil;Checks:=0;Combinations:=0;
         Expected:=0;
         if S=rsTrapAction then Expected:=1;
         if S in [rsRhythmGame,rsStepGame] then Expected:=Levels[K]+101
-        else if (S in [rsShooting,rsBreakout,rsBombAction,rsMining,rsTrain,rsJumpAdventure,rsFightingRush,rsSideRace,rsMineCart]) and (Levels[J]>=0) then Expected:=Levels[J]+1;
+        else if (S in [rsShooting,rsBreakout,rsBombAction,rsMining,rsJumpAdventure,rsFightingRush,rsSideRace,rsMineCart]) and (Levels[J]>=0) then Expected:=Levels[J]+1;
         Need(StyleVariant(S,Levels[I],Levels[J],Levels[K])=Expected,'Variant recipe changed');
       end;
       Ops:=StyleOperations(S);Need(Names.IndexOf(Ops.UnitName)<0,'Two variants share an adapter unit');Names.Add(Ops.UnitName);

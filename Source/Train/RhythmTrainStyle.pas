@@ -1,10 +1,10 @@
 ﻿unit RhythmTrainStyle;
-// 列車専用の生成・準備・復元アダプター。描画/物理本体と保存形式は変更しない。
+// 列車アクションの準備・保存・復元を設定画面と共通レンダラーへ接続する。
 interface
 uses RhythmStyleOps;
 function TrainOperations:TStyleOperations;
 implementation
-uses System.SysUtils,System.Math,RhythmAudio,RhythmStyles,RhythmPlanRef,RhythmAnimation,RhythmImageBank,RhythmEqualizer,
+uses System.SysUtils,System.Math,RhythmAudio,RhythmPlanRef,RhythmAnimation,RhythmImageBank,
   RhythmTrainScene,RhythmTrainPlan;
 function CreateScene:TAnimationScene;
 begin Result:=TTrainAnimation.Create;end;
@@ -30,7 +30,7 @@ begin
         finally RestoredAudio.Free;
         end;
         try PreparedEnd:=Max(Context.Audio.Duration,RestoredTrain.EndTime);
-          PreparedSummary:=Format('%d音 → %dアクション / ボス%d / 終了 %.3f秒',[RestoredTrain.PulseCount,RestoredTrain.Count,RestoredTrain.BossCount,RestoredTrain.EndTime]);
+          PreparedSummary:=Format('列車アクション: %d動作 / 音同期%d / 終了 %.2f秒',[RestoredTrain.Count,RestoredTrain.Synced,RestoredTrain.EndTime]);
         finally RestoredTrain.Free;
         end;
       finally Train.Free;

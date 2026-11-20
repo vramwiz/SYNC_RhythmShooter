@@ -1,404 +1,617 @@
 ﻿unit RhythmTrainScene;
-// 事前計画を絶対時刻で描画する。任意シークで状態を進めたり音時刻を変えたりしない。
+// 平坦な線路、屋根上の人物、編成の接触を同じ座標で描く。外部画像を使わない試作。
 interface
-uses RhythmAnimation,RhythmRenderSurface,RhythmAudio,RhythmPlanRef,RhythmTrainPlan;
+
+uses
+  RhythmAnimation, RhythmRenderSurface, RhythmAudio, RhythmPlanRef, RhythmTrainPlan;
+
 type
-  TTrainAnimation=class(TAnimationScene)
+  TTrainAnimation = class(TAnimationScene)
   private
-    FAudio:TRhythmAudio;
-    FRef:TRhythmPlanRef;
-    FPlan:TTrainPlan;
-    FAttempt,FError:string;
+    FAudio: TRhythmAudio;
+    FRef: TRhythmPlanRef;
+    FPlan: TTrainPlan;
+    FAttempt, FError: string;
   public
     destructor Destroy; override;
-    procedure SetReference(const Ref:TRhythmPlanRef);
-    property Audio:TRhythmAudio read FAudio write FAudio;
-    function GoalTime:Double; override;
-    procedure Prepare(const Frame:TAnimationFrame); override;
-    procedure Draw(Surface:TAnimationRenderSurface;const Frame:TAnimationFrame); override;
-    function Notice:string; override;
+    procedure SetReference(const Ref: TRhythmPlanRef);
+    procedure Prepare(const Frame: TAnimationFrame); override;
+    procedure Draw(Surface: TAnimationRenderSurface; const Frame: TAnimationFrame); override;
+    function Notice: string; override;
+    property Audio: TRhythmAudio read FAudio write FAudio;
   end;
+
 implementation
-uses System.SysUtils,System.Math,Winapi.Windows,Vcl.Graphics;
+
+uses
+  System.SysUtils, System.Math, System.Types, Winapi.Windows, Vcl.Graphics;
+
+const
+  RailY = 3.68;
+  Ink = $30241C;
+  HeroColor = $50CEF9;
+  EnemyColor = $6377E7;
+  BossColor = $BC7ECD;
+  MainColor = $A76A38;
+  NextColor = $767A2C;
+
+function MixColor(A,B: TColor; U: Double): TColor;
+begin
+  Result := RGB(Round(GetRValue(A)+(GetRValue(B)-GetRValue(A))*U),
+    Round(GetGValue(A)+(GetGValue(B)-GetGValue(A))*U),
+    Round(GetBValue(A)+(GetBValue(B)-GetBValue(A))*U));
+end;
 
 destructor TTrainAnimation.Destroy;
-begin FPlan.Free;
+begin
+  FPlan.Free;
   inherited;
 end;
 
-procedure TTrainAnimation.SetReference(const Ref:TRhythmPlanRef);
-begin FRef:=Ref;
-end;
-
-function TTrainAnimation.Notice:string;
-begin Result:=FError;
-end;
-
-procedure TTrainAnimation.Prepare(const Frame:TAnimationFrame);
-var
-  Key:string;
+procedure TTrainAnimation.SetReference(const Ref: TRhythmPlanRef);
 begin
-  Key:=FRef.Key+'|'+FRef.Digest+'|'+IntToStr(Frame.Direction);
-  if FAudio<>nil then Key:=Key+'|'+FAudio.Key+'|'+IntToStr(FAudio.Sensitivity) else Key:=Key+'|none';
+  FRef := Ref;
+end;
+
+function TTrainAnimation.Notice: string;
+begin
+  Result := FError;
+end;
+
+procedure TTrainAnimation.Prepare(const Frame: TAnimationFrame);
+var
+  Key: string;
+begin
+  Key := FRef.Key+'|'+FRef.Digest+'|'+IntToStr(Frame.Direction);
+  if FAudio<>nil then Key := Key+'|'+FAudio.Key+'|'+IntToStr(FAudio.Sensitivity)
+  else Key := Key+'|none';
   if Key=FAttempt then Exit;
-  FAttempt:=Key;
+  FAttempt := Key;
   FreeAndNil(FPlan);
-  FError:='';
+  FError := '';
   if FAudio=nil then Exit;
-  try FPlan:=TTrainPlan.Load(FRef,FAudio,Frame.Direction);
-  except on E:Exception do FError:=E.Message;
+  try
+    FPlan := TTrainPlan.Load(FRef,FAudio,Frame.Direction);
+  except
+    on E: Exception do FError := E.Message;
   end;
 end;
 
-procedure TTrainAnimation.Draw(Surface:TAnimationRenderSurface;const Frame:TAnimationFrame);
-const
-  Width=16/9;
+procedure TTrainAnimation.Draw(Surface: TAnimationRenderSurface; const Frame: TAnimationFrame);
 var
-  Scale,Left,Top,Time,Travel,Zoom,Age,U,X,Y,Angle,R,Power,Transition:Double;
-  I,J,A,B,Index,Drawn,Kind,HitIndex:Integer;
-  P,Q,V,Muzzle:TTrainPoint;
-  Hit:TTrainHit;
-  Shot:TTrainShot;
-  Boss:TTrainBoss;
-  Tint,Accent,Back,High:TColor;
-  function MixColor(A,B:TColor;U:Double):TColor;
-  begin U:=EnsureRange(U,0.0,1.0);
-    Result:=RGB(Round(GetRValue(A)*(1-U)+GetRValue(B)*U),Round(GetGValue(A)*(1-U)+GetGValue(B)*U),Round(GetBValue(A)*(1-U)+GetBValue(B)*U));
-  end;
-  function PointMix(const A,B:TTrainPoint;U:Double):TTrainPoint;
-  begin Result:=TrainPoint(A.X+(B.X-A.X)*U,A.Y+(B.Y-A.Y)*U);
-  end;
-  procedure Map(X,Y:Double;out PX,PY:Double);
-  begin PX:=Left+(0.90+(X-0.90)*Zoom)*Scale;
-    PY:=Top+(0.55+(Y-0.55)*Zoom)*Scale;
-  end;
-  procedure Line(X1,Y1,X2,Y2:Double;Tint:TColor;Stroke:Double);
-  var
-    AX,AY,BX,BY:Double;
-  begin Map(X1,Y1,AX,AY);
-    Map(X2,Y2,BX,BY);
-    Surface.Line(AX,AY,BX,BY,Tint,Max(1.0,Stroke*Scale*Zoom));
-  end;
-  procedure Box(X1,Y1,X2,Y2:Double;Tint:TColor);
-  var
-    AX,AY,BX,BY:Double;
-  begin Map(X1,Y1,AX,AY);
-    Map(X2,Y2,BX,BY);
-    Surface.FillRect(AX,AY,BX,BY,Tint);
-  end;
-  procedure Circle(X,Y,R:Double;Tint:TColor;Filled:Boolean=True);
-  var
-    AX,AY:Double;
-  begin Map(X,Y,AX,AY);
-    Surface.Circle(AX,AY,R*Scale*Zoom,Tint,Filled,Max(1.0,0.002*Scale*Zoom));
-  end;
-  function RailY(X:Double):Double;
-  var
-    D:Double;
-  begin D:=Travel+X-1.12;
-    Result:=0.705+0.040*Sin(D*0.65)+0.014*Sin(D*0.23);
-  end;
-  procedure Wheel(X,Y,R,Phase:Double;Tint:TColor);
-  var
-    N:Integer;
-    A:Double;
-  begin Circle(X,Y,R,RGB(13,23,33));
-    Circle(X,Y,R*0.70,Tint,False);
-    for N:=0 to 2 do begin A:=Phase+N*Pi*2/3;
-      Line(X,Y,X+Cos(A)*R*0.65,Y+Sin(A)*R*0.65,RGB(167,198,204),0.0013);
-    end;
-  end;
-  procedure Hero(Car:Integer);
-  var
-    P,Q:TTrainPoint;
-    C,D:TColor;
-    Damage,A,X,Y:Double;
-    N:Integer;
+  T, Travel, CenterX, CenterY, ViewWidth, Scale, X, Y, StationX,
+    RearOffset, RightRear, RightOffset, CrashX, CrashWidth, CrashBlend,
+    Shake, Age, BossX, BossY, BossRoll, U: Double;
+  I, J, FirstCar, LastCar: Integer;
+  C, Board, LeftImpact, RightImpact, Couple, LastCue, BossFirst, BossFinal: TTrainCue;
+  P, N, Ahead: TTrainPose;
+  FarEdge, NearEdge: Double;
+  Color: TColor;
+
+  function Screen(AX,AY: Double): TPointF;
   begin
-    P:=FPlan.HeroCarAt(Car,Time);
-    if (P.X< -0.12) or (P.X>Width+0.12) then Exit;
-    Damage:=FPlan.DamageAt(Car,Time);
-    C:=RGB(53,137,183);
-    D:=RGB(93,187,207);
-    if Car=0 then begin C:=RGB(42,111,162);
-      D:=RGB(121,207,220);
+    Result := PointF(Frame.Width*0.5+(AX-CenterX)*Scale,
+      Frame.Height*0.5+(AY-CenterY+Shake)*Scale);
+  end;
+
+  procedure Box(X1,Y1,X2,Y2: Double; Tint: TColor);
+  var A,B: TPointF;
+  begin
+    A := Screen(X1,Y1);
+    B := Screen(X2,Y2);
+    Surface.FillRect(A.X,A.Y,B.X,B.Y,Tint);
+  end;
+
+  procedure Line(X1,Y1,X2,Y2,Stroke: Double; Tint: TColor);
+  var A,B: TPointF;
+  begin
+    A := Screen(X1,Y1);
+    B := Screen(X2,Y2);
+    Surface.Line(A.X,A.Y,B.X,B.Y,Tint,Max(1.0,Stroke*Scale));
+  end;
+
+  procedure Circle(X,Y,R: Double; Tint: TColor);
+  var A: TPointF;
+  begin
+    A := Screen(X,Y);
+    Surface.Circle(A.X,A.Y,Max(0.7,R*Scale),Tint,True);
+  end;
+
+  procedure Quad(X1,Y1,X2,Y2,X3,Y3,X4,Y4: Double; Tint: TColor);
+  begin
+    Surface.FillQuad(Screen(X1,Y1),Screen(X2,Y2),Screen(X3,Y3),Screen(X4,Y4),Tint);
+  end;
+
+  procedure Wheel(WX: Double);
+  var
+    A: Double;
+  begin
+    A := Travel/0.40;
+    Circle(WX,RailY-0.39,0.41,Ink);
+    Circle(WX,RailY-0.39,0.25,RGB(112,139,151));
+    Line(WX-0.22*Cos(A),RailY-0.39-0.22*Sin(A),
+      WX+0.22*Cos(A),RailY-0.39+0.22*Sin(A),0.067,Ink);
+  end;
+
+  procedure Car(CarX,Roof: Double; Tint: TColor; Cab, Bent: Boolean);
+  var
+    K: Integer;
+    WindowX, RightX: Double;
+    WindowColor: TColor;
+  begin
+    RightX := CarX+TrainCarWidth;
+    if (RightX+0.3<FarEdge) or (CarX-0.3>NearEdge) then Exit;
+    // 車体前後の連結器は接触時刻に同じ世界座標へ届く。
+    Box(CarX-0.5*TrainGap,RailY-0.71,CarX+0.15,RailY-0.57,Ink);
+    Box(RightX-0.15,RailY-0.71,RightX+0.5*TrainGap,RailY-0.57,Ink);
+    Wheel(CarX+1.16);
+    Wheel(CarX+2.03);
+    Wheel(RightX-2.03);
+    Wheel(RightX-1.16);
+    Quad(CarX,Roof,RightX-0.18,Roof,RightX,RailY-0.52,CarX,RailY-0.52,Tint);
+    Box(CarX,Roof-0.045,RightX,Roof+0.12,MixColor(Tint,clWhite,0.46));
+    for K := 0 to 7 do begin
+      WindowX := CarX+0.57+1.44*K;
+      Box(WindowX,Roof+0.008,WindowX+0.055,Roof+0.118,MixColor(Tint,Ink,0.15));
     end;
-    if Car<7 then begin Q:=FPlan.HeroCarAt(Car+1,Time);
-      Line(P.X-0.055,P.Y+0.015,Q.X+0.055,Q.Y+0.015,RGB(54,67,78),0.006);
+    Box(CarX+0.14,RailY-0.79,RightX-0.12,RailY-0.67,MixColor(Tint,clWhite,0.35));
+    WindowColor := RGB(36,55,77);
+    if Cab then WindowColor := RGB(99,165,186);
+    for K := 0 to 5 do begin
+      WindowX := CarX+0.68+1.83*K;
+      Box(WindowX,Roof+0.64,WindowX+1.38,Roof+1.48,WindowColor);
+      Box(WindowX+0.10,Roof+0.69,WindowX+1.27,Roof+0.78,MixColor(WindowColor,clWhite,0.29));
     end;
-    Box(P.X-0.052,P.Y-0.027,P.X+0.052,P.Y+0.020,RGB(23,49,66));
-    Box(P.X-0.047,P.Y-0.025,P.X+0.047,P.Y+0.014,MixColor(C,RGB(172,106,75),Damage*0.35));
-    Line(P.X-0.046,P.Y-0.023,P.X+0.046,P.Y-0.023,D,0.005);
-    Line(P.X-0.046,P.Y+0.009,P.X+0.047,P.Y+0.009,RGB(212,181,100),0.004);
-    if Car=0 then begin
-      Box(P.X+0.020,P.Y-0.041,P.X+0.051,P.Y-0.013,D);
-      Box(P.X+0.028,P.Y-0.036,P.X+0.047,P.Y-0.025,RGB(20,45,65));
-      Box(P.X+0.047,P.Y-0.015,P.X+0.062,P.Y+0.011,RGB(207,176,95));
-      Box(P.X-0.028,P.Y-0.043,P.X-0.015,P.Y-0.023,RGB(23,43,56));
-      for N:=0 to 3 do begin U:=Frac(Time*2.3+N*0.25);
-        Circle(P.X-0.022-U*0.085,P.Y-0.048-U*0.045,0.008+0.012*U,MixColor(RGB(166,190,193),Back,U));
-      end;
-    end else for N:=-1 to 1 do begin
-      Box(P.X+N*0.025-0.009,P.Y-0.017,P.X+N*0.025+0.009,P.Y-0.002,RGB(30,65,84));
-      Line(P.X+N*0.025-0.007,P.Y-0.014,P.X+N*0.025+0.006,P.Y-0.014,RGB(153,218,224),0.002);
-    end;
-    Muzzle:=FPlan.HeroMuzzle(Car,Time);
-    Line(P.X,P.Y-0.027,Muzzle.X,Muzzle.Y,RGB(39,73,91),0.009);
-    Line(P.X,P.Y-0.029,Muzzle.X,Muzzle.Y,RGB(172,208,205),0.003);
-    Circle(P.X,P.Y-0.029,0.012,RGB(52,91,112));
-    Wheel(P.X-0.031,P.Y+0.025,0.014,Time*31+Car,RGB(121,163,177));
-    Wheel(P.X+0.031,P.Y+0.025,0.014,Time*31+Car,RGB(121,163,177));
-    if Damage>0 then for N:=0 to 2 do begin A:=Frac(Time*6+N*0.27);
-      X:=P.X+0.027+N*0.008;
-      Y:=P.Y-0.042-A*0.036;
-      Line(X,Y+0.015*Damage,X+Sin(Time*17+N)*0.004,Y-0.009*Damage,RGB(255,145+N*25,71),0.006*Damage);
+    Box(CarX+0.08,Roof+1.86,RightX-0.08,Roof+2.00,RGB(220,232,214));
+    if Cab then Box(RightX-0.47,Roof+1.67,RightX-0.09,Roof+1.92,RGB(255,244,179));
+    if Bent then begin
+      Line(CarX+0.12,Roof+0.14,CarX+0.44,Roof+0.45,0.06,Ink);
+      Line(CarX+0.44,Roof+0.45,CarX+0.63,Roof+0.37,0.06,Ink);
     end;
   end;
-  procedure EnemyBody(EnemyIndex:Integer);
-  var
-    E:TTrainEnemy;
-    G:TTrainGroup;
-    P,S:TTrainPoint;
-    Age,U,X,Y,Turn,HP:Double;
-    C,Edge:TColor;
-    N:Integer;
+
+  procedure Platform(StartX,Width,Top: Double; Canopy: Boolean);
   begin
-    E:=FPlan.Enemy[EnemyIndex];
-    G:=FPlan.Group[E.Group];
-    Age:=Time-FPlan.Event[E.KillSource].Time;
-    if (Time<G.Show) or (Age>=0.70) then Exit;
-    P:=FPlan.EnemyAt(EnemyIndex,Min(Time,FPlan.Event[E.KillSource].Time));
-    S:=FPlan.EnemySize(EnemyIndex);
-    if (P.X< -0.25) or (P.X>Width+0.25) then Exit;
-    C:=RGB(183,73,69);
-    Edge:=RGB(244,174,106);
-    if G.Kind=1 then begin C:=RGB(198,99,75);
-      Edge:=RGB(247,203,117);
+    if (StartX+Width<FarEdge) or (StartX>NearEdge) then Exit;
+    Box(StartX,Top,StartX+Width,RailY+0.36,RGB(95,113,128));
+    Box(StartX,Top,StartX+Width,Top+0.075,RGB(231,206,129));
+    if Canopy then begin
+      Box(StartX+2.0,-1.11,StartX+Width-1.3,-0.91,RGB(51,78,99));
+      Box(StartX+2.8,-0.91,StartX+2.91,Top,RGB(61,87,104));
+      Box(StartX+9.0,-0.91,StartX+9.11,Top,RGB(61,87,104));
+      Box(StartX+4.0,-0.92,StartX+6.75,-0.49,RGB(73,127,144));
+      Box(StartX+4.18,-0.78,StartX+6.57,-0.66,RGB(206,230,225));
     end;
-    if G.Kind=2 then begin C:=RGB(137,111,87);
-      Edge:=RGB(239,161,80);
+  end;
+
+  procedure DrawTrack;
+  var
+    Left, Right, Tie: Double;
+    K: Integer;
+  begin
+    // ホームの前を通る線路。両端を画面外に取り、枕木まで同じ座標で流す。
+    Left := FarEdge-1.8;
+    Right := NearEdge+1.8;
+    Box(Left,RailY-0.025,Right,RailY+0.51,RGB(153,149,130));
+    for K := Floor((Left+Travel)/0.89) to Ceil((Right+Travel)/0.89) do begin
+      Tie := K*0.89-Travel;
+      Quad(Tie,RailY+0.02,Tie+0.33,RailY+0.02,Tie+0.45,RailY+0.48,
+        Tie-0.08,RailY+0.48,RGB(92,77,61));
     end;
-    if G.Kind=4 then begin C:=RGB(85,72,124);
-      Edge:=RGB(214,170,240);
+    Box(Left,RailY-0.022,Right,RailY+0.052,RGB(71,79,82));
+    Box(Left,RailY-0.024,Right,RailY+0.004,RGB(237,245,247));
+    Box(Left,RailY+0.244,Right,RailY+0.334,RGB(61,66,69));
+    Box(Left,RailY+0.24,Right,RailY+0.27,RGB(227,239,239));
+  end;
+
+  procedure RoofEquipment(const Move: TTrainCue);
+  var Block: TTrainObstacle; Offset,Roof,Top,Mid: Double; K,CarIndex: Integer;
+  begin
+    if not TrainObstacle(Move,Block) then Exit;
+    CarIndex := Floor(Move.FromX/TrainPitch);
+    Offset := 0;
+    if CarIndex<FPlan.InitialCars-1 then Offset := RearOffset
+    else if CarIndex>=FPlan.InitialCars then begin
+      if T<FPlan.Cue[FPlan.ImpactIndex-1].Finish then Exit;
+      Offset := RightOffset;
     end;
-    if G.Kind=3 then begin C:=RGB(131,115,93);
-      Edge:=RGB(219,177,100);
+    Block.Left := Block.Left+Offset;
+    Block.Right := Block.Right+Offset;
+    if (Block.Right<FarEdge) or (Block.Left>NearEdge) then Exit;
+    Roof := FPlan.RoofY(Move.FromX);
+    Top := Roof-Block.Height;
+    Mid := (Block.Left+Block.Right)*0.5;
+    Box(Block.Left,Top,Block.Right,Roof,RGB(60,68,76));
+    Box(Block.Left-0.06,Top-0.01,Block.Right+0.06,Top+0.13,RGB(255,185,64));
+    case Block.Variant of
+      0: for K := 1 to 3 do
+           Box(Block.Left+0.12,Top+0.14+K*0.15,Block.Right-0.12,Top+0.21+K*0.15,RGB(174,195,202));
+      1: begin
+           Box(Block.Left+0.12,Top+0.24,Block.Right-0.12,Roof-0.12,RGB(128,151,162));
+           Line(Block.Left+0.19,Roof-0.18,Block.Right-0.19,Top+0.28,0.07,RGB(250,207,108));
+         end;
+      2: begin
+           Circle(Mid-0.20,Top+0.50,0.16,RGB(195,219,221));
+           Circle(Mid+0.20,Top+0.50,0.16,RGB(195,219,221));
+         end;
     end;
-    if Age>=0 then begin U:=Age/0.70;
-      X:=P.X-Age*(0.80+0.08*(E.Slot mod 3));
-      Y:=P.Y-0.28*Age+1.10*Age*Age;
-      Turn:=(EnemyIndex mod 2*2-1)*Age*5.5;
-      Line(X-Cos(Turn)*S.X*(1-U*U),Y-Sin(Turn)*S.X*(1-U*U),X+Cos(Turn)*S.X*(1-U*U),Y+Sin(Turn)*S.X*(1-U*U),MixColor(C,Back,U),S.Y*1.70*(1-U*U));
-      for N:=0 to 3 do begin X:=P.X+Cos(N*1.7+EnemyIndex)*Age*0.25;
-        Y:=P.Y+Sin(N*1.7+EnemyIndex)*Age*0.19+Age*Age*0.45;
-        Line(X-0.005*(1-U),Y,X+0.005*(1-U),Y,Edge,0.005*(1-U));
+  end;
+
+  procedure Figure(const Pose: TTrainPose; Tint: TColor; Size: Double; Facing: Integer;
+    Roll: Double=0; Armored: Boolean=False);
+  var
+    HipX,HipY,ShoulderX,ShoulderY,HeadX,HeadY,Stride,Lift,Lean,ArmReach,AngleS,AngleC: Double;
+    Foot, RearFoot, FrontFoot: TPointF;
+
+    function Rotate(LX,LY: Double): TPointF;
+    var OffsetY: Double;
+    begin
+      OffsetY := LY+0.57;
+      Result := PointF(Pose.X+Size*(LX*AngleC-OffsetY*AngleS),
+        Pose.Y+Size*(-0.57+LX*AngleS+OffsetY*AngleC));
+    end;
+
+    procedure Bone(X1,Y1,X2,Y2,Stroke: Double; BoneColor: TColor);
+    var A,B: TPointF;
+    begin
+      A := Rotate(X1,Y1);
+      B := Rotate(X2,Y2);
+      Line(A.X,A.Y,B.X,B.Y,Stroke*Size,BoneColor);
+    end;
+
+    procedure Joint(X1,Y1,TX,TY,L1,L2,Bend,Stroke: Double; BoneColor: TColor);
+    var DX,DY,LengthTo,Along,Side,JX,JY: Double;
+    begin
+      DX := TX-X1;
+      DY := TY-Y1;
+      LengthTo := Max(0.001,Hypot(DX,DY));
+      DX := DX/LengthTo;
+      DY := DY/LengthTo;
+      LengthTo := EnsureRange(LengthTo,Abs(L1-L2)+0.001,L1+L2-0.001);
+      Along := (Sqr(L1)-Sqr(L2)+Sqr(LengthTo))/(2*LengthTo);
+      Side := Bend*Sqrt(Max(0.0,Sqr(L1)-Sqr(Along)));
+      JX := X1+DX*Along-DY*Side;
+      JY := Y1+DY*Along+DX*Side;
+      Bone(X1,Y1,JX,JY,Stroke,BoneColor);
+      Bone(JX,JY,X1+DX*LengthTo,Y1+DY*LengthTo,Stroke*0.84,BoneColor);
+    end;
+
+    function FootAt(Shift, DefaultX: Double): TPointF;
+    var Phase, Advance, LX, LY: Double;
+    begin
+      Phase := Facing*Pose.X/(1.05*Size)+Shift;
+      Phase := Phase-Floor(Phase);
+      LY := 0;
+      if Phase<0.58 then LX := 0.305-Phase*1.05
+      else begin
+        Advance := (Phase-0.58)/0.42;
+        LX := -0.304+0.609*TrainEase(Advance);
+        LY := -0.25*Sin(Pi*Advance);
       end;
+      Result := PointF(DefaultX*(1-Pose.Run)+Facing*LX*Pose.Run,LY*Pose.Run);
+    end;
+
+  begin
+    AngleS := Sin(Roll);
+    AngleC := Cos(Roll);
+    Stride := Pose.Run*Sin(Facing*Pose.X*6.0);
+    RearFoot := FootAt(0,-0.13);
+    FrontFoot := FootAt(0.5,0.14);
+    Lean := Facing*(Pose.Run*0.25+Pose.Reach*0.15);
+    HipX := -0.05*Facing;
+    HipY := -0.54+0.23*Pose.Crouch;
+    ShoulderX := HipX+Lean;
+    ShoulderY := HipY-0.35+0.14*Pose.Crouch;
+    HeadX := ShoulderX+0.04*Facing;
+    HeadY := ShoulderY-0.21;
+    Lift := 0;
+    if Pose.Airborne then begin
+      Stride := 0.75;
+      Lift := 0.16;
+      RearFoot := PointF(-0.41,-0.09);
+      FrontFoot := PointF(0.41,-0.16);
+    end;
+    Joint(HipX,HipY,RearFoot.X,RearFoot.Y-Lift,0.30,0.30,Facing,0.122,Ink);
+    Joint(HipX,HipY,FrontFoot.X+0.42*Pose.Kick,
+      FrontFoot.Y-Lift-0.49*Pose.Kick,0.30,0.30,Facing,0.122,Ink);
+    Joint(ShoulderX,ShoulderY,-Facing*(0.23+0.25*Stride),HipY+0.07,0.27,0.29,-Facing,0.11,Ink);
+    Bone(HipX,HipY,ShoulderX,ShoulderY,0.36,Ink);
+    Bone(HipX,HipY,ShoulderX,ShoulderY,0.27,Tint);
+    if Armored then Bone(ShoulderX-0.18,ShoulderY-0.04,ShoulderX+0.18,ShoulderY-0.04,0.16,Ink);
+    Foot := Rotate(HeadX,HeadY);
+    Circle(Foot.X,Foot.Y,0.219*Size,Ink);
+    Circle(Foot.X,Foot.Y-0.019*Size,0.169*Size,Tint);
+    Bone(HeadX+Facing*0.04,HeadY-0.036,HeadX+Facing*0.14,HeadY-0.036,0.055,Ink);
+    ArmReach := 0.23+0.38*Pose.Reach*(1-Pose.Kick);
+    Joint(ShoulderX,ShoulderY,ShoulderX+Facing*ArmReach,ShoulderY+0.22*(1-Pose.Reach),
+      0.29,0.33,Facing,0.106,Tint);
+  end;
+
+  procedure Burst(BX,BY,Elapsed,Size: Double; Tint: TColor);
+  var
+    K: Integer;
+    A,R: Double;
+  begin
+    if (Elapsed<0) or (Elapsed>0.26) then Exit;
+    for K := 0 to 7 do begin
+      A := K*Pi/4+0.18;
+      R := (0.43+Elapsed*4.8)*Size;
+      Line(BX+Cos(A)*R*0.4,BY+Sin(A)*R*0.4,
+        BX+Cos(A)*R,BY+Sin(A)*R,(0.067-Elapsed*0.18)*Size,Tint);
+    end;
+    Circle(BX,BY,0.25*Size*Max(0.0,1-Elapsed/0.145),clWhite);
+  end;
+
+  procedure Bolt(StartX, EndX, BY, Progress: Double; Tint: TColor);
+  var Head, Tail: Double;
+  begin
+    if (Progress<0) or (Progress>1) then Exit;
+    Head := StartX+(EndX-StartX)*Progress;
+    Tail := Head-Sign(EndX-StartX)*0.29;
+    Line(Tail,BY,Head,BY,0.105,Tint);
+    Circle(Head,BY,0.084,clWhite);
+  end;
+
+  procedure Sweep(const Move: TTrainCue; TargetX, BaseY: Double; LowSweep: Boolean);
+  var AtTime, Height, Dur: Double;
+  begin
+    if (T<Move.Start) or (T>=Move.Time) then Exit;
+    AtTime := TrainThreatTime(Move);
+    Height := BaseY-1.02;
+    if LowSweep then Height := BaseY-0.27;
+    if T<AtTime then begin
+      Line(TargetX-0.20,Height,TargetX+0.02,Height-0.31,0.12,RGB(201,48,53));
       Exit;
     end;
-    HP:=FPlan.EnemyHP(EnemyIndex,Time);
-    Box(P.X-S.X,P.Y-S.Y,P.X+S.X,P.Y+S.Y,RGB(30,35,48));
-    Box(P.X-S.X+0.003,P.Y-S.Y+0.003,P.X+S.X-0.003,P.Y+S.Y-0.003,MixColor(C,RGB(93,63,61),(1-HP)*0.55));
-    Line(P.X-S.X+0.004,P.Y-S.Y+0.005,P.X+S.X-0.004,P.Y-S.Y+0.005,Edge,0.003);
-    Line(P.X,P.Y+S.Y-0.014,P.X,P.Y+S.Y,Edge,0.006);
-    if G.Kind=0 then begin
-      Box(P.X-S.X*0.60,P.Y-S.Y*0.62,P.X+S.X*0.60,P.Y-S.Y*0.08,RGB(34,48,62));
-      Wheel(P.X-S.X*0.60,P.Y+S.Y*0.65,S.Y*0.29,Time*24,RGB(120,140,153));
-      Wheel(P.X+S.X*0.60,P.Y+S.Y*0.65,S.Y*0.29,Time*24,RGB(120,140,153));
-      if E.Slot<G.Members-1 then begin Q:=FPlan.EnemyAt(EnemyIndex+1,Time);
-        if Time<FPlan.Event[FPlan.Enemy[EnemyIndex+1].KillSource].Time then Line(P.X-S.X,P.Y+0.01,Q.X+S.X,Q.Y+0.01,Edge,0.004);
-      end;
-    end else if G.Kind=1 then begin
-      Line(P.X-S.X*0.75,P.Y-S.Y*0.55,P.X+S.X*0.75,P.Y+S.Y*0.40,Edge,0.005);
-      Line(P.X-S.X*0.75,P.Y+S.Y*0.40,P.X+S.X*0.75,P.Y-S.Y*0.55,Edge,0.005);
-      Circle(P.X,P.Y,0.007,RGB(248,222,149));
-    end else if G.Kind=4 then begin
-      Box(P.X-S.X*0.8,P.Y-S.Y*0.68,P.X+S.X*0.8,P.Y+S.Y*0.50,RGB(114,94,158));
-      Circle(P.X,P.Y,0.024,RGB(47,47,72));
-      Circle(P.X,P.Y,0.014,RGB(238,176,111));
-      for N:=-1 to 1 do Line(P.X+N*0.018,P.Y-0.006,P.X+N*0.018,P.Y+S.Y,RGB(34,40,58),0.009);
-      Wheel(P.X-S.X*0.63,P.Y+S.Y*0.77,S.Y*0.19,Time*20,RGB(161,142,178));
-      Wheel(P.X+S.X*0.63,P.Y+S.Y*0.77,S.Y*0.19,Time*20,RGB(161,142,178));
-      if E.Slot<G.Members-1 then begin Q:=FPlan.EnemyAt(EnemyIndex+1,Time);
-        if Time<FPlan.Event[FPlan.Enemy[EnemyIndex+1].KillSource].Time then Line(P.X-S.X,P.Y+0.02,Q.X+S.X,Q.Y+0.02,RGB(120,111,155),0.008);
-      end;
-    end else if G.Kind=2 then begin
-      Circle(P.X,P.Y-0.008,0.017,RGB(73,69,72));
-      Line(P.X,P.Y-0.005,P.X+0.024,P.Y+0.026,Edge,0.008);
-    end else for N:=-1 to 1 do Line(P.X-S.X+0.008,P.Y+N*0.030,P.X+S.X-0.008,P.Y+N*0.030,Edge,0.008);
+    Dur := Max(0.045,Min(0.14,(Move.Time-Move.Start)*0.19));
+    Bolt(TargetX-0.24,Move.FromX-0.34,Height,(T-AtTime)/Dur,RGB(223,56,43));
   end;
-begin
-  Scale:=Min(Frame.Width/Width,Frame.Height);
-  Left:=(Frame.Width-Width*Scale)/2;
-  Top:=(Frame.Height-Scale)/2;
-  Time:=Max(0.0,Frame.Time);
-  Travel:=Time*2.25;
-  Zoom:=1;
-  Kind:=0;
-  Transition:=1;
-  if FPlan<>nil then begin Time:=Min(Time,FPlan.EndTime);
-    Travel:=FPlan.TravelAt(Time);
-    Zoom:=FPlan.CameraAt(Time);
-    Kind:=FPlan.SceneAt(Time);
-    Transition:=FPlan.SceneTransition(Time);
-  end;
-  case Kind of
-    1:begin Back:=RGB(46,48,71);
-      High:=RGB(169,119,104);
-      Accent:=RGB(128,153,165);
+
+  procedure Enemy(const Move: TTrainCue);
+  var
+    Pose, FiringPose: TTrainPose;
+    Elapsed, Roof, TargetX, Offset, CarStart, StepRoof, U, Approach, EntryX, LandingX, Roll, ReadyAt, Flight: Double;
+    FromNextCar: Boolean;
+    CarIndex, Facing: Integer;
+    Block: TTrainObstacle;
+    Patrol, Phase: Double;
+  begin
+    TargetX := Move.ToX+TrainReach;
+    if Move.Kind=tmShot then TargetX := Move.ToX+TrainShotReach;
+    CarIndex := Floor(TargetX/TrainPitch);
+    CarStart := CarIndex*TrainPitch;
+    Offset := 0;
+    if CarIndex<FPlan.InitialCars-1 then Offset := RearOffset;
+    if TargetX>=FPlan.InitialCars*TrainPitch then begin
+      if T<FPlan.Cue[FPlan.ImpactIndex-1].Finish then Exit;
+      Offset := RightOffset;
     end;
-    2:begin Back:=RGB(11,17,30);
-      High:=RGB(29,39,55);
-      Accent:=RGB(84,105,125);
-    end;
-    else begin Back:=RGB(55,99,111);
-      High:=RGB(130,170,166);
-      Accent:=RGB(121,162,145);
-    end;
-  end;
-  Back:=MixColor(RGB(18,31,47),Back,0.55+0.45*Transition);
-  for I:=0 to 31 do Surface.FillRect(0,I*Frame.Height/32,Frame.Width,(I+1)*Frame.Height/32+1,MixColor(High,Back,I/31));
-  if Kind<>2 then begin
-    Circle(1.48,0.14,0.065,RGB(235,214,159));
-    for I:=-2 to 12 do begin X:=I*0.20-Frac(Travel*0.06)*0.20;
-      Y:=0.43+0.035*Sin((I+Floor(Travel*0.06))*1.7);
-      Line(X,Y,X,0.68,MixColor(Back,RGB(48,85,94),0.55),0.24);
-    end;
-  end;
-  for I:=-2 to 22 do begin X:=I*0.10-Frac(Travel/0.10)*0.10;
-    Y:=RailY(X);
-    if Kind=1 then begin
-      Age:=0;
-      if FPlan<>nil then Age:=Max(0.0,(FPlan.HeroCarAt(7,Time).X-0.12-X)/2.25);
-      if Age>0 then begin Angle:=Age*6;
-        Line(X-Cos(Angle)*0.038,Y+0.05+Age*Age*0.8,X+Cos(Angle)*0.038,Y+0.05+Age*Age*0.8+Sin(Angle)*0.08,RGB(99,107,127),0.020);
+    Roof := FPlan.RoofY(TargetX);
+    Elapsed := T-Move.Time;
+    if Elapsed>0.60 then Exit;
+    FromNextCar := (Move.Kind=tmVaultHit) and
+      (Abs(CarStart+TrainPitch-FPlan.InitialCars*TrainPitch)>0.01) and
+      (CarStart+TrainPitch<FPlan.TrainLength);
+    LandingX := Min(CarStart+TrainCarWidth-0.36,TargetX+1.35);
+    if FPlan.RoofObstacle(CarIndex,Block) and (TargetX<Block.Left) then
+      LandingX := Min(LandingX,Block.Left-0.24);
+    EntryX := LandingX;
+    if FromNextCar then EntryX := CarStart+TrainPitch+0.53;
+    if (TargetX+Offset<FarEdge-2.5) or (EntryX+Offset>NearEdge+6) then Exit;
+    Pose := Default(TTrainPose);
+    Pose.X := TargetX;
+    Pose.Y := Roof;
+    Roll := 0;
+    Facing := -1;
+    ReadyAt := -0.67;
+    if FromNextCar then ReadyAt := -1.05;
+    if Elapsed<0 then begin
+      if Elapsed<ReadyAt then begin
+        U := TrainEase((ReadyAt-Elapsed)/0.22);
+        Phase := T*(4.15+0.28*(CarIndex mod 3))+TargetX;
+        Patrol := Min(1.12,Max(0.30,EntryX-TargetX+0.18));
+        Pose.X := EntryX-Patrol*U*(0.5+0.5*Sin(Phase));
+        Pose.Y := FPlan.RoofY(EntryX);
+        Pose.Run := (0.50+0.39*Abs(Cos(Phase)))*U;
+        if Cos(Phase)<0 then Facing := 1;
       end
-      else begin Line(X,Y+0.07,X,1.05,RGB(72,86,108),0.018);
-        Line(X-0.05,Y+0.10,X+0.05,0.95,RGB(112,129,147),0.007);
+      else if FromNextCar and (Elapsed<-0.47) then begin
+        U := EnsureRange((Elapsed+1.05)/0.58,0.0,1.0);
+        Pose.X := EntryX+(LandingX-EntryX)*U;
+        StepRoof := FPlan.RoofY(EntryX);
+        Pose.Y := StepRoof+(Roof-StepRoof)*U-4*1.28*U*(1-U);
+        Pose.Airborne := (U>0) and (U<1);
+      end
+      else begin
+        if FromNextCar then Approach := TrainEase((Elapsed+0.47)/0.47)
+        else Approach := TrainEase((Elapsed+0.67)/0.67);
+        Pose.X := LandingX+(TargetX-LandingX)*Approach;
+        Pose.Run := 1-TrainEase((Approach-0.72)/0.28);
+        if Move.Kind in [tmVaultHit,tmDuckHit,tmHurdleHit] then
+          Pose.Reach := Max(0.0,1-Abs(T-TrainThreatTime(Move))/0.14);
       end;
-    end else if Kind=2 then begin
-      Line(X-0.04,0.10,X-0.04,0.92,RGB(39,53,69),0.016);
-      Line(X-0.04,0.10,X+0.06,0.08,RGB(57,71,83),0.016);
-      Box(X-0.015,0.105,X+0.025,0.119,RGB(194,183,122));
-    end else begin
-      Line(X+0.045,Y-0.06,X+0.045,Y+0.22,RGB(67,98,94),0.011);
-      Line(X+0.045,Y-0.06,X+0.09,Y-0.06,RGB(146,164,137),0.004);
+    end
+    else begin
+      U := 0.78;
+      if Move.Kind in [tmVaultHit,tmHurdleHit] then U := 0.53;
+      Burst(TargetX+Offset,Roof-U,Elapsed,1.58,RGB(239,111,30));
+      Pose.X := TargetX+Elapsed*4.4;
+      Pose.Y := Roof-Elapsed*(4.9-7.5*Elapsed);
+      Pose.Airborne := True;
+      Roll := Min(1.70,0.32+Elapsed*6.0);
     end;
-    Line(X-0.035,Y+0.005,X+0.035,Y+0.032,RGB(79,81,81),0.012);
-  end;
-  for I:=0 to 79 do begin X:=-0.08+I*0.025;
-    Y:=RailY(X);
-    Line(X,Y,X+0.025,RailY(X+0.025),RGB(180,190,185),0.006);
-    Line(X,Y+0.043,X+0.025,RailY(X+0.025)+0.043,RGB(116,132,140),0.006);
-  end;
-  if Frame.BackgroundOnly then begin Surface.DrawViewportMatte(Left,Top,Frame.Width,Frame.Height,RGB(10,18,29));Exit;end;
-  if FPlan=nil then Exit;
-  for I:=-1 to 18 do begin X:=I*0.11-Frac(Travel/0.11)*0.11;
-    Line(X-0.032,0.326,X+0.032,0.347,MixColor(Back,RGB(98,108,111),0.65),0.006);
-  end;
-  Line(-0.10,0.326,1.90,0.326,MixColor(Back,RGB(142,153,154),0.70),0.003);
-  Line(-0.10,0.348,1.90,0.348,MixColor(Back,RGB(98,115,127),0.65),0.003);
-  // The armored formation runs on an elevated parallel railway; its carriage
-  // wheels and connecting rods remain visible instead of floating above the action.
-  for I:=0 to FPlan.BossCount-1 do begin Boss:=FPlan.Boss[I];
-    if (Time>=Boss.Show) and (Time<Boss.Kill+0.70) then begin
-      for J:=-1 to 16 do begin X:=J*0.12-Frac(Travel/0.12)*0.12;
-        Line(X-0.035,0.292,X+0.035,0.313,RGB(65,68,91),0.007);
-      end;
-      Line(-0.10,0.291,1.90,0.291,RGB(113,111,138),0.003);
-      Line(-0.10,0.315,1.90,0.315,RGB(74,78,104),0.003);
+    Pose.X := Pose.X+Offset;
+    Figure(Pose,EnemyColor,0.99,Facing,Roll,Move.Kind in [tmDuckHit,tmHurdleHit]);
+    if Move.Kind in [tmVaultHit,tmDuckHit,tmHurdleHit] then
+      Sweep(Move,Pose.X,Roof,Move.Kind<>tmDuckHit);
+    if Move.Kind=tmShot then begin
+      Flight := Min(0.125,(Move.Time-Move.Start)*0.64);
+      FiringPose := FPlan.PoseAt(Move.Time-Flight);
+      Bolt(FiringPose.X+0.55,TargetX,Roof-0.78,(T-Move.Time+Flight)/Flight,RGB(8,126,212));
     end;
   end;
-  FPlan.VisibleEnemies(Time,A,B);
-  Drawn:=0;
-  for I:=A to B do begin Index:=FPlan.VisibleEnemy(I);
-    EnemyBody(Index);
-    Inc(Drawn);
-    if Drawn>=180 then Break;
-  end;
-  // Incoming shells and missiles are real moving attacks, not generic spark dust.
-  A:=Max(0,FPlan.ShotBefore(Time-1.60)+1);
-  B:=FPlan.ShotBefore(Time);
-  A:=Max(A,B-319);
-  for I:=A to B do begin Shot:=FPlan.Shot[I];
-    if FPlan.ShotAt(I,Time,P) then begin
-      Age:=Time-Shot.Start;
-      U:=Age/(Shot.Near-Shot.Start);
-      Q:=PointMix(Shot.A,Shot.B,Max(0.0,U-0.035));
-      Tint:=RGB(252,152,92);
-      if Shot.Kind=1 then Tint:=RGB(238,104,153) else if Shot.Kind=2 then Tint:=RGB(188,139,245);
-      Line(Q.X,Q.Y,P.X,P.Y,Tint,0.004);
-      Circle(P.X,P.Y,0.0055,Tint);
-      Circle(P.X,P.Y,0.002,RGB(255,235,185));
-    end;
-    if (Shot.Outcome=1) and (Time>=Shot.Near-0.18) and (Time<Shot.Near) then begin
-      Q:=FPlan.HeroMuzzle(Shot.Car,Max(0.0,Shot.Near-0.18));
-      U:=(Time-Shot.Near+0.18)/0.18;
-      P:=PointMix(Q,Shot.B,U);
-      V:=PointMix(Q,Shot.B,Max(0.0,U-0.12));
-      Line(V.X,V.Y,P.X,P.Y,RGB(100,203,211),0.003);
-      Circle(P.X,P.Y,0.004,RGB(195,246,227));
-    end;
-    Age:=Time-Shot.Near;
-    if (Age>=0) and (Age<0.15) and (Shot.Outcome<>0) then begin
-      U:=Age/0.15;
-      Circle(Shot.B.X,Shot.B.Y,0.009+0.026*U,MixColor(RGB(255,210,128),Back,U),False);
 
-    end;
-  end;
-  // Eight separate cars follow the same saved route, with individual couplers.
-  if (FPlan.GoalTime>0) and (Frame.Time<FPlan.EndTime) then for I:=7 downto 0 do Hero(I);
-  HitIndex:=FPlan.HitBefore(Time);
-  A:=Max(FPlan.HitBefore(Time-0.23)+1,HitIndex-127);
-  A:=Max(0,A);
-  B:=Min(FPlan.HitBefore(Time+0.42),A+255);
-  for I:=A to B do begin Hit:=FPlan.Hit[I];
-    Age:=Time-FPlan.Event[Hit.Source].Time;
-    if FPlan.HitAt(I,Time,P) then begin
-      if Time-Hit.Launch>0.025 then begin FPlan.HitAt(I,Time-0.025,Q);
-        Line(Q.X,Q.Y,P.X,P.Y,RGB(73,170,194),0.004);
-      end;
-      Circle(P.X,P.Y,0.006,RGB(158,238,235));
-      Circle(P.X,P.Y,0.0025,RGB(246,253,218));
-      if Time-Hit.Launch<0.045 then Circle(Hit.A.X,Hit.A.Y,0.014*(1-(Time-Hit.Launch)/0.045),RGB(255,223,148));
-    end;
-    if (Age>=0) and (Age<0.23) then begin
-      Power:=FPlan.Event[Hit.Source].Power;
-      U:=Age/0.23;
-      Circle(Hit.B.X,Hit.B.Y,0.012+Age*(0.25+Power*0.12),MixColor(RGB(255,213,127),Back,U),False);
-      if Age<0.055 then Circle(Hit.B.X,Hit.B.Y,0.018*(1-Age/0.055),RGB(255,238,177));
-      for J:=0 to 4 do begin Angle:=J*2.39996+Hit.Enemy*0.7;
-        R:=Age*(0.18+Power*0.22);
-        Line(Hit.B.X+Cos(Angle)*R*0.65,Hit.B.Y+Sin(Angle)*R*0.65,Hit.B.X+Cos(Angle)*R,Hit.B.Y+Sin(Angle)*R,RGB(247,166,83),0.003*(1-U));
-      end;
-    end;
-  end;
-  for I:=0 to FPlan.BossCount-1 do begin Boss:=FPlan.Boss[I];
-    if (Time>=Boss.Show) and (Time<Boss.Kill) then begin
-      Box(0.53,0.045,1.25,0.082,RGB(18,22,35));
-      Box(0.537,0.051,1.243,0.074,RGB(56,46,76));
-      Box(0.537,0.051,0.537+0.706*FPlan.BossHP(I,Time),0.074,RGB(211,153,225));
-      Line(0.537,0.051,1.243,0.051,RGB(246,216,232),0.002);
-    end;
-    Age:=Time-Boss.Kill;
-    if (Age>=0) and (Age<0.85) then begin U:=Age/0.85;
-      for J:=0 to 3 do begin X:=0.78+J*0.18;
-        Y:=0.22+0.03*Sin(J*2);
-        R:=0.025+Age*0.23;
-        Circle(X,Y,R,MixColor(RGB(242,185,114),Back,U),False);
-      end;
-    end;
-  end;
-  if Left>0 then begin Surface.FillRect(0,0,Left,Frame.Height,RGB(10,18,29));
-    Surface.FillRect(Frame.Width-Left,0,Frame.Width,Frame.Height,RGB(10,18,29));
-  end;
-  if Top>0 then begin Surface.FillRect(0,0,Frame.Width,Top,RGB(10,18,29));
-    Surface.FillRect(0,Frame.Height-Top,Frame.Width,Frame.Height,RGB(10,18,29));
-  end;
-end;
 
-function TTrainAnimation.GoalTime:Double;
 begin
-  Result:=inherited GoalTime;
-  if FPlan<>nil then Result:=FPlan.GoalTime;
+  T := Frame.Time;
+  Travel := 0;
+  Scale := 1;
+  CenterX := 4.3;
+  CenterY := -0.36;
+  ViewWidth := 15.0;
+  Shake := 0;
+  RearOffset := 0;
+  RightRear := 0;
+  RightOffset := 0;
+  CrashBlend := 0;
+  if FPlan<>nil then begin
+    T := Min(T,FPlan.EndTime);
+    Travel := FPlan.TravelAt(T);
+    if FPlan.Count>0 then begin
+      P := FPlan.PoseAt(T);
+      LeftImpact := FPlan.Cue[FPlan.ImpactIndex];
+      RightImpact := FPlan.Cue[FPlan.ImpactIndex+1];
+      Couple := FPlan.Cue[FPlan.ImpactIndex+2];
+      LastCue := FPlan.Cue[FPlan.Count-1];
+      RearOffset := FPlan.LeftNoseAt(T)-((FPlan.InitialCars-1)*TrainPitch-TrainGap);
+      RightRear := FPlan.RightRearAt(T);
+      RightOffset := RightRear-FPlan.InitialCars*TrainPitch;
+      ViewWidth := TrainRoofViewWidth;
+      CenterX := FPlan.RoofCameraX(T);
+      CenterY := -0.72;
+      FPlan.CollisionCamera(T,CrashX,CrashWidth,CrashBlend);
+      if CrashBlend>0 then begin
+        CenterX := CenterX+(CrashX-CenterX)*CrashBlend;
+        CenterY := CenterY+(1.17-CenterY)*CrashBlend;
+        ViewWidth := ViewWidth+(CrashWidth-ViewWidth)*CrashBlend;
+      end;
+      Board := FPlan.Cue[0];
+      if T<Board.Time+0.30 then begin
+        U := 1-TrainEase((T-Board.Start)/(Board.Time+0.30-Board.Start));
+        ViewWidth := ViewWidth+7.4*U;
+        CenterX := CenterX+(P.X+4.1-CenterX)*U;
+        CenterY := CenterY+1.88*U;
+      end;
+      if T>=LastCue.Start then begin
+        U := TrainEase((T-LastCue.Start)/0.48);
+        ViewWidth := ViewWidth+7.0*U;
+        CenterX := CenterX+(P.X+1.22-CenterX)*U;
+        CenterY := CenterY+2.1*U;
+      end;
+      for I := FPlan.ImpactIndex to FPlan.ImpactIndex+1 do begin
+        Age := T-FPlan.Cue[I].Time;
+        if (Age>=0) and (Age<0.30) then
+          Shake := Shake+0.30*(1-Age/0.30)*Sin(84*Age);
+      end;
+    end;
+  end;
+  Scale := Min(Frame.Width/ViewWidth,Frame.Height/(ViewWidth*0.56));
+  FarEdge := CenterX-Frame.Width/(2*Scale)-0.1;
+  NearEdge := CenterX+Frame.Width/(2*Scale)+0.1;
+
+  for I := 0 to 21 do begin
+    Color := MixColor(RGB(102,188,242),RGB(225,245,249),Min(1.0,I/21));
+    Surface.FillRect(0,I*Frame.Height/22,Frame.Width,(I+1)*Frame.Height/22+1,Color);
+  end;
+  // 複数の距離に置いた形と枕木で、一定の高さの線路でも走行が読める。
+  Surface.Circle(Frame.Width*0.77,Frame.Height*0.24,Min(Frame.Width,Frame.Height)*0.068,RGB(255,249,194),True);
+  for J := 0 to 1 do begin
+    Y := -2.68+J*1.10;
+    U := Travel*(0.15+J*0.09);
+    Color := MixColor(RGB(139,191,158),RGB(88,159,113),J);
+    for I := Floor((FarEdge+U)/8.7)-1 to Ceil((NearEdge+U)/8.7) do begin
+      X := I*8.7-U;
+      Quad(X-1.4,Y+2.6,X+2.1,Y-1.25-0.65*Sin(I*2.2),X+7.0,Y+0.46,X+10.9,Y+2.6,Color);
+    end;
+  end;
+  Box(FarEdge,RailY+0.03,NearEdge,RailY+Frame.Height/Scale,RGB(127,164,96));
+
+  if (FPlan=nil) or (FPlan.Count=0) then begin
+    DrawTrack;
+    if not Frame.BackgroundOnly then begin
+      Car(0,0,MainColor,False,False);
+      Car(TrainPitch,0,MainColor,True,False);
+    end;
+    Exit;
+  end;
+  if T<FPlan.Cue[0].Time+0.65 then
+    Platform(-10.6-Travel,13.00,TrainPlatformY,True);
+  StationX := FPlan.TrainLength-1.5+FPlan.TravelAt(FPlan.Arrival)-Travel;
+  Platform(StationX,14.0,TrainPlatformY,True);
+  DrawTrack;
+
+  if Frame.BackgroundOnly then Exit;
+  FirstCar := Max(0,Floor((FarEdge-RearOffset)/TrainPitch));
+  LastCar := FPlan.InitialCars-1;
+  for I := FirstCar to LastCar-1 do
+    Car(I*TrainPitch+RearOffset,0,MainColor,False,False);
+  Car(LastCar*TrainPitch,0,MainColor,True,False);
+  if T>=FPlan.Cue[FPlan.ImpactIndex-1].Finish then
+    for I := 0 to FPlan.NextCars-1 do
+      Car(RightRear+I*TrainPitch,FPlan.RoofY((FPlan.InitialCars+I)*TrainPitch+0.4),
+        NextColor,I=FPlan.NextCars-1,(T>=RightImpact.Time) and (I=0));
+  for I := 1 to FPlan.Count-4 do RoofEquipment(FPlan.Cue[I]);
+  Burst((FPlan.InitialCars-1)*TrainPitch-TrainGap*0.5,RailY-0.65,T-LeftImpact.Time,2.65,RGB(232,69,33));
+  Burst(FPlan.InitialCars*TrainPitch-TrainGap*0.5,RailY-0.65,T-RightImpact.Time,2.65,RGB(232,69,33));
+  Burst(FPlan.InitialCars*TrainPitch-TrainGap*0.5,RailY-0.64,T-Couple.Time,1.65,RGB(18,115,205));
+
+  for I := 1 to FPlan.Count-4 do begin
+    C := FPlan.Cue[I];
+    if TrainRegularEnemy(C.Kind) then Enemy(C);
+  end;
+  BossFirst := FPlan.Cue[FPlan.Count-3];
+  BossFinal := FPlan.Cue[FPlan.Count-2];
+  BossX := BossFirst.ToX+TrainReach;
+  N := Default(TTrainPose);
+  if T<BossFirst.Time then begin
+    U := TrainEase((T-BossFirst.Start+0.29)/Max(0.02,BossFirst.Time-BossFirst.Start+0.29));
+    BossX := BossX+3.6*(1-U)+0.28*(1-U)*Sin(T*6);
+    N.Run := 1-0.65*U;
+    N.Reach := Max(0.0,1-Abs(T-TrainThreatTime(BossFirst))/0.13);
+  end
+  else begin
+    U := TrainEase((T-BossFirst.Time)/Max(0.14,BossFinal.Start-BossFirst.Time));
+    BossX := BossX+(BossFinal.ToX-BossFirst.ToX)*U;
+    N.Run := Sin(Pi*U);
+    N.Crouch := 0.56*Max(0.0,1-(T-BossFirst.Time)/0.23);
+  end;
+  BossY := FPlan.RoofY(BossX);
+  BossX := BossX+RightOffset;
+  if (T>=FPlan.Cue[FPlan.ImpactIndex-1].Finish) and (BossX>=FarEdge-1.8) and (BossX<=NearEdge+7.4) then begin
+    N.X := BossX;
+    N.Y := BossY;
+    Age := T-BossFinal.Time;
+    BossRoll := 0;
+    if Age>=0 then begin
+      N.X := N.X+Min(0.52,Age)*3.1;
+      N.Y := N.Y-Max(0.0,2.3*Age-5.4*Sqr(Age));
+      N.Airborne := Age<0.43;
+      BossRoll := Min(1.68,0.24+Age*4.6);
+    end
+    else if T>=BossFinal.Start then
+      N.Reach := Max(0.0,1-Abs(T-TrainThreatTime(BossFinal))/0.12);
+    Figure(N,BossColor,1.08,-1,BossRoll,True);
+    C := FPlan.Cue[FPlan.Count-4];
+    if (T>=C.Start) and (T<C.Time) then
+      Bolt(BossX-0.31,C.FromX-0.61,BossY-0.24,(T-TrainThreatTime(C))/0.18,RGB(229,52,57));
+    Sweep(BossFirst,BossX,BossY-0.10,False);
+    if T>=BossFinal.Start then begin
+      U := Min(0.10,(BossFinal.Time-BossFinal.Start)*0.60);
+      Ahead := FPlan.PoseAt(BossFinal.Time-U);
+      Bolt(Ahead.X+0.49,BossFinal.ToX+TrainReach,BossY-0.77,(Age+U)/U,RGB(19,132,242));
+    end;
+    Burst(BossFirst.ToX+TrainReach,BossY-0.79,T-BossFirst.Time,1.75,RGB(226,68,132));
+    Burst(BossFinal.ToX+TrainReach,BossY-0.77,Age,2.25,RGB(236,102,32));
+  end;
+  if P.Run>0.8 then begin
+    Line(P.X-1.24,P.Y-0.25,P.X-0.39,P.Y-0.25,0.028,RGB(241,247,239));
+    Line(P.X-1.83,P.Y-0.57,P.X-0.70,P.Y-0.57,0.033,RGB(241,247,239));
+  end;
+  if P.Land>0 then begin
+    Age := (1-P.Land)*0.12;
+    Burst(P.X,P.Y-0.055,Age,0.72,RGB(144,80,32));
+  end;
+  Figure(P,HeroColor,1.0,1);
 end;
+
 end.
