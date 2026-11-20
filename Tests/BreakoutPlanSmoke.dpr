@@ -81,7 +81,7 @@ begin
     ConfigureRhythmProduct('SYNC_RhythmBreakout','リズムブロック崩し',rsBreakout);
     Need((StyleId(rsBreakout)='breakout') and (StylePlanVersion(rsShooting)=1) and
       (StylePlanVersion(rsBall)=6) and CompatiblePlanVersion(rsBall,4),'Old style contract changed');
-    Need((StylePlanVersion(rsBreakout)=10) and CompatiblePlanVersion(rsBreakout,1) and CompatiblePlanVersion(rsBreakout,2) and CompatiblePlanVersion(rsBreakout,3) and CompatiblePlanVersion(rsBreakout,4) and CompatiblePlanVersion(rsBreakout,5) and CompatiblePlanVersion(rsBreakout,6) and CompatiblePlanVersion(rsBreakout,7) and CompatiblePlanVersion(rsBreakout,8) and CompatiblePlanVersion(rsBreakout,9),'Breakout legacy compatibility');
+    Need((StylePlanVersion(rsBreakout)=11) and CompatiblePlanVersion(rsBreakout,1) and CompatiblePlanVersion(rsBreakout,2) and CompatiblePlanVersion(rsBreakout,3) and CompatiblePlanVersion(rsBreakout,4) and CompatiblePlanVersion(rsBreakout,5) and CompatiblePlanVersion(rsBreakout,6) and CompatiblePlanVersion(rsBreakout,7) and CompatiblePlanVersion(rsBreakout,8) and CompatiblePlanVersion(rsBreakout,9),'Breakout legacy compatibility');
     Need(TRhythmSettings.Defaults.Style=rsBreakout,'New product default');
     Need(TRhythmSettings.TryJSON('{"schema":1,"music":"old.wav"}',Settings) and (Settings.Style=rsShooting),'Old JSON default');
     for C:=0 to 7 do begin
@@ -101,7 +101,7 @@ begin
       Audio.Source:=Path;Audio.Key:=THashSHA2.GetHashString(GUIDToString(Id));Need(GetFileAttributesEx(PChar(Path),GetFileExInfoStandard,@Info),'source stamp');
       Audio.SourceRevision:=IntToHex(Info.nFileSizeHigh,8)+IntToHex(Info.nFileSizeLow,8)+'-'+IntToHex(Info.ftLastWriteTime.dwHighDateTime,8)+IntToHex(Info.ftLastWriteTime.dwLowDateTime,8);
       if C=5 then CheckLegacyEmpty;
-      Plan:=TBreakoutPlan.Build(Audio);Again:=TBreakoutPlan.Build(Audio);
+      Plan:=TBreakoutPlan.Build(Audio,nil,False);Again:=TBreakoutPlan.Build(Audio,nil,False);
       Need((Plan.Count=Again.Count) and (Plan.Attempts<=288),'bounded deterministic adoption');
       if C=0 then Need(Plan.Count>=60,'Dense song still has a sparse field');
       if C=1 then Need(Plan.Count>=80,'Normal song still has a sparse field');
@@ -134,7 +134,8 @@ begin
       for I:=Plan.PrimaryCount to Plan.Count-1 do begin
         B:=Plan.Block[I];Need((B.Source=-1) and (B.Time<Plan.GoalTime-4),'Additional blocks remain at final accent');
       end;
-      Ref:=NewPlanRef(Audio.Key,50,0,rsBreakout);Ref.SourceRevision:=Audio.SourceRevision;Plan.Save(Ref,Audio);
+      Ref:=NewPlanRef(Audio.Key,50,0,rsBreakout);Ref.SourceRevision:=Audio.SourceRevision;Ref.Version:=10;
+      Ref.Key:=THashSHA2.GetHashString('breakout-v10|'+Audio.Key+'|50|0');Plan.Save(Ref,Audio);
       if C in [0,7] then CheckLegacyNine;
       Settings:=TRhythmSettings.Defaults;Settings.Music:=Path;Settings.BossFrequency:=Audio.BossFrequency;Settings.Plan:=Ref;Serialized:=Settings.ToJSON;
       FreeAndNil(Again);FreeAndNil(Plan);FreeAndNil(Audio);Need(TRhythmSettings.TryJSON(Serialized,Settings),'Settings roundtrip');

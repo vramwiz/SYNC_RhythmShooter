@@ -201,6 +201,7 @@
         <DCCReference Include="Source\Breakout\RhythmBreakoutCampaign.pas"/>
         <DCCReference Include="Source\Breakout\Score\RhythmBreakoutScore.pas"/>
         <DCCReference Include="Source\Breakout\RhythmBreakoutGeometry.pas"/>
+        <DCCReference Include="Source\Breakout\RhythmBreakoutGrid.pas"/>
         <DCCReference Include="Source\Breakout\RhythmBreakoutPlan.pas"/>
         <DCCReference Include="Source\Breakout\RhythmBreakoutScene.pas"/>
         <DCCReference Include="Source\Shared\Settings\RhythmStyles.pas"/>

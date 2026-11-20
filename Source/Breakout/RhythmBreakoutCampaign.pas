@@ -10,6 +10,7 @@ type
     Sources:TArray<Integer>;
     Plan:TBreakScorePlan;
     destructor Destroy; override;
+    function HasRemainingBricks:Boolean;
   end;
   TBreakBoss=record
     Start,Quiet,Kill,Finish:Double;
@@ -36,7 +37,7 @@ type
     FBullets:TArray<TBreakBossBullet>;
     FEvents:TArray<TScoreEvent>;
     FOffsets,FExtras,FHits,FPrimary:TArray<Integer>;
-    FBodyContacts:Boolean;
+    FBodyContacts,FGrid:Boolean;
     FNormalExtras:TArray<TBreakNormalExtra>;
     FCandidateCount,FBossFrequency:Integer;
     FPaddleHalf,FDuration,FSoundEnd,FGoal,FLaunch,FBallEnd,FExit,FEnd:Double;
@@ -56,7 +57,7 @@ type
   public
     constructor Create;
     destructor Destroy; override;
-    class function Build(Audio:TRhythmAudio;const Cancel:TFunc<Boolean>):TBreakCampaign; static;
+    class function Build(Audio:TRhythmAudio;const Cancel:TFunc<Boolean>;FixedGrid:Boolean=True):TBreakCampaign; static;
     class function Load(Root:TJSONObject;Audio:TRhythmAudio):TBreakCampaign; static;
     procedure Save(var Ref:TRhythmPlanRef;Audio:TRhythmAudio);
     function HitBefore(Time:Double):Integer;
@@ -80,6 +81,7 @@ type
     property BossExtraCount:Integer read GetBossExtraCount;
     property CandidateCount:Integer read FCandidateCount;
     property BodyContacts:Boolean read FBodyContacts;
+    property FixedGrid:Boolean read FGrid;
     property PaddleHalf:Double read FPaddleHalf;
     property Count:Integer read FCount;
     property BossCount:Integer read GetBossCount;
@@ -98,7 +100,7 @@ type
 function BreakBossContact(Index,Sample:Integer):TBreakPoint;
 function BreakBossRect(const Boss:TBreakBoss;Time:Double):TBreakBlock;
 implementation
-uses System.Math,System.Generics.Defaults,RhythmSections,RhythmStyles,RhythmPreparedData,RhythmMotion;
+uses System.Math,System.Generics.Defaults,RhythmSections,RhythmStyles,RhythmPreparedData,RhythmMotion,RhythmBreakoutGrid;
 
 function Finite(V:Double):Boolean;
 begin Result:=not IsNan(V) and not IsInfinite(V);
@@ -148,7 +150,16 @@ end;
 
 function SelectBoss(Audio:TRhythmAudio;Index:Integer;Ready:Double;out Boss:TBreakBoss):Boolean;
 forward;
-  class function TBreakCampaign.Build(Audio:TRhythmAudio;const Cancel:TFunc<Boolean>):TBreakCampaign;
+  function BoardScoreVersion(CampaignVersion:Integer):Integer;
+  begin
+    case CampaignVersion of
+      11:Result:=GRID_SCORE_VERSION;
+      10:Result:=5;
+    else Result:=4;
+    end;
+  end;
+
+  class function TBreakCampaign.Build(Audio:TRhythmAudio;const Cancel:TFunc<Boolean>;FixedGrid:Boolean):TBreakCampaign;
   var
     I,J,N:Integer;
     Ready,Appear,Last:Double;
@@ -164,6 +175,7 @@ forward;
     try
       Result.FPaddleHalf:=BREAK_PADDLE_HALF_NEW;
       Result.FBodyContacts:=True;
+      Result.FGrid:=FixedGrid;
       Result.FCandidateCount:=Audio.BossCount;
       Result.FBossFrequency:=Audio.BossFrequency;
       Result.FDuration:=Audio.Duration;
@@ -187,7 +199,7 @@ forward;
         Board:=nil;
         try
           Board:=Result.MakeBoard(Appear,Ready,BossData.Start-0.65,Cancel,False,True);
-          if (Board=nil) or (Board.Plan.Count<2) then begin Board.Free;
+          if (Board=nil) or (Board.Plan.Count<2) or Board.HasRemainingBricks then begin Board.Free;
             Continue;
           end;
           SetLength(BossData.Paddles,1);
@@ -242,7 +254,7 @@ forward;
   end;
   procedure TBreakCampaign.Reindex;
   var
-    I,J,N:Integer;
+    I,J,N,LastBrick:Integer;
     Board:TBreakBoard;
   begin
     FCount:=0;
@@ -263,9 +275,10 @@ forward;
       Inc(FCatches,Board.Plan.CatchCount);
       FTrials:=Max(FTrials,Board.Plan.Trials);
       if (I=0) and (Board.Plan.Count>0) then FLaunch:=Board.Ready+Board.Plan.LaunchTime;
-      if Board.Plan.Count>0 then begin FGoal:=FEvents[Board.Sources[Board.Plan.BrickAt(Board.Plan.Count-1,Board.Plan.GoalTime).Source]].Time;
-        FBallEnd:=Board.Ready+Board.Plan.BallEnd;
-      end;
+      LastBrick:=Board.Plan.Count-1;
+      if FGrid then LastBrick:=Board.Plan.Grid.StrikeCount-1;
+      if LastBrick>=0 then FGoal:=FEvents[Board.Sources[Board.Plan.BrickAt(LastBrick,Board.Plan.GoalTime).Source]].Time;
+      if Board.Plan.Count>0 then FBallEnd:=Board.Ready+Board.Plan.BallEnd;
     end;
     SetLength(FExtras,0);
     N:=0;
@@ -308,6 +321,11 @@ forward;
     FExit:=FGoal+0.55;
     if FBoards.Count=Length(FBosses) then FExit:=Max(FGoal+0.85,FSoundEnd+0.12);
     FEnd:=FExit+1.1;
+    Board:=FBoards.Last;
+    if Board.HasRemainingBricks then begin
+      FEnd:=Board.Ready+Max(Board.Plan.EndTime,Board.Plan.GoalTime+0.55);
+      FExit:=FEnd;
+    end;
     if (FCount=0) and (Length(FBosses)=0) then begin FEnd:=FDuration;
       FExit:=FEnd;
       FBallEnd:=FEnd;
@@ -423,7 +441,7 @@ forward;
         T:=Time-Board.Ready;
         P:=Board.Plan.PositionAt(T);
         Alpha:=1;
-        if T>=Board.Plan.GoalTime then Alpha:=EnsureRange(1-(T-Board.Plan.GoalTime)/Max(1E-6,Board.Plan.BallEnd-Board.Plan.GoalTime),0.0,1.0);
+        if (T>=Board.Plan.GoalTime) and not Board.HasRemainingBricks then Alpha:=EnsureRange(1-(T-Board.Plan.GoalTime)/Max(1E-6,Board.Plan.BallEnd-Board.Plan.GoalTime),0.0,1.0);
         Exit(Alpha>0);
       end;
     end;
@@ -578,6 +596,9 @@ forward;
     Result.Bottom:=Y+0.08;
     Result.Time:=Boss.Kill;
   end;
+  function TBreakBoard.HasRemainingBricks:Boolean;
+  begin Result:=(Plan.Grid<>nil) and (Plan.Grid.StrikeCount<Plan.Count);end;
+
   destructor TBreakBoard.Destroy;
   begin Plan.Free;
     inherited;
@@ -629,8 +650,11 @@ forward;
       Result.Cut:=Cut;
       Result.Sources:=Sources.ToArray;
       try Audio:=ChildAudio(Result);
-        Result.Plan:=TBreakScorePlan.Build(Audio,Cancel,False,FPaddleHalf);
-        Result.Plan.Enhance(Audio,ClearWave,Cancel);
+        if FGrid then Result.Plan:=TBreakScorePlan.BuildGrid(Audio,Cancel)
+        else begin
+          Result.Plan:=TBreakScorePlan.Build(Audio,Cancel,False,FPaddleHalf);
+          Result.Plan.Enhance(Audio,ClearWave,Cancel);
+        end;
       except Result.Free;
         Result:=nil;
         raise;
@@ -929,12 +953,21 @@ forward;
         Need((Board.Plan.ItemCount=0) and (Board.Plan.ExtraCount<=24) and (Board.Plan.Count=Board.Plan.BlockCount),'old item show in boss stages');
         if I=0 then Need((Board.Appear=0) and (Board.Ready=0),'initial board')
         else Need(Near(Board.Appear,FBosses[I-1].Kill+0.95) and Near(Board.Ready,FBosses[I-1].Kill+1.85),'new board descent');
-        if I<Length(FBosses) then Need((Board.Plan.Count>=2) and Near(Board.Cut,FBosses[I].Start-0.65) and (Board.Ready+Board.Plan.GoalTime<=FBosses[I].Start-0.65+1E-8),'clear before boss');
+        if I<Length(FBosses) then Need((Board.Plan.Count>=2) and not Board.HasRemainingBricks and Near(Board.Cut,FBosses[I].Start-0.65) and (Board.Ready+Board.Plan.GoalTime<=FBosses[I].Start-0.65+1E-8),'clear before boss');
         for J:=0 to High(Board.Sources) do begin
           S:=Board.Sources[J];
           Need((S>=0) and (S<Length(FEvents)),'normal source');
           if J>0 then Need(S>Board.Sources[J-1],'normal sources order');
           Need((FEvents[S].Time>Board.Ready+1E-5) and (FEvents[S].Time<=Board.Cut+1E-8) and (FEvents[S].Time<=FSoundEnd+1E-8),'normal source interval');
+        end;
+        if FGrid then begin
+          Need(Board.Plan.Grid<>nil,'grid score');
+          for J:=0 to Board.Plan.Grid.StrikeCount-1 do begin
+            S:=Board.Plan.Grid.BrickAt(J).Source;
+            Need((S>=0) and (S<Length(Board.Sources)),'grid source');
+            Accent(Board.Sources[S],Board.Plan.Grid.BrickAt(J).Time+Board.Ready);
+          end;
+          Continue;
         end;
         Audio:=ChildAudio(Board);
         try Data:=Board.Plan.ExportData(Audio);
@@ -1049,8 +1082,8 @@ forward;
     Key:TScoreKey;
     Child:TRhythmAudio;
   begin
-    if not (Ref.Version in [5,6,7,8,9,10]) or not Ref.Matches(Audio.Key,Audio.Sensitivity,Ref.Direction,rsBreakout,Ref.Variant) then raise Exception.Create('Invalid boss-stage reference');
-    if ((Ref.Version=5) and (FPaddleHalf<>BREAK_PADDLE_HALF)) or ((Ref.Version=6) and (FPaddleHalf<>BREAK_PADDLE_HALF_V6)) or ((Ref.Version in [7,8,9,10]) and (FPaddleHalf<>BREAK_PADDLE_HALF_NEW)) then raise Exception.Create('Campaign version/paddle mismatch');
+    if not (Ref.Version in [5,6,7,8,9,10,11]) or not Ref.Matches(Audio.Key,Audio.Sensitivity,Ref.Direction,rsBreakout,Ref.Variant) then raise Exception.Create('Invalid boss-stage reference');
+    if ((Ref.Version=5) and (FPaddleHalf<>BREAK_PADDLE_HALF)) or ((Ref.Version=6) and (FPaddleHalf<>BREAK_PADDLE_HALF_V6)) or ((Ref.Version in [7,8,9,10,11]) and (FPaddleHalf<>BREAK_PADDLE_HALF_NEW)) then raise Exception.Create('Campaign version/paddle mismatch');
     if (Ref.Version>=8) and (FBossFrequency<>BossFrequencyFromVariant(Ref.Variant)) then raise Exception.Create('Campaign frequency mismatch');
     Root:=TJSONObject.Create;
     try
@@ -1066,6 +1099,7 @@ forward;
       if Ref.Version=8 then Root.AddPair('bossPolicy','controlled-body-v4');
       if Ref.Version=9 then Root.AddPair('bossPolicy','impact-density-v5');
       if Ref.Version=10 then Root.AddPair('bossPolicy','rush-pierce-v6');
+      if Ref.Version=11 then Root.AddPair('bossPolicy','fixed-grid-v7');
       Root.AddPair('key',Ref.Key);
       Root.AddPair('source',Ref.SourceKey);
       Root.AddPair('sensitivity',TJSONNumber.Create(Ref.Sensitivity));
@@ -1098,7 +1132,7 @@ forward;
         try Score:=Board.Plan.ExportData(Child);
         finally Child.Free;
         end;
-        if ((Ref.Version>=10)<>(Score.GetValue<Integer>('version')=5)) then begin Score.Free;
+        if Score.GetValue<Integer>('version')<>BoardScoreVersion(Ref.Version) then begin Score.Free;
           raise Exception.Create('Campaign action version mismatch');
         end;
         J.AddPair('score',Score);
@@ -1195,7 +1229,9 @@ forward;
         Result.FBodyContacts:=True;
         if Result.FPaddleHalf<>BREAK_PADDLE_HALF_NEW then raise Exception.Create('Invalid body-contact paddle');
       end;
-      if Root.GetValue<Integer>('version',0) in [8,9,10] then begin
+      if Root.GetValue<Integer>('version',0) in [8,9,10,11] then begin
+        Result.FGrid:=Root.GetValue<Integer>('version')=11;
+        if Result.FGrid and (Root.GetValue<string>('bossPolicy','')<>'fixed-grid-v7') then raise Exception.Create('Invalid fixed grid policy');
         if ((Root.GetValue<Integer>('version')=8) and (Root.GetValue<string>('bossPolicy','')<>'controlled-body-v4')) or ((Root.GetValue<Integer>('version')=9) and (Root.GetValue<string>('bossPolicy','')<>'impact-density-v5')) or ((Root.GetValue<Integer>('version')=10) and (Root.GetValue<string>('bossPolicy','')<>'rush-pierce-v6')) then raise Exception.Create('Invalid frequency policy');
         Result.FPaddleHalf:=Root.GetValue<Double>('paddleHalf');
         Result.FBodyContacts:=True;
@@ -1225,8 +1261,7 @@ forward;
         SetLength(Board.Sources,Values.Count);
         for K:=0 to Values.Count-1 do Board.Sources[K]:=Values.Items[K].GetValue<Integer>;
         Data:=J.GetValue<TJSONObject>('score');
-        if (Data=nil) or (Data.GetValue<Integer>('schema',0)<>1) or not (Data.GetValue<Integer>('version',0) in [4,5]) or (Data.GetValue<string>('style','')<>'breakout') then raise Exception.Create('Invalid embedded score');
-        if ((Root.GetValue<Integer>('version')>=10)<>(Data.GetValue<Integer>('version')=5)) then raise Exception.Create('Embedded action version mismatch');
+        if (Data=nil) or (Data.GetValue<Integer>('schema',0)<>1) or (Data.GetValue<Integer>('version',0)<>BoardScoreVersion(Root.GetValue<Integer>('version'))) or (Data.GetValue<string>('style','')<>'breakout') then raise Exception.Create('Invalid embedded score');
         Child:=Result.ChildAudio(Board);
         try Board.Plan:=TBreakScorePlan.Load(Data,Child);
         finally Child.Free;

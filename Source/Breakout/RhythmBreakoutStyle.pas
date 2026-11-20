@@ -33,7 +33,7 @@ begin
         end;
         try
           PreparedEnd:=Max(Context.Audio.Duration,RestoredBreakout.EndTime);
-          PreparedSummary:=Format('%d音候補 / %dブロック / 音同期%d・補助%d・捕球%d / 全破壊 %.3f 秒',[RestoredBreakout.SourceCount,RestoredBreakout.Count,RestoredBreakout.ReflectionCount,RestoredBreakout.AuxiliaryCount,RestoredBreakout.CatchCount,RestoredBreakout.GoalTime]);
+          PreparedSummary:=Format('%d音候補 / %dブロック / 音同期%d・補助%d・捕球%d / 最終破壊 %.3f 秒',[RestoredBreakout.SourceCount,RestoredBreakout.Count,RestoredBreakout.ReflectionCount,RestoredBreakout.AuxiliaryCount,RestoredBreakout.CatchCount,RestoredBreakout.GoalTime]);
           PreparedSummary:=PreparedSummary+Format(' / 見せ場%d・追加球%d',[RestoredBreakout.ItemCount,RestoredBreakout.ExtraCount]);
           if RestoredBreakout.Campaign<>nil then PreparedSummary:=PreparedSummary+Format('・ボス%d（候補%d）',[RestoredBreakout.BossCount,RestoredBreakout.Campaign.CandidateCount])
           else PreparedSummary:=PreparedSummary+Format('・ボス%d',[RestoredBreakout.BossCount]);

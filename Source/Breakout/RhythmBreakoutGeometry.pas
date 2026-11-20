@@ -21,7 +21,7 @@ type
     Left,Right,Top,Bottom,Time,Strength:Double;
     Source:Integer;
   end;
-  TBreakEnd=(beBlock,beWallX,beTop,beCorner,bePaddle,beFinish);
+  TBreakEnd=(beBlock,beWallX,beTop,beCorner,bePaddle,beFinish,beHold);
   TBreakSegment=record
     First,Last:Double;
     A,B:TBreakPoint;
@@ -94,6 +94,7 @@ var
   DX,DY,U:Double;
 begin DX:=B.X-A.X;
   DY:=B.Y-A.Y;
+  if (DX=0) and (DY=0) then Exit(Hypot(P.X-A.X,P.Y-A.Y));
   U:=EnsureRange(((P.X-A.X)*DX+(P.Y-A.Y)*DY)/(DX*DX+DY*DY),0.0,1.0);
   Result:=Hypot(P.X-A.X-U*DX,P.Y-A.Y-U*DY);
 end;
@@ -200,6 +201,7 @@ begin
       bePaddle:begin PX:=BreakPaddleAt(Paddles,S.Last);
         Need(Near(S.B.Y,BREAK_PADDLE_Y) and (V.Y>0) and (Abs(S.B.X-PX)<=BREAK_PADDLE_HALF+1E-6),'パドル接触');
       end;
+      beHold:Need(False,'hold in legacy path');
       beFinish:Need(I=High(Segments),'終端位置');
     end;
     if (S.Kind=beCorner) and Near(S.B.Y,BREAK_PADDLE_Y) then Need(Abs(S.B.X-BreakPaddleAt(Paddles,S.Last))<=BREAK_PADDLE_HALF+1E-6,'角でのパドル接触');

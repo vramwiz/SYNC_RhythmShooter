@@ -18,6 +18,7 @@ type
     FScore:TBreakScorePlan;
     FCampaign:TBreakCampaign;
     function GetSyncCount:Integer;
+    function GetFixedGrid:Boolean;
     function GetBallEnd:Double;
     function GetEnd:Double;
     function GetPaddleHalf:Double;
@@ -33,7 +34,7 @@ type
     function GetBlock(I:Integer):TBreakBlock;
   public
     destructor Destroy; override;
-    class function Build(Audio:TRhythmAudio;const Cancel:TFunc<Boolean> = nil):TBreakoutPlan; static;
+    class function Build(Audio:TRhythmAudio;const Cancel:TFunc<Boolean> = nil;FixedGrid:Boolean=True):TBreakoutPlan; static;
     procedure Save(var Ref:TRhythmPlanRef;Audio:TRhythmAudio);
     class function Load(const Ref:TRhythmPlanRef;Audio:TRhythmAudio;Direction:Integer):TBreakoutPlan; static;
     class function LoadAudioMetadata(const Ref:TRhythmPlanRef;const Source:string;Direction:Integer):TRhythmAudio; static;
@@ -53,6 +54,7 @@ type
     property ExtraCount:Integer read GetExtraCount;
     property PaddleHalf:Double read GetPaddleHalf;
     property Campaign:TBreakCampaign read FCampaign;
+    property FixedGrid:Boolean read GetFixedGrid;
     property BossCount:Integer read GetBossCount;
     property ExitStart:Double read GetExitStart;
     property Count:Integer read GetCount;
@@ -85,11 +87,14 @@ begin FCampaign.Free;
   inherited;
 end;
 
-class function TBreakoutPlan.Build(Audio:TRhythmAudio;const Cancel:TFunc<Boolean>):TBreakoutPlan;
+function TBreakoutPlan.GetFixedGrid:Boolean;
+begin Result:=(FCampaign<>nil) and FCampaign.FixedGrid;end;
+
+class function TBreakoutPlan.Build(Audio:TRhythmAudio;const Cancel:TFunc<Boolean>;FixedGrid:Boolean):TBreakoutPlan;
 begin
   Result:=TBreakoutPlan.Create;
   try
-    Result.FCampaign:=TBreakCampaign.Build(Audio,Cancel);
+    Result.FCampaign:=TBreakCampaign.Build(Audio,Cancel,FixedGrid);
     Result.FSourceCount:=Length(Audio.Hits);
     Result.FDuration:=Audio.Duration;
     Result.FSoundEnd:=Audio.SoundEnd;
@@ -372,7 +377,7 @@ begin
   Root:=ReadPreparedData(Ref,rsBreakout,Direction);
   try
     try
-      if Ref.Version in [5,6,7,8,9,10] then begin
+      if Ref.Version in [5,6,7,8,9,10,11] then begin
         Result:=TBreakoutPlan.Create;
         Result.FCampaign:=TBreakCampaign.Load(Root,Audio);
         if (Ref.Version>=8) and (Result.FCampaign.BossFrequency<>BossFrequencyFromVariant(Ref.Variant)) then raise Exception.Create('Boss frequency reference mismatch');

@@ -200,7 +200,7 @@ begin
     PaddleX:=FPlan.PaddleAt(Time);
     EntryEnd:=Min(0.65,Max(1E-5,FPlan.EndTime));
     if FPlan.Count>0 then EntryEnd:=Min(EntryEnd,FPlan.LaunchTime);
-    if EntryEnd>1E-8 then EntryOffset:=0.17*(1-Smooth(Time/EntryEnd));
+    if (EntryEnd>1E-8) and not FPlan.FixedGrid then EntryOffset:=0.17*(1-Smooth(Time/EntryEnd));
     PaddleY:=PaddleY+EntryOffset;
     if (FPlan.Count>0) and (Time>FPlan.ExitStart) then begin
       U:=Smooth((Time-FPlan.ExitStart)/1.10);

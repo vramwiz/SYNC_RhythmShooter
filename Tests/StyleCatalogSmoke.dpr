@@ -5,7 +5,7 @@ uses System.SysUtils,System.Classes,System.Hash,System.IOUtils,System.JSON,
   RhythmStyles,RhythmStyleSelection,RhythmSettings,RhythmPlanRef,RhythmStyleOps,RhythmStyleRegistry,
   RhythmAudio,RhythmAnimation,RhythmImageBank;
 const Ids:array[TRhythmStyle] of string=('shooting','ball','jump-adventure','breakout','side-race','bomb-action','fighting-rush','mining','train','rhythm-game','prism-step','mine-cart','crash-cannon','parkour','marble-relay','trap-action','type-g','melody-ball');
-  Versions:array[TRhythmStyle] of Integer=(1,6,3,10,1,2,1,1,1,4,3,4,1,2,16,19,1,7);
+  Versions:array[TRhythmStyle] of Integer=(1,6,3,11,1,2,1,1,1,4,3,4,1,2,16,19,1,7);
   Groups:array[TRhythmStyle] of TRhythmStyleGroup=(sgShooting,sgBall,sgAction,sgBall,sgRace,sgAction,sgAction,sgAction,sgShooting,sgMusic,sgMusic,sgAction,sgAction,sgAction,sgBall,sgAction,sgMusic,sgBall);
   Scenes:array[TRhythmStyle] of string=('TShootingAnimation','TBallAnimation','TJumpAnimation','TBreakoutAnimation','TSideRaceAnimation','TBombActionAnimation','TRushAnimation','TMiningAnimation','TTrainAnimation','TGameAnimation','TStepAnimation','TCartAnimation','TCannonAnimation','TParkourAnimation','TMarbleAnimation','TTrapAnimation','TGAnimation','TMelodyAnimation');
   GroupCounts:array[TRhythmStyleGroup] of Integer=(2,4,8,1,3);
@@ -19,7 +19,7 @@ begin if not OK then raise Exception.Create(Why);Inc(Checks);end;
 function WasCompatible(Style:TRhythmStyle;Version:Integer):Boolean;
 begin Result:=Version=Versions[Style];case Style of
   rsBall:Result:=Version in [4,5,6];
-  rsBreakout:Result:=Version in [1,2,3,4,5,6,7,8,9,10];
+  rsBreakout:Result:=Version in [1,2,3,4,5,6,7,8,9,10,11];
   rsBombAction,rsParkour:Result:=Version in [1,2];rsMarbleRelay:Result:=Version in [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16];rsRhythmGame,rsMineCart:Result:=Version in [1,2,3,4];rsStepGame,rsJumpAdventure:Result:=Version in [1,2,3];
 end;end;
 begin Scene:=nil;Images:=nil;Names:=nil;Checks:=0;Combinations:=0;

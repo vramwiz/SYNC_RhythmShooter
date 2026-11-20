@@ -1,7 +1,7 @@
 ﻿unit RhythmBreakoutScore;
 // Fixed accent score plus precomputed, unsynchronised multiball intervals.
 interface
-uses System.SysUtils,System.JSON,RhythmAudio,RhythmPlanRef,RhythmBreakoutGeometry,RhythmBreakoutAction,RhythmBreakoutScoreTypes;
+uses System.SysUtils,System.JSON,RhythmAudio,RhythmPlanRef,RhythmBreakoutGeometry,RhythmBreakoutAction,RhythmBreakoutScoreTypes,RhythmBreakoutGrid;
 const
   SCORE_COLUMNS=RhythmBreakoutScoreTypes.SCORE_COLUMNS;
   SCORE_PITCH=RhythmBreakoutScoreTypes.SCORE_PITCH;
@@ -28,6 +28,7 @@ type
   TBreakScorePlan=class
   private
     FAction:TBreakActionPlan;
+    FGrid:TBreakGrid;
     FEvents:TArray<TScoreEvent>;
     FNodes:TArray<TScoreNode>;
     FBricks:TArray<TScoreBrick>;
@@ -37,6 +38,7 @@ type
     FExtra:TArray<TScoreExtraBall>;
     FPaddleHalf,FDuration,FSoundEnd,FContactY,FTarget,FLaunch,FGoal,FEnd,FBallEnd:Double;
     FSourceCount,FRows,FTrials:Integer;
+    procedure UseGrid(GridPlan:TBreakGrid);
     procedure Attempt(Seed:Integer;const Cancel:TFunc<Boolean>);
     procedure FinalizeScore(const Reverse:TArray<TScoreNode>);
     procedure Verify(const Cancel:TFunc<Boolean> = nil);
@@ -54,6 +56,8 @@ type
     function ExportCoreData(Audio:TRhythmAudio;Version:Integer):TJSONObject;
   public
     destructor Destroy; override;
+    class function BuildGrid(Audio:TRhythmAudio;const Cancel:TFunc<Boolean>):TBreakScorePlan; static;
+    property Grid:TBreakGrid read FGrid;
     procedure Enhance(Audio:TRhythmAudio;ClearWave:Boolean;const Cancel:TFunc<Boolean>);
     function RadiusAt(Time:Double):Double;
     function BrickVisible(Index:Integer;Time:Double):Boolean;
@@ -1027,12 +1031,14 @@ begin
 end;
 
 function TBreakScorePlan.GetCount:Integer;
-begin if FAction<>nil then Exit(FAction.Count);
+begin if FGrid<>nil then Exit(FGrid.Count);
+  if FAction<>nil then Exit(FAction.Count);
   Result:=Length(FBricks);
 end;
 
 function TBreakScorePlan.GetTotalCount:Integer;
-begin if FAction<>nil then Exit(FAction.Count);
+begin if FGrid<>nil then Exit(FGrid.Count);
+  if FAction<>nil then Exit(FAction.Count);
   Result:=Length(FBricks)+Length(FBonus);
 end;
 
@@ -1077,7 +1083,8 @@ end;
 function TBreakScorePlan.GetSyncCount:Integer;
 var
   N:TScoreNode;
-begin if FAction<>nil then Exit(FAction.SyncCount);
+begin if FGrid<>nil then Exit(FGrid.StrikeCount);
+  if FAction<>nil then Exit(FAction.SyncCount);
   Result:=0;
   for N in FNodes do if (N.Source>=0) and (N.Kind in [snBlock,snWall,snPaddle,snCorner]) then Inc(Result);
 end;
@@ -1085,7 +1092,8 @@ end;
 function TBreakScorePlan.GetAuxCount:Integer;
 var
   N:TScoreNode;
-begin if FAction<>nil then Exit(FAction.AuxiliaryCount);
+begin if FGrid<>nil then Exit(FGrid.AuxiliaryCount);
+  if FAction<>nil then Exit(FAction.AuxiliaryCount);
   Result:=0;
   for N in FNodes do if (N.Source<0) and (N.Kind in [snWall,snPaddle,snCorner]) then Inc(Result);
 end;
@@ -1093,14 +1101,16 @@ end;
 function TBreakScorePlan.GetCatchCount:Integer;
 var
   N:TScoreNode;
-begin Result:=0;
+begin if FGrid<>nil then Exit(FGrid.CatchCount);
+  Result:=0;
   for N in FNodes do if N.Kind=snCatch then Inc(Result);
 end;
 
 function TBreakScorePlan.HeldAt(Time:Double):Boolean;
 var
   I,A,B,M:Integer;
-begin Result:=False;
+begin if FGrid<>nil then Exit(FGrid.HeldAt(Time));
+  Result:=False;
   if Length(FNodes)=0 then Exit;
   if Time<FLaunch then Exit(True);
   A:=0;
@@ -1117,6 +1127,7 @@ var
   A,B,M:Integer;
   C:TScoreControls;
 begin
+  if FGrid<>nil then Exit(FGrid.PositionAt(Time));
   if FAction<>nil then Exit(FAction.PositionAt(Time));
   Result:=BreakPoint(BREAK_WIDTH/2,BREAK_PADDLE_Y);
   if Length(FNodes)=0 then Exit;
@@ -1132,12 +1143,14 @@ begin
 end;
 
 function TBreakScorePlan.PaddleAt(Time:Double):Double;
-begin Result:=BREAK_WIDTH/2;
+begin if FGrid<>nil then Exit(FGrid.PaddleAt(Time));
+  Result:=BREAK_WIDTH/2;
   if Length(FPaddles)>0 then Result:=KeyAt(FPaddles,Time);
 end;
 
 function TBreakScorePlan.BrickAt(Index:Integer;Time:Double):TBreakBlock;
 begin
+  if FGrid<>nil then Exit(FGrid.BrickAt(Index));
   if FAction<>nil then Exit(FAction.BrickAt(Index,Time));
   if Index<Length(FBricks) then Result:=RectangleAt(FBricks[Index],FContactY,KeyAt(FShifts,Min(Time,FBricks[Index].Time)))
   else begin Dec(Index,Length(FBricks));
@@ -1146,7 +1159,8 @@ begin
 end;
 
 function TBreakScorePlan.BrickRow(Index:Integer):Integer;
-begin if FAction<>nil then Exit(FAction.BrickRow(Index));
+begin if FGrid<>nil then Exit(FGrid.BrickRow(Index));
+  if FAction<>nil then Exit(FAction.BrickRow(Index));
   if Index<Length(FBricks) then Result:=FBricks[Index].Row else Result:=FBonus[Index-Length(FBricks)].Row;
 end;
 
@@ -1264,8 +1278,19 @@ begin
   end;
 end;
 
+procedure TBreakScorePlan.UseGrid(GridPlan:TBreakGrid);
+begin FGrid:=GridPlan; FPaddleHalf:=BREAK_PADDLE_HALF_NEW;
+  FLaunch:=FGrid.LaunchTime;FGoal:=FGrid.GoalTime;FBallEnd:=FGrid.BallEnd;FEnd:=FGrid.EndTime;
+end;
+
+class function TBreakScorePlan.BuildGrid(Audio:TRhythmAudio;const Cancel:TFunc<Boolean>):TBreakScorePlan;
+begin Result:=TBreakScorePlan.Create;
+  try Result.UseGrid(TBreakGrid.Build(Audio,Cancel));except Result.Free;raise;end;
+end;
+
 destructor TBreakScorePlan.Destroy;
 begin FAction.Free;
+  FGrid.Free;
   inherited;
 end;
 
@@ -1286,7 +1311,8 @@ begin Result:=BREAK_RADIUS;
 end;
 
 function TBreakScorePlan.BrickVisible(Index:Integer;Time:Double):Boolean;
-begin Result:=True;
+begin if FGrid<>nil then Exit(FGrid.BrickVisible(Index,Time));
+  Result:=True;
   if FAction<>nil then Result:=FAction.BrickVisible(Index,Time);
 end;
 
@@ -1296,7 +1322,8 @@ begin if FAction<>nil then Exit(FAction.ExtraLaunch(Index));
 end;
 
 function TBreakScorePlan.ExportData(Audio:TRhythmAudio;Version:Integer):TJSONObject;
-begin if FAction<>nil then Result:=FAction.ExportData(ExportCoreData(Audio,4),Audio) else Result:=ExportCoreData(Audio,Version);
+begin if FGrid<>nil then Exit(FGrid.ExportData);
+  if FAction<>nil then Result:=FAction.ExportData(ExportCoreData(Audio,4),Audio) else Result:=ExportCoreData(Audio,Version);
 end;
 
 procedure TBreakScorePlan.Save(var Ref:TRhythmPlanRef;Audio:TRhythmAudio);
@@ -1331,6 +1358,11 @@ var
 begin
   Result:=nil;
   if Audio=nil then raise Exception.Create('Score audio metadata missing');
+  if Root.GetValue<Integer>('version',0)=GRID_SCORE_VERSION then begin
+    Result:=TBreakScorePlan.Create;
+    try Result.UseGrid(TBreakGrid.Load(Root,Audio));except Result.Free;raise;end;
+    Exit;
+  end;
   if Root.GetValue<string>('layout','')='rush-overlay-v1' then begin
     Result:=Load(Root.GetValue<TJSONObject>('baseScore'),Audio);
     try Result.FAction:=TBreakActionPlan.Load(Root);
