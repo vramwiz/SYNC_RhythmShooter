@@ -20,6 +20,7 @@ type
     procedure Line(X1,Y1,X2,Y2,Stroke:Double;Color:TColor;Opacity:Double);
     procedure Circle(X,Y,Radius,Stroke:Double;Color:TColor;Filled:Boolean;Opacity:Double);
     procedure DrawBitmap(Image:TBitmap;const Bounds:TRect;Opacity:Double);
+    procedure DrawBitmapRegion(Image:TBitmap;const Source,Bounds:TRect;MirrorX:Boolean;Opacity:Double);
     property Active:Boolean read GetActive;
   end;
 
@@ -166,6 +167,33 @@ begin
     Position:=(L-Bounds.Left)*StepX;
     for X:=L to R-1 do begin
       Pixel:=PCardinal(Src+(Position shr 16)*4)^;
+      if Pixel<>0 then begin
+        if Strength<255 then Pixel:=ScalePixel(Pixel,Strength);
+        if ((Pixel shr 24)=255) or (Dest^=0) then Dest^:=Pixel
+        else Dest^:=Pixel+ScalePixel(Dest^,255-Integer(Pixel shr 24));
+      end;
+      Inc(Position,StepX);Inc(Dest);
+    end;
+  end;
+end;
+procedure TRhythmAlphaRaster.DrawBitmapRegion(Image:Vcl.Graphics.TBitmap;
+  const Source,Bounds:TRect;MirrorX:Boolean;Opacity:Double);
+var X,Y,L,R,SX,SY,Strength:Integer; Position,StepX:Int64;
+  Src:PByte; Dest:PCardinal; Pixel:Cardinal;
+begin
+  L:=Max(0,Bounds.Left);R:=Min(FWidth,Bounds.Right);
+  if (FStart=nil) or (L>=R) then Exit;
+  Strength:=Round(Min(1.0,Opacity)*255);
+  StepX:=(Int64(Source.Width) shl 24) div Bounds.Width;
+  for Y:=Max(0,Bounds.Top) to Min(FHeight,Bounds.Bottom)-1 do begin
+    SY:=Source.Top+Integer(((Int64(Y)-Bounds.Top)*Source.Height) div Bounds.Height);
+    Src:=Image.ScanLine[SY];
+    Dest:=PCardinal(FStart+Y*FPitch+L*4);
+    Position:=(Int64(L)-Bounds.Left)*StepX;
+    for X:=L to R-1 do begin
+      SX:=Integer(Position shr 24);
+      if MirrorX then SX:=Source.Right-1-SX else SX:=Source.Left+SX;
+      Pixel:=PCardinal(Src+SX*4)^;
       if Pixel<>0 then begin
         if Strength<255 then Pixel:=ScalePixel(Pixel,Strength);
         if ((Pixel shr 24)=255) or (Dest^=0) then Dest^:=Pixel

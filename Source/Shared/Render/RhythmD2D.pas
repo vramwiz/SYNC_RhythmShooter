@@ -16,6 +16,8 @@ type
     function BeginFrame(Target:TBitmap;ClearColor:TColor=$001D0D07;Transparent:Boolean=False):Boolean;
     function EndFrame:Boolean;
     procedure DrawAsset(Index:Integer;const Bounds:TRect;Opacity:Single=1);
+    function DrawAssetRegion(Index:Integer;const Source,Bounds:TRect;
+      MirrorX:Boolean;Opacity:Single):Boolean;
     procedure Ring(X,Y,Radius:Single);
     procedure Circle(X,Y,Radius:Single;Color:TColor;Filled:Boolean;Stroke:Single=1;Opacity:Single=1);
     procedure Line(X1,Y1,X2,Y2:Single;Color:TColor;Stroke:Single=1;Opacity:Single=1);
@@ -94,6 +96,28 @@ begin
   if (Index<0) or (Index>High(FBitmaps)) or (FBitmaps[Index]=nil) then Exit;
   R.left:=Bounds.Left;R.top:=Bounds.Top;R.right:=Bounds.Right;R.bottom:=Bounds.Bottom;
   FTarget.DrawBitmap(FBitmaps[Index],@R,Opacity,D2D1_BITMAP_INTERPOLATION_MODE_NEAREST_NEIGHBOR);
+end;
+function TRhythmD2D.DrawAssetRegion(Index:Integer;const Source,Bounds:TRect;
+  MirrorX:Boolean;Opacity:Single):Boolean;
+var S,R:TD2D1RectF;Saved,Flip:TD2D1Matrix3x2F;
+begin
+  Result:=(Index>=0) and (Index<=High(FBitmaps)) and (FBitmaps[Index]<>nil);
+  if not Result then Exit;
+  R.left:=Bounds.Left;R.top:=Bounds.Top;R.right:=Bounds.Right;R.bottom:=Bounds.Bottom;
+  S.left:=Source.Left;S.top:=Source.Top;S.right:=Source.Right;S.bottom:=Source.Bottom;
+  if not MirrorX then begin
+    FTarget.DrawBitmap(FBitmaps[Index],@R,Opacity,D2D1_BITMAP_INTERPOLATION_MODE_NEAREST_NEIGHBOR,@S);
+    Exit;
+  end;
+  FTarget.GetTransform(Saved);
+  Flip:=Default(TD2D1Matrix3x2F);
+  Flip._11:=-1;Flip._22:=1;Flip._31:=Double(Bounds.Left)+Bounds.Right;
+  FTarget.SetTransform(Flip*Saved);
+  try
+    FTarget.DrawBitmap(FBitmaps[Index],@R,Opacity,D2D1_BITMAP_INTERPOLATION_MODE_NEAREST_NEIGHBOR,@S);
+  finally
+    FTarget.SetTransform(Saved);
+  end;
 end;
 procedure TRhythmD2D.Ring(X,Y,Radius:Single);
 var Shape:TD2D1Ellipse;

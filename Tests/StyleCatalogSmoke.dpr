@@ -5,7 +5,7 @@ uses System.SysUtils,System.Classes,System.Hash,System.IOUtils,System.JSON,
   RhythmStyles,RhythmStyleSelection,RhythmSettings,RhythmPlanRef,RhythmStyleOps,RhythmStyleRegistry,
   RhythmAudio,RhythmAnimation,RhythmImageBank;
 const Ids:array[TRhythmStyle] of string=('shooting','ball','jump-adventure','breakout','side-race','bomb-action','fighting-rush','mining','train','rhythm-game','prism-step','mine-cart','crash-cannon','parkour','marble-relay','trap-action','type-g','melody-ball');
-  Versions:array[TRhythmStyle] of Integer=(1,7,3,11,1,2,1,1,5,4,3,4,1,2,16,19,1,7);
+  Versions:array[TRhythmStyle] of Integer=(1,7,3,11,1,2,1,1,10,4,3,4,1,2,16,19,1,7);
   Groups:array[TRhythmStyle] of TRhythmStyleGroup=(sgShooting,sgBall,sgAction,sgBall,sgRace,sgAction,sgAction,sgAction,sgAction,sgMusic,sgMusic,sgAction,sgAction,sgAction,sgBall,sgAction,sgMusic,sgBall);
   Scenes:array[TRhythmStyle] of string=('TShootingAnimation','TBallAnimation','TJumpAnimation','TBreakoutAnimation','TSideRaceAnimation','TBombActionAnimation','TRushAnimation','TMiningAnimation','TTrainAnimation','TGameAnimation','TStepAnimation','TCartAnimation','TCannonAnimation','TParkourAnimation','TMarbleAnimation','TTrapAnimation','TGAnimation','TMelodyAnimation');
   GroupCounts:array[TRhythmStyleGroup] of Integer=(1,4,9,1,3);
@@ -48,6 +48,12 @@ begin Scene:=nil;Images:=nil;Names:=nil;Checks:=0;Combinations:=0;
       (Loaded.Style=rsTrain) and (Loaded.Plan.Key='') and (Loaded.Music='old-train.wav') and
       (Loaded.Sensitivity=71) and (Loaded.Direction=1) and (Abs(Loaded.OffsetSeconds-0.22)<1E-9),
       'Armored train settings migration');
+    Need(TRhythmSettings.TryJSON('{"schema":1,"style":"train","music":"roof-train.wav","sensitivity":64,'+
+      '"direction":1,"offsetSeconds":-0.15,"plan":{"style":"train","version":9,"key":"'+Key+'",'+
+      '"source":"'+Key+'","digest":"'+Key+'","sensitivity":64,"direction":1}}',Loaded) and
+      (Loaded.Style=rsTrain) and (Loaded.Plan.Key='') and (Loaded.Music='roof-train.wav') and
+      (Loaded.Sensitivity=64) and (Loaded.Direction=1) and (Abs(Loaded.OffsetSeconds+0.15)<1E-9),
+      'Train encounter reprepare retains settings');
     Need(StyleSmallTitle(rsBall,0)='固定台','Pinball fixed table label');
     Need(GroupStyleCount(sgBall)=4,'Ball family count');Need(StyleInfo(rsBall).Group=StyleInfo(rsBreakout).Group,'Pinball and breakout separated');
     Need((StyleInfo(rsRhythmGame).MiddleTitle='Type.V') and (StyleTitle(rsRhythmGame)='Type.V'),'Type.V label');

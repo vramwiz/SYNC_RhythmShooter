@@ -5,7 +5,7 @@ uses RhythmStyleOps;
 function TrainOperations:TStyleOperations;
 implementation
 uses System.SysUtils,System.Math,RhythmAudio,RhythmPlanRef,RhythmAnimation,RhythmImageBank,
-  RhythmTrainScene,RhythmTrainPlan;
+  RhythmTrainScene,RhythmTrainPlan,RhythmTrainArt;
 function CreateScene:TAnimationScene;
 begin Result:=TTrainAnimation.Create;end;
 procedure SetReference(Scene:TAnimationScene;const Ref:TRhythmPlanRef);
@@ -30,7 +30,9 @@ begin
         finally RestoredAudio.Free;
         end;
         try PreparedEnd:=Max(Context.Audio.Duration,RestoredTrain.EndTime);
-          PreparedSummary:=Format('列車アクション: %d動作 / 音同期%d / 終了 %.2f秒',[RestoredTrain.Count,RestoredTrain.Synced,RestoredTrain.EndTime]);
+          PreparedSummary:=Format('列車アクション: 敵%d体 / 障害%dか所 / 乗り移り%d回 / 音同期%d/%d動作',
+            [RestoredTrain.Enemies,RestoredTrain.Obstacles,RestoredTrain.ExchangeCount,
+             RestoredTrain.Synced,RestoredTrain.Count]);
         finally RestoredTrain.Free;
         end;
       finally Train.Free;
@@ -39,6 +41,6 @@ end;
 function TrainOperations:TStyleOperations;
 begin Result:=Default(TStyleOperations);Result.UnitName:='RhythmTrainStyle';Result.CreateScene:=CreateScene;
   Result.SetReference:=SetReference;Result.SetAudio:=SetAudio;Result.Prepare:=Prepare;
-  Result.LoadAudio:=LoadAudio;Result.CreateImages:=EmptyStyleImages;
+  Result.LoadAudio:=LoadAudio;Result.CreateImages:=CreateTrainArtImages;
 end;
 end.

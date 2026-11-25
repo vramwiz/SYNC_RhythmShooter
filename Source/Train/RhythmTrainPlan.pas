@@ -19,7 +19,7 @@ const
 type
   TTrainMove = (tmBoard, tmHit, tmVaultHit, tmDuckHit, tmShot, tmJump, tmLeftImpact,
     tmRightImpact, tmCouple, tmTransfer, tmBossJump, tmBossDuck, tmBossFinish, tmStation,
-    tmHurdle, tmHurdleHit);
+    tmHurdle, tmHurdleHit, tmSlide, tmRoofGap, tmLever, tmGateRun);
   TTrainCue = record
     Kind: TTrainMove;
     Start, Time, Finish, FromX, ToX: Double;
@@ -29,39 +29,63 @@ type
     Left, Right, Height: Double;
     Variant: Integer;
   end;
+  // 描画用の動作。保存ファイルには書き込まず、キューから毎回導出する。
+  TTrainGesture = (tgNone, tgJab, tgCross, tgUpper, tgKick, tgAirKick,
+    tgPulse, tgFinisher, tgLever, tgSweep);
   TTrainPose = record
-    X, Y, Run, Crouch, Reach, Land, Kick: Double;
+    X, Y, Run, Crouch, Reach, Land, Kick, Slide: Double;
+    Windup, FollowThrough, FlightPhase, ArtGesturePhase: Double;
+    Gesture: TTrainGesture;
     Airborne: Boolean;
+  end;
+  TTrainExchange = record
+    StartIndex, LeftIndex, RightIndex, CoupleIndex, TransferIndex, LeadCar: Integer;
   end;
   TTrainPlan = class
   private
     FCues: TArray<TTrainCue>;
+    FCarCue: TArray<Integer>;
+    FExchanges: TArray<TTrainExchange>;
+    FCarFormation: TArray<Integer>;
     FDuration, FEndTime: Double;
-    FInitialCars, FNextCars, FImpact, FSynced: Integer;
+    FCars, FSynced, FEnemies, FObstacles: Integer;
     function GetCount: Integer;
     function GetCue(Index: Integer): TTrainCue;
     function GetLength: Double;
     function GetArrival: Double;
     procedure Verify(Audio: TRhythmAudio);
+    procedure IndexCars;
+    function CueAt(Time: Double): Integer;
+    function GetExchange(Index: Integer): TTrainExchange;
+    function GetExchangeCount: Integer;
+    function ExchangeStart(const Exchange: TTrainExchange): Double;
+    function ExchangeEnd(const Exchange: TTrainExchange): Double;
   public
     class function Build(Audio: TRhythmAudio; const Cancel: TFunc<Boolean> = nil): TTrainPlan; static;
     class function Load(const Ref: TRhythmPlanRef; Audio: TRhythmAudio; Direction: Integer): TTrainPlan; static;
     class function LoadAudioMetadata(const Ref: TRhythmPlanRef; const Source: string; Direction: Integer): TRhythmAudio; static;
     procedure Save(var Ref: TRhythmPlanRef; Audio: TRhythmAudio);
     function PoseAt(Time: Double): TTrainPose;
+    function ScarfMotionAt(Time, CurrentX: Double): Double;
     function RoofY(X: Double): Double;
     function RoofCameraX(Time: Double): Double;
-    function RoofObstacle(Car: Integer; out Block: TTrainObstacle): Boolean;
-    procedure CollisionCamera(Time: Double; out X, Width, Blend: Double);
-    function LeftNoseAt(Time: Double): Double;
-    function RightRearAt(Time: Double): Double;
+    procedure CarCues(FirstCar, LastCar: Integer; out First, Last: Integer);
+    function NextRoofObstacle(Car: Integer; X: Double; out Block: TTrainObstacle): Boolean;
+    function ExchangeAt(Time: Double): Integer;
+    function FormationOf(Car: Integer): Integer;
+    function CarPosition(Car, ExchangeIndex: Integer; Time: Double; out Offset: Double): Boolean;
+    procedure CollisionCamera(Index: Integer; Time: Double; out X, Width, Blend: Double);
+    function LeftNoseAt(Index: Integer; Time: Double): Double;
+    function RightRearAt(Index: Integer; Time: Double): Double;
     function TravelAt(Time: Double): Double;
     property Count: Integer read GetCount;
     property Cue[Index: Integer]: TTrainCue read GetCue;
-    property InitialCars: Integer read FInitialCars;
-    property NextCars: Integer read FNextCars;
-    property ImpactIndex: Integer read FImpact;
+    property Cars: Integer read FCars;
+    property ExchangeCount: Integer read GetExchangeCount;
+    property Exchange[Index: Integer]: TTrainExchange read GetExchange;
     property Synced: Integer read FSynced;
+    property Enemies: Integer read FEnemies;
+    property Obstacles: Integer read FObstacles;
     property Arrival: Double read GetArrival;
     property TrainLength: Double read GetLength;
     property EndTime: Double read FEndTime;
@@ -70,6 +94,8 @@ type
 function TrainEase(T: Double): Double;
 function TrainThreatTime(const Cue: TTrainCue): Double;
 function TrainObstacle(const Cue: TTrainCue; out Block: TTrainObstacle): Boolean;
+function TrainRouteHazard(const Cue: TTrainCue; out Hazard: TTrainObstacle): Boolean;
+function TrainGateOpening(const Lever, Passage: TTrainCue; Time: Double): Double;
 function TrainRegularEnemy(Kind: TTrainMove): Boolean;
 
 implementation
@@ -78,12 +104,14 @@ uses
   System.Math, System.JSON, System.Generics.Collections, RhythmStyles, RhythmPreparedData;
 
 const
-  TrainPolicy = 'roof-action-v5';
+  TrainPolicy = 'roof-action-v10';
   HurdleArc = 1.46;
   EarlyBoardSource = -2;
-  MaxCues = 72;
+  MaxCars = 1150;
+  MaxCues = MaxCars*8+8;
   Epsilon = 1E-8;
   CruiseSpeed = 14.8;
+  CouplerCompression = 0.037;
 
 function TrainEase(T: Double): Double;
 begin
@@ -107,7 +135,7 @@ begin
 end;
 
 function TrainObstacle(const Cue: TTrainCue; out Block: TTrainObstacle): Boolean;
-var Span: Double;
+var Span: Double; Car: Integer;
 begin
   Block := Default(TTrainObstacle);
   Result := Cue.Kind in [tmHurdle,tmHurdleHit];
@@ -115,7 +143,8 @@ begin
   Span := Cue.ToX-Cue.FromX;
   Block.Left := Cue.FromX+Span*0.29;
   Block.Right := Cue.FromX+Span*0.62;
-  Block.Variant := Floor(Cue.FromX/TrainPitch) mod 3;
+  Car := Floor(Cue.FromX/TrainPitch);
+  Block.Variant := (Car+Floor((Cue.FromX-Car*TrainPitch)/4)) mod 3;
   case Block.Variant of
     0: Block.Height := 0.79;
     1: Block.Height := 1.02;
@@ -123,32 +152,85 @@ begin
   end;
 end;
 
-function TTrainPlan.RoofObstacle(Car: Integer; out Block: TTrainObstacle): Boolean;
-var Move: TTrainCue;
+function TrainRouteHazard(const Cue: TTrainCue; out Hazard: TTrainObstacle): Boolean;
+var Span: Double;
 begin
-  for Move in FCues do
-    if (Move.Kind in [tmHurdle,tmHurdleHit]) and (Floor(Move.FromX/TrainPitch)=Car) then
-      Exit(TrainObstacle(Move,Block));
+  Hazard := Default(TTrainObstacle);
+  Span := Cue.ToX-Cue.FromX;
+  Result := True;
+  case Cue.Kind of
+    tmSlide: begin
+      Hazard.Left := Cue.FromX+Span*0.34;
+      Hazard.Right := Cue.FromX+Span*0.62;
+      Hazard.Height := 0.76;
+    end;
+    tmRoofGap: begin
+      Hazard.Left := Cue.FromX+Span*0.30;
+      Hazard.Right := Cue.FromX+Span*0.67;
+    end;
+    tmGateRun: begin
+      Hazard.Left := Cue.FromX+Span*0.43;
+      Hazard.Right := Hazard.Left+0.24;
+      Hazard.Height := 1.68;
+    end;
+  else
+    Result := False;
+  end;
+end;
+
+function TrainGateOpening(const Lever, Passage: TTrainCue; Time: Double): Double;
+begin
+  Result := TrainEase(Ramp(Time,Lever.Time,Min(Lever.Time+0.19,Passage.Start)));
+end;
+
+procedure TTrainPlan.IndexCars;
+var Car, I, Formation: Integer;
+begin
+  SetLength(FCarCue,FCars+1);
+  SetLength(FCarFormation,FCars);
+  I := 0;
+  for Car := 1 to High(FCarCue) do begin
+    while (I<Count) and (FCues[I].FromX<Car*TrainPitch) do Inc(I);
+    FCarCue[Car] := I;
+  end;
+  Formation := 0;
+  for Car := 0 to FCars-1 do begin
+    if (Formation<ExchangeCount) and (Car>FExchanges[Formation].LeadCar) then Inc(Formation);
+    FCarFormation[Car] := Formation;
+  end;
+end;
+
+procedure TTrainPlan.CarCues(FirstCar, LastCar: Integer; out First, Last: Integer);
+begin
+  First := FCarCue[EnsureRange(FirstCar,0,High(FCarCue))];
+  Last := FCarCue[EnsureRange(LastCar+1,0,High(FCarCue))]-1;
+end;
+
+function TTrainPlan.NextRoofObstacle(Car: Integer; X: Double; out Block: TTrainObstacle): Boolean;
+var I, First, Last: Integer;
+begin
+  CarCues(Car,Car,First,Last);
+  for I := First to Last do
+    if TrainObstacle(FCues[I],Block) and (Block.Right>=X) then Exit(True);
   Block := Default(TTrainObstacle);
   Result := False;
 end;
 
 function TTrainPlan.RoofCameraX(Time: Double): Double;
 var
+  I: Integer;
   C: TTrainCue;
-  Start, Finish, NextX: Double;
+  CurrentX, NextX: Double;
 begin
   Result := 5.91;
-  for C in FCues do
+  for I := CueAt(Time+0.11) downto 0 do begin
+    C := FCues[I];
     if C.Kind in [tmJump,tmTransfer,tmBossJump] then begin
-      Start := C.Start-0.11;
-      Finish := C.Time+0.11;
-      if Time<=Start then Exit;
       NextX := Floor(C.ToX/TrainPitch)*TrainPitch+5.91;
-      if Time<Finish then
-        Exit(Result+(NextX-Result)*TrainEase(Ramp(Time,Start,Finish)));
-      Result := NextX;
+      CurrentX := Floor(C.FromX/TrainPitch)*TrainPitch+5.91;
+      Exit(CurrentX+(NextX-CurrentX)*TrainEase(Ramp(Time,C.Start-0.11,C.Time+0.11)));
     end;
+  end;
 end;
 
 function TTrainPlan.GetCount: Integer;
@@ -163,7 +245,7 @@ end;
 
 function TTrainPlan.GetLength: Double;
 begin
-  Result := (FInitialCars+FNextCars)*TrainPitch-TrainGap;
+  Result := FCars*TrainPitch-TrainGap;
 end;
 
 function TTrainPlan.GetArrival: Double;
@@ -177,9 +259,9 @@ function TTrainPlan.RoofY(X: Double): Double;
 var
   Car: Integer;
 begin
-  Car := Floor(X/TrainPitch)-FInitialCars;
+  Car := Floor(X/TrainPitch);
   Result := 0;
-  if Car>=0 then
+  if FormationOf(Car)>0 then
     case Car mod 3 of
       0: Result := 0.36;
       1: Result := 0.10;
@@ -202,83 +284,173 @@ begin
   Result := CruiseSpeed*(Result+T*(1-0.5*T/Max(Epsilon,Arrival-Brake)));
 end;
 
-function TTrainPlan.LeftNoseAt(Time: Double): Double;
-var
-  Joint, Detach, Contact, SeparationEnd, U: Double;
+function TTrainPlan.GetExchange(Index: Integer): TTrainExchange;
 begin
-  Joint := (FInitialCars-1)*TrainPitch-TrainGap;
-  Detach := FCues[FImpact-1].Finish;
-  Contact := FCues[FImpact].Time;
+  Result := FExchanges[Index];
+end;
+
+function TTrainPlan.GetExchangeCount: Integer;
+begin
+  Result := Length(FExchanges);
+end;
+
+function TTrainPlan.ExchangeStart(const Exchange: TTrainExchange): Double;
+begin
+  Result := FCues[Exchange.StartIndex-1].Finish;
+end;
+
+function TTrainPlan.ExchangeEnd(const Exchange: TTrainExchange): Double;
+begin
+  Result := FCues[Exchange.TransferIndex].Time+0.12;
+end;
+
+function TTrainPlan.ExchangeAt(Time: Double): Integer;
+var LowIndex, HighIndex, Middle: Integer;
+begin
+  LowIndex := 0;
+  HighIndex := ExchangeCount;
+  while LowIndex<HighIndex do begin
+    Middle := (LowIndex+HighIndex) div 2;
+    if Time>=ExchangeEnd(FExchanges[Middle]) then LowIndex := Middle+1
+    else HighIndex := Middle;
+  end;
+  Result := LowIndex;
+end;
+
+function TTrainPlan.FormationOf(Car: Integer): Integer;
+begin
+  if (Car<0) or (Car>=FCars) then Exit(-1);
+  Result := FCarFormation[Car];
+end;
+
+function TTrainPlan.CarPosition(Car, ExchangeIndex: Integer; Time: Double; out Offset: Double): Boolean;
+var Formation: Integer; E: TTrainExchange; ExitTime: Double;
+begin
+  Offset := 0;
+  Formation := FormationOf(Car);
+  Result := False;
+  if (Formation<0) or (Formation<ExchangeIndex-1) or (Formation>ExchangeIndex+1) then Exit;
+  if Formation<ExchangeIndex then begin
+    E := FExchanges[Formation];
+    ExitTime := ExchangeEnd(E);
+    if Time>=ExitTime+1.05 then Exit;
+    Offset := -23*TrainEase(Ramp(Time,ExitTime,ExitTime+1.05));
+    if Car<E.LeadCar then
+      Offset := Offset+LeftNoseAt(Formation,Time)-(E.LeadCar*TrainPitch-TrainGap);
+  end
+  else if ExchangeIndex<ExchangeCount then begin
+    E := FExchanges[ExchangeIndex];
+    if Formation>ExchangeIndex then begin
+      if Time<ExchangeStart(E) then Exit;
+      Offset := RightRearAt(ExchangeIndex,Time)-(E.LeadCar+1)*TrainPitch;
+    end
+    else if Car<E.LeadCar then
+      Offset := LeftNoseAt(ExchangeIndex,Time)-(E.LeadCar*TrainPitch-TrainGap);
+  end;
+  Result := True;
+end;
+
+function TTrainPlan.LeftNoseAt(Index: Integer; Time: Double): Double;
+var
+  E: TTrainExchange;
+  Joint, Detach, Contact, SeparationEnd, Approach, U: Double;
+begin
+  E := FExchanges[Index];
+  Joint := E.LeadCar*TrainPitch-TrainGap;
+  if E.LeftIndex<0 then Exit(Joint);
+  Detach := ExchangeStart(E);
+  Contact := FCues[E.LeftIndex].Time;
   SeparationEnd := Detach+(Contact-Detach)*0.43;
   if Time<=SeparationEnd then
-    Exit(Joint-4.8*TrainEase(Ramp(Time,Detach,SeparationEnd)));
+    Exit(Joint-6.4*TrainEase(Ramp(Time,Detach,SeparationEnd)));
   if Time<=Contact then begin
-    U := Ramp(Time,SeparationEnd,Contact);
-    Exit(Joint-4.8*(1-Sqr(U)));
+    Approach := Max(SeparationEnd,Contact-1.07);
+    U := Ramp(Time,Approach,Contact);
+    Exit(Joint-6.4*(1-Sqr(U)));
   end;
-  Result := Joint-9.2*TrainEase(Ramp(Time,Contact,FCues[FImpact+2].Time+0.19));
+  U := Ramp(Time,Contact+CouplerCompression,Contact+0.40);
+  Result := Joint-5.4*(1-Sqr(1-U))-
+    3.8*TrainEase(Ramp(Time,Contact+0.27,FCues[E.CoupleIndex].Time+0.19));
 end;
 
-function TTrainPlan.RightRearAt(Time: Double): Double;
+function TTrainPlan.RightRearAt(Index: Integer; Time: Double): Double;
 var
-  C: TTrainCue;
-  Dock, U: Double;
+  E: TTrainExchange;
+  Contact, Dock, U, Approach: Double;
 begin
-  C := FCues[FImpact+1];
-  Dock := FInitialCars*TrainPitch;
-  if Time<=C.Time then begin
-    U := Ramp(Time,C.Start,C.Time);
+  E := FExchanges[Index];
+  Dock := (E.LeadCar+1)*TrainPitch;
+  if E.RightIndex<0 then begin
+    Contact := FCues[E.CoupleIndex].Time;
+    U := Ramp(Time,Max(FCues[E.LeftIndex].Time+0.16,Contact-1.03),Contact);
     Exit(Dock+10*(1-Sqr(U)));
   end;
-  U := Ramp(Time,C.Time,FCues[FImpact+2].Time);
-  Result := Dock+0.96*Sqr(Sin(Pi*U));
+  Contact := FCues[E.RightIndex].Time;
+  if Time<=Contact then begin
+    Approach := ExchangeStart(E);
+    if E.LeftIndex>=0 then Approach := FCues[E.LeftIndex].Time+0.16;
+    U := Ramp(Time,Max(Approach,Contact-1.10),Contact);
+    Exit(Dock+10*(1-Sqr(U)));
+  end;
+  U := Ramp(Time,Contact+CouplerCompression,FCues[E.CoupleIndex].Time);
+  Result := Dock+Sin(Pi*U)*(1.35+1.78*(1-U));
 end;
 
-procedure TTrainPlan.CollisionCamera(Time: Double; out X, Width, Blend: Double);
+procedure TTrainPlan.CollisionCamera(Index: Integer; Time: Double; out X, Width, Blend: Double);
 var
-  LeftTime, RightTime, Gap, Detach, LeftJoint, RightJoint, Hero, Pan, LeftWidth: Double;
+  E: TTrainExchange;
+  LeftTime, RightTime, Gap, Detach, LeftJoint, RightJoint, LeftHero, Pan, LeftWidth: Double;
 begin
   X := 0;
   Width := TrainRoofViewWidth;
   Blend := 0;
-  if Count=0 then Exit;
-  LeftTime := FCues[FImpact].Time;
-  RightTime := FCues[FImpact+1].Time;
-  Gap := RightTime-LeftTime;
-  Detach := FCues[FImpact-1].Finish;
-  Blend := TrainEase(Ramp(Time,Detach,Max(Detach+0.015,LeftTime-0.27)))*
-    (1-TrainEase(Ramp(Time,FCues[FImpact+2].Time+0.05,FCues[FImpact+3].Time+0.12)));
+  if (Index<0) or (Index>=ExchangeCount) then Exit;
+  E := FExchanges[Index];
+  Detach := ExchangeStart(E);
+  Blend := TrainEase(Ramp(Time,Detach-0.10,Max(Detach+0.015,FCues[E.StartIndex].Time-0.29)))*
+    (1-TrainEase(Ramp(Time,FCues[E.CoupleIndex].Time+0.05,ExchangeEnd(E))));
   if Blend<=0 then Exit;
 
-  // 衝突の前に、連結器と主人公を同じ画面に収める。左から右への移動も次の接触より先に終える。
-  LeftJoint := (FInitialCars-1)*TrainPitch-TrainGap*0.5;
-  RightJoint := FInitialCars*TrainPitch-TrainGap*0.5;
-  Hero := FCues[FImpact].ToX;
-  Pan := TrainEase(Ramp(Time,LeftTime+Min(0.17,Gap*0.27),RightTime-Min(0.26,Gap*0.32)));
-  LeftWidth := Max(TrainRoofViewWidth,Hero-LeftJoint+4.7);
-  X := (LeftJoint+Hero)*0.5*(1-Pan)+(RightJoint+Hero)*0.5*Pan;
-  Width := LeftWidth*(1-Pan)+TrainRoofViewWidth*Pan;
+  RightJoint := (E.LeadCar+1)*TrainPitch-TrainGap*0.5;
+  X := RightJoint+0.78;
+  Width := 17.8;
+  if E.LeftIndex<0 then Exit;
+  LeftJoint := E.LeadCar*TrainPitch-TrainGap*0.5;
+  LeftHero := FCues[E.LeftIndex].ToX;
+  LeftTime := FCues[E.LeftIndex].Time;
+  RightTime := FCues[E.CoupleIndex].Time;
+  if E.RightIndex>=0 then RightTime := FCues[E.RightIndex].Time;
+  Gap := RightTime-LeftTime;
+  Pan := TrainEase(Ramp(Time,LeftTime+Min(0.29,Gap*0.35),RightTime-Min(0.26,Gap*0.32)));
+  LeftWidth := Max(20.4,LeftHero-LeftJoint+10.0);
+  X := ((LeftJoint+LeftHero)*0.5-1.86)*(1-Pan)+X*Pan;
+  Width := LeftWidth*(1-Pan)+Width*Pan;
 end;
 
-function RoofRunProgress(U: Double): Double;
+procedure RunBetween(var Pose: TTrainPose; Time, Start, Finish, FromX, ToX: Double);
 const
-  Blend = 0.12;
+  Blend = 0.18;
+var U, Progress, Speed: Double;
 begin
-  if U<Blend then Exit(Sqr(U)/(2*Blend*(1-Blend)));
-  if U>1-Blend then Exit(1-Sqr(1-U)/(2*Blend*(1-Blend)));
-  Result := (U-Blend*0.5)/(1-Blend);
+  Pose.X := FromX;
+  if Time>=Finish then begin
+    Pose.X := ToX;
+    Exit;
+  end;
+  if (Time<=Start) or (FromX=ToX) then Exit;
+  U := Ramp(Time,Start,Finish);
+  if U<Blend then Progress := Sqr(U)/(2*Blend)
+  else if U>1-Blend then Progress := 1-Blend-Sqr(1-U)/(2*Blend)
+  else Progress := U-Blend*0.5;
+  Pose.X := FromX+(ToX-FromX)*Progress/(1-Blend);
+  Speed := (ToX-FromX)/((Finish-Start)*(1-Blend))*Min(1.0,Min(U,1-U)/Blend);
+  Pose.Run := EnsureRange(Speed/7.5,0.0,1.0);
 end;
 
-function TTrainPlan.PoseAt(Time: Double): TTrainPose;
+function TTrainPlan.CueAt(Time: Double): Integer;
 var
-  I, LowIndex, HighIndex, Middle: Integer;
-  C: TTrainCue;
-  U, Height, Y0, Y1, Displacement, Speed, AttackSpan: Double;
+  LowIndex, HighIndex, Middle: Integer;
 begin
-  Result := Default(TTrainPose);
-  Result.X := TrainBoardX;
-  Result.Y := TrainPlatformY;
-  if Count=0 then Exit;
   LowIndex := 0;
   HighIndex := Count;
   while LowIndex<HighIndex do begin
@@ -286,7 +458,20 @@ begin
     if FCues[Middle].Start<=Time then LowIndex := Middle+1
     else HighIndex := Middle;
   end;
-  I := LowIndex-1;
+  Result := LowIndex-1;
+end;
+
+function TTrainPlan.PoseAt(Time: Double): TTrainPose;
+var
+  I: Integer;
+  C, Next: TTrainCue;
+  U, Height, Y0, Y1, AttackSpan, PrepStart, HitStart, Progress: Double;
+begin
+  Result := Default(TTrainPose);
+  Result.X := TrainBoardX;
+  Result.Y := TrainPlatformY;
+  if Count=0 then Exit;
+  I := CueAt(Time);
   if I<0 then begin
     U := Ramp(Time,FCues[0].Start-0.19,FCues[0].Start);
     Result.X := TrainBoardX-1.6*(1-TrainEase(U));
@@ -302,13 +487,8 @@ begin
     Result.X := C.ToX;
     Result.Y := Y1;
     if I<High(FCues) then begin
-      Displacement := FCues[I+1].FromX-C.ToX;
-      U := Ramp(Time,C.Finish,FCues[I+1].Start);
-      Result.X := C.ToX+Displacement*RoofRunProgress(U);
-      if (Displacement>0.02) and (U>0) and (U<1) then begin
-        Speed := Displacement/Max(Epsilon,FCues[I+1].Start-C.Finish);
-        Result.Run := EnsureRange(0.63+Speed*0.075,0.0,1.0);
-      end;
+      Next := FCues[I+1];
+      RunBetween(Result,Time,C.Finish,Next.Start,C.ToX,Next.FromX);
       Result.Y := RoofY(Result.X);
     end;
     Exit;
@@ -319,62 +499,122 @@ begin
     tmBoard: Height := 1.48;
     tmVaultHit: Height := 1.02;
     tmHurdle,tmHurdleHit: Height := HurdleArc;
+    tmRoofGap: Height := 1.24;
     tmJump: Height := 0.94;
     tmTransfer: Height := 1.19;
     tmBossJump: Height := 1.45;
     tmStation: Height := 0.76;
+    tmRightImpact: Height := 0.73;
   end;
   if Height>0 then begin
     Result.X := C.FromX+(C.ToX-C.FromX)*U;
     Result.Y := Y0+(Y1-Y0)*U-4*Height*U*(1-U);
     Result.Airborne := (U>0) and (U<1);
+    Result.FlightPhase := U;
     if Time>=C.Time then
-      Result.Land := Max(0.0,1-(Time-C.Time)/0.12);
-    Result.Crouch := 0.54*Result.Land;
+      Result.Land := 1-Ramp(Time,C.Time,C.Finish);
+    Result.Crouch := 0.72*Result.Land;
+  end
+  else if C.Kind=tmSlide then begin
+    Result.X := C.FromX+(C.ToX-C.FromX)*U;
+    Result.Y := Y1;
+    Result.Slide := TrainEase(U/0.08)*(1-TrainEase((U-0.89)/0.11));
   end
   else begin
-    Result.X := C.FromX+(C.ToX-C.FromX)*TrainEase(U);
+    RunBetween(Result,Time,C.Start,C.Time,C.FromX,C.ToX);
     Result.Y := Y1;
-    if (C.ToX-C.FromX>0.12) and (U<0.81) then
-      Result.Run := 0.77*TrainEase((0.81-U)/0.32);
   end;
-  if (Time>=C.Time) and (C.Kind in [tmLeftImpact,tmRightImpact]) then
-    Result.Crouch := 0.57*Max(0.0,1-(Time-C.Time)/0.11);
-  if C.Kind in [tmDuckHit,tmBossDuck] then
-    Result.Crouch := Sqr(Sin(Pi*U))*0.88;
-  if TrainRegularEnemy(C.Kind) or (C.Kind in [tmBossDuck,tmBossFinish]) then begin
-    AttackSpan := Min(0.085,(C.Time-C.Start)*0.54);
-    if C.Kind in [tmShot,tmBossFinish] then AttackSpan := Min(0.17,(C.Time-C.Start)*0.73);
-    if Time>=C.Time then AttackSpan := 0.12;
-    Result.Reach := Max(0.0,1-Abs(Time-C.Time)/Max(Epsilon,AttackSpan));
-    if C.Kind in [tmVaultHit,tmHurdleHit] then Result.Kick := Result.Reach;
+  if C.Kind in [tmLeftImpact,tmRightImpact,tmCouple] then begin
+    if Time<C.Time then
+      Result.Crouch := 0.47*TrainEase(Ramp(Time,Max(C.Start,C.Time-0.22),C.Time))
+    else Result.Crouch := 0.88*(1-Ramp(Time,C.Time,C.Finish));
   end;
+  if C.Kind in [tmDuckHit,tmBossDuck] then begin
+    // 低姿勢の頂点を見た目だけでなく、敵の通過時刻に合わせる。
+    PrepStart := TrainThreatTime(C);
+    if Time<PrepStart then Progress := TrainEase(Ramp(Time,C.Start,PrepStart))
+    else Progress := 1-TrainEase(Ramp(Time,PrepStart,C.Time));
+    Result.Crouch := Progress*0.88;
+  end;
+  if TrainRegularEnemy(C.Kind) or (C.Kind in [tmBossDuck,tmBossFinish,tmLever]) then begin
+    // 接触点は従来の音ピーク。予備動作・打ち出し・戻りだけを描画上で補間する。
+    case C.Kind of
+      tmHit: case I mod 4 of
+        0: Result.Gesture := tgJab;
+        1: Result.Gesture := tgCross;
+        2: Result.Gesture := tgKick;
+      else Result.Gesture := tgUpper;
+      end;
+      tmVaultHit,tmHurdleHit: Result.Gesture := tgAirKick;
+      tmDuckHit: Result.Gesture := tgUpper;
+      tmShot: Result.Gesture := tgPulse;
+      tmBossDuck: Result.Gesture := tgCross;
+      tmBossFinish: Result.Gesture := tgFinisher;
+      tmLever: Result.Gesture := tgLever;
+    end;
+    AttackSpan := Min(0.105,(C.Time-C.Start)*0.54);
+    if Result.Gesture in [tgPulse,tgFinisher] then
+      AttackSpan := Min(0.17,(C.Time-C.Start)*0.73);
+    HitStart := C.Time-AttackSpan;
+    PrepStart := Max(C.Start,HitStart-AttackSpan*1.6);
+    if Time<C.Time then begin
+      if Time<HitStart then
+        Result.ArtGesturePhase := 0.3*Ramp(Time,PrepStart,HitStart)
+      else
+        Result.ArtGesturePhase := 0.3+0.2*Ramp(Time,HitStart,C.Time);
+      Result.Windup := TrainEase(Ramp(Time,PrepStart,HitStart))*
+        (1-TrainEase(Ramp(Time,HitStart,C.Time)));
+      Result.Reach := TrainEase(Ramp(Time,HitStart,C.Time));
+    end else begin
+      Progress := Ramp(Time,C.Time,C.Finish);
+      Result.ArtGesturePhase := 0.5+0.5*Progress;
+      Result.Reach := 1-TrainEase(Progress);
+      Result.FollowThrough := Sin(Pi*Progress);
+    end;
+    if Result.Gesture in [tgKick,tgAirKick] then Result.Kick := Result.Reach;
+  end;
+end;
+
+function TTrainPlan.ScarfMotionAt(Time, CurrentX: Double): Double;
+var NearPose, FarPose: TTrainPose; Speed: Double;
+begin
+  // Normalize the runner's motion relative to the roof, not train or camera speed.
+  // A trailing finite window supplies the cloth's settling lag on random seeks too.
+  NearPose := PoseAt(Max(0.0,Time-0.06));
+  FarPose := PoseAt(Max(0.0,Time-0.24));
+  Speed := 0.53*Abs(CurrentX-NearPose.X)/0.06+
+    0.47*Abs(CurrentX-FarPose.X)/0.24;
+  Result := EnsureRange((Speed-0.06)/3.20,0.0,1.0);
 end;
 
 procedure TTrainPlan.Verify(Audio: TRhythmAudio);
 var
-  I, LastSource: Integer;
+  I, LastSource, ExchangeCount, PreviousLead, J: Integer;
   Previous, Span, Edge, Clearance: Double;
   C: TTrainCue;
   Block: TTrainObstacle;
+  E: TTrainExchange;
 begin
   if IsNan(FDuration) or IsInfinite(FDuration) or (FDuration<=0) or
      IsNan(FEndTime) or IsInfinite(FEndTime) or (FEndTime<0) or
-     (FEndTime>Max(10.0,FDuration+1.4)) or (FInitialCars<2) or (FInitialCars>8) or
-     (FNextCars<2) or (FNextCars>6) or (Count>MaxCues) then
+     (FEndTime>Max(10.0,FDuration+1.4)) or (FCars<4) or (FCars>MaxCars) or (Count>MaxCues) then
     raise EConvertError.Create('Train plan bounds');
   FSynced := 0;
-  FImpact := -1;
+  FEnemies := 0;
+  FObstacles := 0;
+  FExchanges := nil;
   if Count=0 then Exit;
   Previous := -1;
   LastSource := -1;
   for I := 0 to High(FCues) do begin
     C := FCues[I];
-    if (C.Start<=Previous) or (C.Start<0) or (C.Time<=C.Start) or (C.Finish<C.Time) or
+    if (C.Start<=Previous) or (C.Start<0) or (C.Time<=C.Start) or (C.Finish<=C.Time) or
        (C.Finish>FEndTime) or (C.FromX<TrainBoardX) or (C.ToX<C.FromX) or
        (C.ToX>TrainLength+1.3) or ((I>0) and (C.FromX+Epsilon<FCues[I-1].ToX)) then
       raise EConvertError.Create('Train move bounds');
+    if TrainRegularEnemy(C.Kind) then Inc(FEnemies);
     if TrainObstacle(C,Block) then begin
+      Inc(FObstacles);
       Span := C.ToX-C.FromX;
       if (Span<2.2) or (Floor(C.FromX/TrainPitch)<>Floor(C.ToX/TrainPitch)) or
          (C.ToX-Floor(C.ToX/TrainPitch)*TrainPitch>=TrainCarWidth) then
@@ -386,8 +626,18 @@ begin
       if Clearance<Block.Height+0.12 then
         raise EConvertError.Create('Train obstacle clearance');
     end;
+    if TrainRouteHazard(C,Block) then begin
+      Inc(FObstacles);
+      if (C.FromX>=Block.Left) or (Block.Right>=C.ToX) or
+         (Floor(C.FromX/TrainPitch)<>Floor(C.ToX/TrainPitch)) then
+        raise EConvertError.Create('Train route hazard geometry');
+      if (C.Kind=tmGateRun) and ((I=0) or (FCues[I-1].Kind<>tmLever) or
+         (FCues[I-1].ToX+TrainReach>=Block.Left)) then
+        raise EConvertError.Create('Train gate missing control');
+    end;
+    if (C.Kind=tmLever) and ((I=High(FCues)) or (FCues[I+1].Kind<>tmGateRun)) then
+      raise EConvertError.Create('Train lever missing gate');
     Previous := C.Finish;
-    if C.Kind=tmLeftImpact then FImpact := I;
     if C.Source=EarlyBoardSource then begin
       if (I<>0) or (C.Kind<>tmBoard) or (C.Time<0.45) or (C.Time>0.76) then
         raise EConvertError.Create('Train departure onset');
@@ -401,11 +651,52 @@ begin
       Inc(FSynced);
     end;
   end;
-  if (FImpact<2) or (FImpact+5>=High(FCues)) or (FCues[0].Kind<>tmBoard) or (FCues[0].Time>0.82) or
-     (FCues[FImpact+1].Kind<>tmRightImpact) or (FCues[FImpact+2].Kind<>tmCouple) or
-     (FCues[FImpact+3].Kind<>tmTransfer) or (FCues[High(FCues)-1].Kind<>tmBossFinish) or
+  if (Count<8) or (FCues[0].Kind<>tmBoard) or (FCues[0].Time>0.82) or
+     (FCues[High(FCues)-1].Kind<>tmBossFinish) or
      (FCues[High(FCues)].Kind<>tmStation) then
     raise EConvertError.Create('Train phase order');
+  SetLength(FExchanges,Count div 3);
+  PreviousLead := -1;
+  ExchangeCount := 0;
+  I := 0;
+  while I<Count do begin
+    if not (FCues[I].Kind in [tmLeftImpact,tmRightImpact]) then begin
+      if FCues[I].Kind in [tmCouple,tmTransfer] then raise EConvertError.Create('Train exchange order');
+      Inc(I);
+      Continue;
+    end;
+    E.StartIndex := I;
+    E.LeftIndex := -1;
+    E.RightIndex := -1;
+    if FCues[I].Kind=tmLeftImpact then begin
+      E.LeftIndex := I;
+      Inc(I);
+    end;
+    if (I<Count) and (FCues[I].Kind=tmRightImpact) then begin
+      E.RightIndex := I;
+      Inc(I);
+    end;
+    if (E.StartIndex<2) or (I+4>=Count) or (FCues[I].Kind<>tmCouple) or
+       (FCues[I+1].Kind<>tmTransfer) then raise EConvertError.Create('Train exchange order');
+    E.CoupleIndex := I;
+    E.TransferIndex := I+1;
+    E.LeadCar := Floor(FCues[I].FromX/TrainPitch);
+    if (E.LeadCar<PreviousLead+2) or (E.LeadCar>=FCars-2) or
+       (Floor(FCues[I+1].FromX/TrainPitch)<>E.LeadCar) or
+       (Floor(FCues[I+1].ToX/TrainPitch)<>E.LeadCar+1) then
+      raise EConvertError.Create('Train exchange cars');
+    for J := E.StartIndex to E.CoupleIndex do
+      if (Floor(FCues[J].FromX/TrainPitch)<>E.LeadCar) or (Floor(FCues[J].ToX/TrainPitch)<>E.LeadCar) then
+        raise EConvertError.Create('Train exchange contact car');
+    if (ExchangeCount=0) and ((E.LeftIndex<0) or (E.RightIndex<0) or (FCues[E.StartIndex].Time>=10.02)) then
+      raise EConvertError.Create('Train opening exchange');
+    PreviousLead := E.LeadCar;
+    FExchanges[ExchangeCount] := E;
+    Inc(ExchangeCount);
+    Inc(I,2);
+  end;
+  if ExchangeCount=0 then raise EConvertError.Create('Train exchange missing');
+  SetLength(FExchanges,ExchangeCount);
 end;
 
 type
@@ -460,12 +751,23 @@ var
   Options: TList<TTrainTimingChoice>;
   Entry, Prior: TTrainTimingChoice;
   Move: TTrainCue;
-  I,J,K,Cursor,Worst,Winner: Integer;
-  Sum,TimeScale,Clock,Target,Window,RangeStart,RangeEnd,Spacing,Time,Strength,Emphasis,Total: Double;
+  I,J,K,Cursor,Worst,Winner,FirstExchange: Integer;
+  Sum,TimeScale,Clock,Target,Window,RangeStart,RangeEnd,Spacing,Time,Strength,Emphasis,Total,
+    StepTime, Gap, RouteMinimum, LongestGap, FirstWeight, FirstTarget: Double;
 begin
   Sum := 0;
-  for Move in Cues do Sum := Sum+Move.Time;
-  TimeScale := EndTarget/Sum;
+  FirstExchange := -1;
+  FirstWeight := 0;
+  for I := 0 to Cues.Count-1 do begin
+    Move := Cues[I];
+    Sum := Sum+Move.Time;
+    if (FirstExchange<0) and (Move.Kind in [tmLeftImpact,tmRightImpact]) then begin
+      FirstExchange := I;
+      FirstWeight := Sum;
+    end;
+  end;
+  FirstTarget := Min(8.35,EndTarget*FirstWeight/Sum);
+  TimeScale := FirstTarget/FirstWeight;
   SetLength(Targets,Cues.Count);
   SetLength(Choices,Cues.Count);
   Clock := 0;
@@ -474,6 +776,7 @@ begin
     for I := 0 to Cues.Count-1 do begin
       if Assigned(Cancel) and Cancel() then Abort;
       Move := Cues[I];
+      if I=FirstExchange+1 then TimeScale := (EndTarget-FirstTarget)/(Sum-FirstWeight);
       Clock := Clock+Move.Time*TimeScale;
       Target := Clock;
       if Move.Kind=tmBoard then Target := 0.56;
@@ -483,10 +786,12 @@ begin
       case Move.Kind of
         tmBoard,tmLeftImpact,tmRightImpact,tmCouple,tmBossFinish:
           begin Emphasis := 2.2; Window := Min(3.2,Window+0.72); end;
-        tmHit,tmVaultHit,tmDuckHit,tmShot,tmHurdleHit,tmBossDuck: Emphasis := 1.62;
+        tmHurdleHit,tmVaultHit,tmBossDuck,tmLever,tmRoofGap: Emphasis := 1.86;
+        tmHit,tmDuckHit,tmShot: Emphasis := 1.62;
       end;
       RangeStart := Max(0.32,Target-Window);
       RangeEnd := Min(Audio.Duration,Target+Window);
+      if I=FirstExchange then RangeEnd := Min(RangeEnd,9.95);
       if Move.Kind=tmBoard then begin
         RangeStart := 0.40;
         RangeEnd := Min(0.75,RangeEnd);
@@ -495,7 +800,7 @@ begin
       Entry := Default(TTrainTimingChoice);
       Entry.Time := Target;
       Entry.Source := -1;
-      Entry.Merit := -0.37*Emphasis;
+      Entry.Merit := -0.62*Emphasis;
       Options.Add(Entry);
       if Move.Kind=tmBoard then begin
         Time := FindTrainOnset(Audio,0.45,0.004,75);
@@ -527,10 +832,19 @@ begin
       end;
       Choices[I] := Options.ToArray;
       Spacing := 0.0;
+      StepTime := 0.0;
+      LongestGap := 0.0;
       if I>0 then begin
-        Spacing := Min(0.38,(Targets[I]-Targets[I-1])*0.56);
-        if Move.Kind in [tmLeftImpact,tmRightImpact,tmCouple,tmTransfer] then
-          Spacing := Min(0.53,(Targets[I]-Targets[I-1])*0.62);
+        StepTime := Targets[I]-Targets[I-1];
+        RouteMinimum := 0.135+(Move.ToX-Cues[I-1].ToX)/19;
+        case Move.Kind of
+          tmJump,tmTransfer,tmBossJump: RouteMinimum := Max(0.44,RouteMinimum);
+          tmLeftImpact: RouteMinimum := 0.99;
+          tmRightImpact: RouteMinimum := 0.87;
+          tmCouple: RouteMinimum := 0.64;
+        end;
+        Spacing := Min(RouteMinimum,StepTime*0.86);
+        LongestGap := Max(1.28,StepTime*1.82+0.10);
       end;
       for J := 0 to High(Choices[I]) do begin
         Entry := Choices[I][J];
@@ -540,8 +854,12 @@ begin
           Entry.Total := Unreachable;
           for K := 0 to High(Choices[I-1]) do begin
             Prior := Choices[I-1][K];
-            Total := Prior.Total+Entry.Merit;
-            if (Prior.Time+Spacing<=Entry.Time) and (Total>Entry.Total) then begin
+            Gap := Entry.Time-Prior.Time;
+            if (Prior.Previous<0) and (I>1) then Continue;
+            if (Gap<Spacing) or (Gap>LongestGap) then Continue;
+            // 前後の間隔も評価し、音が密集した直後に長い空白ができるのを抑える。
+            Total := Prior.Total+Entry.Merit-0.66*Sqr((Gap-StepTime)/Max(0.55,StepTime));
+            if Total>Entry.Total then begin
               Entry.Previous := K;
               Entry.Total := Total;
             end;
@@ -586,14 +904,67 @@ begin
   end;
 end;
 
+procedure AlignRemainingBossHits(Cues: TList<TTrainCue>; Audio: TRhythmAudio);
+var I,J,K,BeforeSource,AfterSource,Best: Integer;
+    C: TTrainCue; BeforeTime,AfterTime,Lo,Hi,BestCost,Cost: Double;
+begin
+  // Only unsynchronized boss contacts can move. Preserve every ordinary cue and
+  // both adjacent phase lengths; lack of a real suitable accent keeps the fallback.
+  for I := Cues.Count-3 to Cues.Count-2 do begin
+    C := Cues[I];
+    if (C.Source>=0) or not (C.Kind in [tmBossDuck,tmBossFinish]) then Continue;
+    BeforeTime := Cues[I-1].Time;
+    AfterTime := Cues[I+1].Time;
+    Lo := Max(BeforeTime+0.78*(C.Time-BeforeTime),C.Time-0.32);
+    Hi := Min(AfterTime-0.82*(AfterTime-C.Time),Min(Audio.SoundEnd,C.Time+0.32));
+    if (Hi<Lo) or (Length(Audio.Hits)=0) then Continue;
+    BeforeSource := -1;
+    AfterSource := Length(Audio.Hits);
+    for J := I-1 downto 0 do
+      if Cues[J].Source>=0 then begin BeforeSource := Cues[J].Source; Break; end;
+    for J := I+1 to Cues.Count-1 do
+      if Cues[J].Source>=0 then begin AfterSource := Cues[J].Source; Break; end;
+    K := Max(BeforeSource+1,Audio.NearestHit(Lo));
+    Best := -1; BestCost := 1E20;
+    while (K>=0) and (K<AfterSource) and (Audio.Hits[K].Time<=Hi) do begin
+      if Audio.Hits[K].Time>=Lo then begin
+        Cost := Abs(Audio.Hits[K].Time-C.Time)-0.055*Audio.Hits[K].Strength;
+        if Cost<BestCost then begin Best := K; BestCost := Cost; end;
+      end;
+      Inc(K);
+    end;
+    if Best>=0 then begin
+      C.Time := Audio.Hits[Best].Time;
+      C.Source := Best;
+      Cues[I] := C;
+    end;
+  end;
+end;
+
+function UsableTrainAccents(Audio: TRhythmAudio; const Cancel: TFunc<Boolean>): Integer;
+var I: Integer; Time, Previous: Double;
+begin
+  Result := 0;
+  Previous := 0.23;
+  for I := 0 to High(Audio.Hits) do begin
+    if ((I and 511)=0) and Assigned(Cancel) and Cancel() then Abort;
+    Time := Audio.Hits[I].Time;
+    if Time>Audio.SoundEnd then Break;
+    if Time-Previous<0.30 then Continue;
+    Previous := Time;
+    Inc(Result);
+  end;
+end;
+
 class function TTrainPlan.Build(Audio: TRhythmAudio; const Cancel: TFunc<Boolean>): TTrainPlan;
 var
   Cues: TList<TTrainCue>;
   Plan: TTrainPlan;
   C: TTrainCue;
-  I, Car, TotalCars: Integer;
-  Clock, Gap, Time, EndTarget, Lead, Tail: Double;
-  FullRoof: Boolean;
+  I, Car, TotalCars, Accents, NextLead, PreviousLead, Exchanges, CarsPerExchange,
+    NextCourse, Courses: Integer;
+  Clock, Gap, EndTarget, Lead, Tail, SecondsPerCar, AccentsPerCar: Double;
+  FullRoof, ExtraEnemies: Boolean;
 
   procedure CheckCancel;
   begin
@@ -610,6 +981,7 @@ var
     Move.FromX := FromX;
     Move.ToX := ToX;
     Move.Source := -1;
+    if Cues.Count>0 then Move.Time := Max(Weight,0.30+(ToX-Cues.Last.ToX)/8.5);
     Cues.Add(Move);
   end;
 
@@ -621,27 +993,146 @@ var
     Add(Kind,Weight,X-TrainGap-0.57,X+Land);
   end;
 
-  procedure Fight(Kind: TTrainMove; CarIndex: Integer; X: Double);
+  procedure Fight(Kind: TTrainMove; CarIndex: Integer; X: Double; Weight: Double=0.98);
   const
     Travel: array[tmHit..tmShot] of Double = (0.94,1.97,1.65,0.92);
   begin
     X := CarIndex*TrainPitch+X;
-    Add(Kind,0.98,X-Travel[Kind],X);
+    Add(Kind,Weight,X-Travel[Kind],X);
   end;
 
-  procedure RoofEncounter(CarIndex: Integer);
+  procedure RoofEncounter(CarIndex: Integer; Lead: Boolean);
   var X: Double;
   begin
     X := CarIndex*TrainPitch;
-    if (CarIndex mod 3=1) and (CarIndex>0) then Fight(tmDuckHit,CarIndex,2.85)
-    else Fight(tmHit,CarIndex,2.85);
-    if not FullRoof or Odd(CarIndex) then
-      Add(tmHurdleHit,1.02,X+4.28,X+7.52)
-    else Add(tmHurdle,0.90,X+4.27,X+7.39);
-    if not FullRoof then Exit;
-    if CarIndex mod 3=1 then Fight(tmShot,CarIndex,9.26)
-    else if CarIndex mod 3=2 then Fight(tmVaultHit,CarIndex,10.21)
-    else Fight(tmDuckHit,CarIndex,9.56);
+    if Lead then begin
+      Fight(tmHit,CarIndex,2.65);
+      if ExtraEnemies then Fight(tmHit,CarIndex,3.64,0.72);
+      Add(tmHurdleHit,1.02,X+3.73,X+7.04);
+      Exit;
+    end;
+    if not FullRoof or (TotalCars<=4) then begin
+      case CarIndex mod 3 of
+        0: begin
+             Fight(tmHit,CarIndex,2.85,1.14);
+             Fight(tmShot,CarIndex,7.52,1.02);
+           end;
+        1: begin
+             Fight(tmHit,CarIndex,2.85);
+             Add(tmHurdleHit,1.02,X+5.83,X+9.40);
+           end;
+      else
+        begin
+          Add(tmHurdle,1.02,X+0.91,X+3.89);
+          Fight(tmHit,CarIndex,5.13,0.70);
+          Fight(tmDuckHit,CarIndex,8.65,0.80);
+        end;
+      end;
+      Exit;
+    end;
+    case CarIndex mod 8 of
+      0: begin
+           Fight(tmHit,CarIndex,2.65);
+           if ExtraEnemies then Fight(tmHit,CarIndex,3.64,0.72);
+           Add(tmHurdleHit,1.02,X+3.73,X+7.04);
+           Fight(tmDuckHit,CarIndex,9.32);
+         end;
+      1: begin
+           Fight(tmHit,CarIndex,2.20);
+           Add(tmHurdle,0.90,X+2.54,X+5.13);
+           Add(tmHurdleHit,0.95,X+5.62,X+8.29);
+           if ExtraEnemies then begin
+             Fight(tmHit,CarIndex,9.38,0.77);
+             Fight(tmHit,CarIndex,10.43,0.73);
+           end else Fight(tmDuckHit,CarIndex,10.31);
+         end;
+      2: begin
+           Fight(tmShot,CarIndex,1.98);
+           if ExtraEnemies then begin
+             Add(tmHurdle,0.90,X+3.60,X+6.21);
+             Fight(tmDuckHit,CarIndex,8.09,0.86);
+             Fight(tmVaultHit,CarIndex,10.18);
+           end else begin
+             Add(tmHurdle,0.90,X+3.94,X+7.23);
+             Fight(tmVaultHit,CarIndex,9.64);
+           end;
+         end;
+      3: begin
+           Fight(tmHit,CarIndex,2.45);
+           Fight(tmDuckHit,CarIndex,4.36);
+           Fight(tmShot,CarIndex,7.68,0.94);
+           if ExtraEnemies then begin
+             Fight(tmHit,CarIndex,8.97,0.77);
+             Fight(tmHit,CarIndex,10.10,0.73);
+           end else Fight(tmHit,CarIndex,9.82);
+         end;
+      // 先制の光弾、上段をかわす反撃、隣車から来る敵への空中打撃。
+      4: begin
+           Fight(tmShot,CarIndex,2.19,0.80);
+           Fight(tmDuckHit,CarIndex,5.12,1.11);
+           Add(tmHurdleHit,1.02,X+6.04,X+9.55);
+         end;
+      // 機器を先に飛び越え、近い二体を連続で打ってから奥の敵を迎える。
+      5: begin
+           Add(tmHurdle,1.02,X+0.91,X+3.89);
+           Fight(tmHit,CarIndex,5.13,0.70);
+           Fight(tmHit,CarIndex,6.28,0.70);
+           if ExtraEnemies then Fight(tmDuckHit,CarIndex,9.66,0.93)
+           else Fight(tmShot,CarIndex,9.66,0.92);
+         end;
+      6: begin // 重装護衛
+           Fight(tmDuckHit,CarIndex,2.88,1.11);
+           Fight(tmHit,CarIndex,6.47,1.05);
+           Fight(tmHit,CarIndex,7.66,0.91);
+           Fight(tmShot,CarIndex,9.52,0.98);
+         end;
+      7: begin // 連続飛び込み
+           Fight(tmHit,CarIndex,2.40,0.78);
+           Fight(tmVaultHit,CarIndex,5.02,0.87);
+           Add(tmHurdleHit,1.06,X+5.52,X+9.22);
+           if ExtraEnemies then Fight(tmHit,CarIndex,10.52,0.87);
+         end;
+    end;
+  end;
+
+  procedure AddExchange(LeadCar, Number: Integer);
+  var X: Double;
+  begin
+    X := LeadCar*TrainPitch;
+    case Number mod 3 of
+      0: begin
+           Add(tmLeftImpact,2.08,X+7.29,X+8.30);
+           Add(tmRightImpact,2.06,X+8.71,X+9.76);
+         end;
+      1: Add(tmRightImpact,2.08,X+7.54,X+9.76);
+      2: Add(tmLeftImpact,2.08,X+7.29,X+8.92);
+    end;
+    Add(tmCouple,1.64,X+10.16,X+10.89);
+    Jump(tmTransfer,LeadCar+1,0.92,0.70);
+  end;
+
+  procedure RoofCourse(CarIndex, Course: Integer);
+  var X: Double;
+  begin
+    X := CarIndex*TrainPitch;
+    case Course mod 3 of
+      0: begin
+           Add(tmSlide,0.98,X+1.14,X+3.86);
+           Add(tmHurdle,0.91,X+4.11,X+6.64);
+           Add(tmSlide,1.04,X+7.02,X+10.40);
+         end;
+      1: begin
+           Add(tmRoofGap,0.90,X+1.18,X+4.00);
+           Add(tmRoofGap,0.90,X+4.67,X+7.25);
+           Add(tmRoofGap,0.94,X+7.88,X+10.67);
+         end;
+      2: begin
+           Add(tmLever,0.76,X+1.25,X+2.32);
+           Add(tmGateRun,0.67,X+3.70,X+5.18);
+           Add(tmLever,0.81,X+6.12,X+7.22);
+           Add(tmGateRun,0.78,X+8.60,X+10.40);
+         end;
+    end;
   end;
 
 begin
@@ -653,26 +1144,45 @@ begin
   Cues := nil;
   try
     Plan.FDuration := Audio.Duration;
-    Plan.FInitialCars := EnsureRange(2+Floor(Min(6.0,Audio.SoundEnd/11)),2,8);
-    Plan.FNextCars := EnsureRange(2+Floor(Min(4.0,Audio.SoundEnd/21)),2,6);
+    Accents := UsableTrainAccents(Audio,Cancel);
+    FullRoof := Audio.SoundEnd>=14;
+    ExtraEnemies := FullRoof and (Accents>=Audio.SoundEnd*1.7);
+    SecondsPerCar := 2.9;
+    AccentsPerCar := 4.4;
+    if ExtraEnemies then begin
+      SecondsPerCar := 2.42;
+      AccentsPerCar := 5.11;
+    end;
+    TotalCars := EnsureRange(Min(1+Floor(Min(MaxCars,Audio.SoundEnd/SecondsPerCar)),
+      1+Floor(Accents/AccentsPerCar)),4,MaxCars);
+    Plan.FCars := TotalCars;
     Plan.FEndTime := Audio.Duration;
     if (Audio.SoundEnd>0) and (Audio.Duration>=0.8) then begin
       Cues := TList<TTrainCue>.Create;
-      TotalCars := Plan.InitialCars+Plan.NextCars;
-      FullRoof := Audio.SoundEnd>=14;
+      NextLead := Min(2,TotalCars-3);
+      PreviousLead := -2;
+      Exchanges := 0;
+      Courses := 0;
+      NextCourse := 1;
+      if Audio.SoundEnd<8 then NextCourse := TotalCars;
+      CarsPerExchange := EnsureRange(Round((TotalCars-1)*19/Max(1.0,Audio.SoundEnd)),2,11);
       Add(tmBoard,0.72,TrainBoardX,0.73);
-      for Car := 0 to Plan.InitialCars-1 do begin
-        if Car>0 then Jump(tmJump,Car,0.83,0.60);
-        RoofEncounter(Car);
-      end;
-      Time := Cues.Last.ToX+0.36;
-      Add(tmLeftImpact,2.39,Time,Time);
-      Add(tmRightImpact,1.34,Time,Time);
-      Add(tmCouple,1.42,Time,Time);
-      Jump(tmTransfer,Plan.InitialCars,0.92,0.70);
-      for Car := Plan.InitialCars to TotalCars-2 do begin
-        if Car>Plan.InitialCars then Jump(tmJump,Car,0.78,0.43);
-        RoofEncounter(Car);
+      for Car := 0 to TotalCars-2 do begin
+        CheckCancel;
+        if (Car>0) and (Car<>PreviousLead+1) then Jump(tmJump,Car,0.83,0.60);
+        if (Car=NextCourse) and (Car=NextLead) then Inc(NextCourse);
+        if Car=NextCourse then begin
+          RoofCourse(Car,Courses);
+          Inc(Courses);
+          NextCourse := Car+4+((Courses div 2) mod 2);
+        end else RoofEncounter(Car,Car=NextLead);
+        if Car=NextLead then begin
+          AddExchange(Car,Exchanges);
+          PreviousLead := Car;
+          Inc(Exchanges);
+          NextLead := Car+Max(2,CarsPerExchange+((Exchanges-1) mod 3)-1);
+          if NextLead>TotalCars-4 then NextLead := -1;
+        end;
       end;
       Car := TotalCars-1;
       Jump(tmBossJump,Car,1.04,0.44);
@@ -682,6 +1192,7 @@ begin
 
       EndTarget := Max(8.50,Audio.SoundEnd+0.13);
       ScheduleTrainCues(Cues,Audio,EndTarget,Cancel);
+      AlignRemainingBossHits(Cues,Audio);
       for I := 0 to Cues.Count-1 do begin
         C := Cues[I];
         Clock := 0;
@@ -689,19 +1200,22 @@ begin
         Gap := C.Time-Clock;
         case C.Kind of
           tmBoard: Lead := 0.36;
-          tmJump,tmTransfer,tmBossJump: Lead := 0.58;
-          tmHit,tmBossFinish: Lead := 0.28;
-          tmVaultHit,tmDuckHit,tmBossDuck: Lead := 0.48;
-          tmHurdle,tmHurdleHit: Lead := 0.57;
-          tmShot: Lead := 0.34;
-          tmLeftImpact,tmRightImpact: Lead := 1.22;
-          tmCouple: Lead := 0.48;
+          tmJump,tmTransfer,tmBossJump: Lead := 0.34;
+          tmHit: Lead := 0.16;
+          tmVaultHit,tmDuckHit,tmBossDuck: Lead := 0.31;
+          tmHurdle,tmHurdleHit,tmRoofGap: Lead := 0.37;
+          tmSlide: Lead := 0.49;
+          tmLever: Lead := 0.19;
+          tmGateRun: Lead := 0.31;
+          tmShot,tmBossFinish: Lead := 0.23;
+          tmLeftImpact: Lead := 0.45;
+          tmRightImpact,tmCouple: Lead := 0.36;
           tmStation: Lead := 0.65;
         else
           Lead := 0.50;
         end;
-        C.Start := C.Time-Min(Lead,Gap*0.60);
-        Tail := 0.051;
+        C.Start := C.Time-Min(Lead,Gap*0.62);
+        Tail := 0.085;
         if C.Kind in [tmLeftImpact,tmRightImpact,tmCouple,tmStation] then Tail := 0.12;
         if I<Cues.Count-1 then Tail := Min(Tail,(Cues[I+1].Time-C.Time)*0.18);
         C.Finish := C.Time+Tail;
@@ -711,6 +1225,7 @@ begin
       Plan.FEndTime := Plan.FCues[High(Plan.FCues)].Time+0.83;
     end;
     Plan.Verify(Audio);
+    Plan.IndexCars;
     Result := Plan;
     Plan := nil;
   finally
@@ -738,8 +1253,7 @@ begin
     Root.AddPair('direction',TJSONNumber.Create(Ref.Direction));
     Root.AddPair('policy',TrainPolicy);
     Root.AddPair('end',PreparedExact(FEndTime));
-    Root.AddPair('initialCars',TJSONNumber.Create(FInitialCars));
-    Root.AddPair('nextCars',TJSONNumber.Create(FNextCars));
+    Root.AddPair('cars',TJSONNumber.Create(FCars));
     AddPreparedAudio(Root,Audio);
     Rows := TJSONArray.Create;
     Root.AddPair('cues',Rows);
@@ -795,8 +1309,7 @@ begin
     Plan := TTrainPlan.Create;
     Plan.FDuration := Audio.Duration;
     Plan.FEndTime := ReadPreparedExact(Root.GetValue('end'));
-    Plan.FInitialCars := Root.GetValue<Integer>('initialCars');
-    Plan.FNextCars := Root.GetValue<Integer>('nextCars');
+    Plan.FCars := Root.GetValue<Integer>('cars');
     SetLength(Plan.FCues,Rows.Count);
     for I := 0 to Rows.Count-1 do begin
       if not (Rows.Items[I] is TJSONArray) then raise EConvertError.Create('Train cue row');
@@ -814,6 +1327,7 @@ begin
       Plan.FCues[I].ToX := ReadPreparedExact(Row.Items[6]);
     end;
     Plan.Verify(Audio);
+    Plan.IndexCars;
     Result := Plan;
     Plan := nil;
   finally

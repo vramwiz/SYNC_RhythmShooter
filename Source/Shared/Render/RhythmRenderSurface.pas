@@ -14,7 +14,7 @@ type
     FAlphaUnavailable:Boolean;
     FAlphaRaster:TRhythmAlphaRaster;
     FTarget:TBitmap;
-    FAlphaLayer,FAlphaMask:TBitmap;
+    FAlphaLayer,FAlphaMask,FRegionMirror:TBitmap;
     FD2DActive,FUseD2D,FLastD2D:Boolean;
     // GDI用の形状被覆マスク。既定Opacity=1の描画経路は変更しない。
     procedure BlendPrimitive(Kind:Integer;X1,Y1,X2,Y2,Stroke:Double;Color:TColor;Opacity:Double;
@@ -31,6 +31,9 @@ type
     function EndFrame:Boolean;
     procedure DrawAsset(Index:Integer;const Center:TPoint;W,H:Integer;
       Opacity:Double=1;ForceAlpha:Boolean=False;Bucket:Integer=0);
+    // Source and destination rectangles use pixel edges (right and bottom excluded).
+    function DrawAssetRegion(Index:Integer;const Source,Bounds:TRect;
+      MirrorX:Boolean=False;Opacity:Double=1):Boolean;
     procedure Circle(X,Y,Radius:Double;Color:TColor;Filled:Boolean;Stroke:Double=1;Opacity:Double=1);
     procedure Line(X1,Y1,X2,Y2:Double;Color:TColor;Stroke:Double=1;Opacity:Double=1);
     procedure FillRect(X1,Y1,X2,Y2:Double;Color:TColor;Opacity:Double=1);
@@ -55,7 +58,7 @@ end;
 destructor TAnimationRenderSurface.Destroy;
 var I,J:Integer;
 begin
-  FD2D.Free;FAlphaD2D.Free;FAlphaLayer.Free;FAlphaMask.Free;
+  FD2D.Free;FAlphaD2D.Free;FAlphaLayer.Free;FAlphaMask.Free;FRegionMirror.Free;
   for I:=0 to High(FScaled) do for J:=0 to 2 do FreeAndNil(FScaled[I][J]);
   FImages.Free;inherited;
 end;
@@ -254,5 +257,45 @@ begin
     end;
   end
   else begin Canvas.Brush.Color:=clAqua;Canvas.Ellipse(Center.X-W div 2,Center.Y-H div 2,Center.X+W div 2,Center.Y+H div 2);end;
+end;
+function TAnimationRenderSurface.DrawAssetRegion(Index:Integer;const Source,Bounds:TRect;
+  MirrorX:Boolean;Opacity:Double):Boolean;
+var Image:Vcl.Graphics.TBitmap;SrcRect:TRect;Blend:TBlendFunction;X,Y:Integer;
+  P,Q:PCardinal;
+begin
+  Result:=False;
+  if (Index<0) or (Index>=Length(FImages.Images)) or (Bounds.Width<=0) or
+    (Bounds.Height<=0) or (Source.Width<=0) or (Source.Height<=0) then Exit;
+  Image:=FImages.AlphaImage[Index];
+  if Image.Empty or (Source.Left<0) or (Source.Top<0) or
+    (Source.Right>Image.Width) or (Source.Bottom>Image.Height) then Exit;
+  if Opacity<=0 then Exit(True);
+  Opacity:=Min(1.0,Opacity);
+  if FD2DActive then Exit(FActiveD2D.DrawAssetRegion(Index,Source,Bounds,MirrorX,Opacity));
+  if FAlphaRaster.Active then begin
+    FAlphaRaster.DrawBitmapRegion(Image,Source,Bounds,MirrorX,Opacity);
+    Exit(True);
+  end;
+  SrcRect:=Source;
+  if MirrorX then begin
+    // GDI AlphaBlend rejects negative source widths. Reuse a crop-sized mirror buffer.
+    if FRegionMirror=nil then FRegionMirror:=Vcl.Graphics.TBitmap.Create;
+    FRegionMirror.PixelFormat:=pf32bit;
+    FRegionMirror.SetSize(Source.Width,Source.Height);
+    FRegionMirror.AlphaFormat:=afPremultiplied;
+    for Y:=0 to Source.Height-1 do begin
+      P:=Image.ScanLine[Source.Top+Y];Inc(P,Source.Right-1);
+      Q:=FRegionMirror.ScanLine[Y];
+      for X:=0 to Source.Width-1 do begin
+        Q^:=P^;Dec(P);Inc(Q);
+      end;
+    end;
+    Image:=FRegionMirror;
+    SrcRect:=Rect(0,0,Image.Width,Image.Height);
+  end;
+  Blend.BlendOp:=AC_SRC_OVER;Blend.BlendFlags:=0;
+  Blend.SourceConstantAlpha:=Round(Opacity*255);Blend.AlphaFormat:=AC_SRC_ALPHA;
+  Result:=Winapi.Windows.AlphaBlend(Canvas.Handle,Bounds.Left,Bounds.Top,Bounds.Width,
+    Bounds.Height,Image.Canvas.Handle,SrcRect.Left,SrcRect.Top,SrcRect.Width,SrcRect.Height,Blend);
 end;
 end.
